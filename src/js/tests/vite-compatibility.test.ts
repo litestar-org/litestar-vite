@@ -467,21 +467,7 @@ describe("Plugin Configuration Compatibility", () => {
   })
 
   describe("Backwards Compatibility", () => {
-    it("maintains compatibility with Vite 5.x configurations", () => {
-      // Test that older configurations still work
-      const plugin = litestar({
-        input: "resources/js/app.js",
-        bundleDir: "public",
-        assetUrl: "/static/",
-      })[0]
-
-      const config = plugin.config({}, { command: "build", mode: "production" })
-
-      expect(config.build?.outDir).toBe("public")
-      expect(config.base).toBe("/static/")
-    })
-
-    it("maintains compatibility with Vite 6.x configurations", () => {
+    it("supports multi-entrypoint and SSR configurations", () => {
       const plugin = litestar({
         input: ["resources/js/app.ts", "resources/js/admin.ts"],
         ssr: "resources/js/ssr.ts",

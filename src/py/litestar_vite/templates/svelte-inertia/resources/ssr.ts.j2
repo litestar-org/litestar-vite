@@ -1,0 +1,19 @@
+import type { Component } from "svelte";
+import { startSsrWorker } from "litestar-vite-plugin/ssr-worker"
+import { createInertiaApp } from "@inertiajs/svelte"
+import { render as renderSvelte } from "svelte/server"
+import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers"
+
+const pages = import.meta.glob<{ default: Component }>("./pages/**/*.svelte")
+
+export default async function render(page: any): Promise<any> {
+  return createInertiaApp({
+    page,
+    resolve: (name) => resolvePageComponent(`./pages/${name}.svelte`, pages, { rawModule: true }),
+    setup: ({ App, props }) => renderSvelte(App, { props }),
+  })
+}
+
+if (!import.meta.env?.DEV) {
+  startSsrWorker({ render })
+}

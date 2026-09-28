@@ -71,6 +71,7 @@ nitpicky = True
 nitpick_ignore = [
     # external library / undocumented external
     (PY_CLASS, "ExternalType"),
+    (PY_CLASS, "httpx2.AsyncClient"),
     (PY_CLASS, "TypeEngine"),
     (PY_CLASS, "UserDefinedType"),
     (PY_METH, "type_engine"),
@@ -143,12 +144,13 @@ nitpick_ignore = [
     (PY_CLASS, "LoggingConfig"),
     (PY_CLASS, "litestar_vite.config.LoggingConfig"),
     (PY_CLASS, "Markup"),
-    # External dependencies
-    (PY_CLASS, "httpx.AsyncClient"),
     # Codegen internal types (use public module path - remapping handles private paths)
     (PY_CLASS, "litestar_vite.codegen.OpenAPISupport"),
-    (PY_CLASS, "litestar_vite.codegen._asyncapi.AsyncAPISchemaContext"),
     (PY_CLASS, "litestar_vite.codegen._asyncapi._ChannelKeyAllocator"),
+    # Typing and deprecation
+    (PY_CLASS, "Deprecated"),
+    (PY_CLASS, "typing_extensions.Self"),
+    (PY_CLASS, "Self"),
 ]
 nitpick_ignore_regex = [
     (PY_RE, r"litestar_vite.*\.T"),
@@ -235,7 +237,22 @@ html_theme_options: dict[str, Any] = {
                 {
                     "title": "Realtime & AsyncAPI",
                     "url": "realtime/index",
-                    "summary": "WebSockets, ChannelsPlugin, SSE, AsyncAPI 3.0 schema, and typed frontend client streams.",
+                    "summary": "WebSockets, ChannelsPlugin, SSE, AsyncAPI export, and typed frontend client streams.",
+                },
+                {
+                    "title": "SSR & IPC Transports",
+                    "url": "ssr/ipc-architecture",
+                    "summary": "Vite ModuleRunner dev SSR, managed stdio subprocesses, and circuit breaking.",
+                },
+                {
+                    "title": "Hypermedia & Fragments",
+                    "url": "hypermedia/fragments",
+                    "summary": "HTMX partial swaps, React/Vue/Svelte fragment rendering, and scoped CSS injection.",
+                },
+                {
+                    "title": "Vite 7+ Configuration",
+                    "url": "guide/vite-architecture",
+                    "summary": "Vite Environment API, Rolldown bundling, and pooled development HTTP proxying.",
                 },
                 {
                     "title": "API Reference",

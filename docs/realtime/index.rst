@@ -2,13 +2,13 @@
 Realtime & AsyncAPI
 ====================
 
-Litestar provides rich real-time communication capabilities: full-duplex WebSockets, event broadcasting via ``ChannelsPlugin``, and unidirectional HTTP streaming with Server-Sent Events (SSE).
+Litestar supports WebSockets, event broadcasting via ``ChannelsPlugin``, and Server-Sent Events (SSE).
 
-``litestar-vite`` connects these server-side capabilities with frontend code:
+``litestar-vite`` connects these server-side endpoints with frontend code:
 
-- **AsyncAPI 3.0 Schema Generation**: Automatically introspects routes, channels, and message payloads into ``asyncapi.json``.
-- **Strongly Typed Contracts**: Generates TypeScript channel definitions (``channels.ts``) for frontend clients.
-- **Client Streams & Composables**: Connect to channels and event feeds with type-safe React hooks, Vue composables, and Svelte stores.
+- **AsyncAPI Export**: Exports the registered ``AsyncAPIPlugin`` document as ``asyncapi.json``.
+- **TypeScript Channel Contracts**: Generates channel definitions (``channels.ts``) for frontend clients.
+- **Client Streams & Composables**: Connects to channels and event feeds with typed React hooks, Vue composables, and Svelte stores.
 
 .. grid:: 1 1 2 2
    :gutter: 2
@@ -35,7 +35,7 @@ Litestar provides rich real-time communication capabilities: full-duplex WebSock
       :link: typegen
       :link-type: doc
 
-      Export AsyncAPI 3.0 specifications and emit type-safe TypeScript channel interfaces.
+      Export AsyncAPI specifications and emit type-safe TypeScript channel interfaces.
 
    .. grid-item-card:: :octicon:`tools` Browser Helpers
       :link: browser-helpers
@@ -64,7 +64,7 @@ Realtime in ``litestar-vite`` operates on a unified contract pipeline:
        end
 
        subgraph Pipeline ["Contract Pipeline"]
-           GEN["AsyncAPIGenerator"]
+           GEN["Registered AsyncAPIPlugin"]
            SCHEMA["asyncapi.json"]
            TS["channels.ts"]
        end
@@ -82,8 +82,8 @@ Realtime in ``litestar-vite`` operates on a unified contract pipeline:
        TS --> HELPERS
        HELPERS --> UI
 
-1. **Introspection**: Litestar automatically inspects your WebSocket route handlers, registered channels, and SSE handlers.
-2. **Schema Emission**: During ``litestar assets build`` (or ``generate-types``), an AsyncAPI 3.0 document (``asyncapi.json``) is exported automatically alongside ``openapi.json``.
+1. **Schema ownership**: Configure realtime contracts in ``litestar-asyncapi`` and register its ``AsyncAPIPlugin``.
+2. **Schema Emission**: With channel generation enabled, ``litestar assets build`` (or ``generate-types``) exports that plugin's document as ``asyncapi.json``. Without the plugin, no realtime document is exported.
 3. **TypeScript Generation**: TypeGen emits strongly typed TypeScript contracts (``channels.ts``) directly into your frontend sources.
 4. **Client Consumption**: Browser helpers and UI framework composables bind directly to the emitted types.
 

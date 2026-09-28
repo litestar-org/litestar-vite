@@ -3,15 +3,28 @@ import { version } from "vite"
 const [viteMajorRaw, viteMinorRaw] = version.split(".")
 
 /** Parsed major version of the running Vite instance. */
-const viteMajor = Number(viteMajorRaw)
+export const viteMajor = Number(viteMajorRaw)
 /** Parsed minor version of the running Vite instance. */
-const viteMinor = Number(viteMinorRaw)
+export const viteMinor = Number(viteMinorRaw)
+
+/**
+ * Whether the running Vite version is 7+ (minimum supported baseline).
+ */
+export const isVite7Plus: boolean = viteMajor >= 7
 
 /**
  * Whether the running Vite version is 8+, which uses Rolldown and exposes
  * `build.rolldownOptions` in place of Vite 7's `build.rollupOptions`.
  */
 export const isVite8Plus: boolean = viteMajor >= 8
+
+/**
+ * Returns the bundler options key for the running Vite version:
+ * `rolldownOptions` on Vite 8+, `rollupOptions` on Vite 7.
+ */
+export function bundlerOptionKey(): "rolldownOptions" | "rollupOptions" {
+  return isVite8Plus ? "rolldownOptions" : "rollupOptions"
+}
 
 /**
  * Whether the running Vite version is 8.1+, which moved the HMR network options

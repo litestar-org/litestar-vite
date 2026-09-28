@@ -1181,7 +1181,7 @@ class ViteDoctor:
             )
 
     def _check_ssr_reachability(self) -> None:
-        """Warn when Inertia SSR is enabled but the server URL looks misconfigured."""
+        """Warn when Inertia SSR configuration has an invalid timeout."""
         from litestar_vite.config import InertiaConfig
 
         if not isinstance(self.config.inertia, InertiaConfig):
@@ -1189,16 +1189,6 @@ class ViteDoctor:
         ssr = self.config.inertia.ssr_config
         if ssr is None:
             return
-        if not ssr.url.startswith(("http://", "https://")):
-            self.issues.append(
-                DoctorIssue(
-                    check="SSR URL Format",
-                    severity="error",
-                    message=f"InertiaSSRConfig.url={ssr.url!r} is not a valid HTTP URL",
-                    fix_hint="Set url to a full URL like 'http://127.0.0.1:13714/render'",
-                    auto_fixable=False,
-                )
-            )
         if ssr.timeout <= 0:
             self.issues.append(
                 DoctorIssue(

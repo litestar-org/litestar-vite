@@ -2,7 +2,7 @@
 UI Frameworks
 ====================
 
-``litestar-vite-plugin`` provides dedicated reactive primitives for React, Vue 3, and Svelte 5 to seamlessly bind UI state to server-driven realtime streams without manual event listener wiring or memory leaks.
+``litestar-vite-plugin`` provides reactive helpers for React, Vue 3, and Svelte 5 that subscribe to server event streams and clean up connections on unmount.
 
 React: ``useQueueEventStream``
 ------------------------------

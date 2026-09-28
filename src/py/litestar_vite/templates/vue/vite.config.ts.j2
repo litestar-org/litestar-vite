@@ -26,6 +26,15 @@ export default defineConfig({
 {% endif %}
     }),
   ],
+  build: {
+    rolldownOptions: {
+      output: {
+        entryFileNames: "assets/[name]-[hash].js",
+        chunkFileNames: "assets/[name]-[hash].js",
+        assetFileNames: "assets/[name]-[hash][extname]",
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": "/{{ resource_dir }}",

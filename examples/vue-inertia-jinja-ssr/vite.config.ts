@@ -9,6 +9,7 @@ export default defineConfig({
     vue(),
     litestar({
       input: ["resources/main.ts"],
+      ssr: "resources/ssr.ts",
     }),
   ],
 })

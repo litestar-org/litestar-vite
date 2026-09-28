@@ -4,11 +4,12 @@ Combines the Jinja2 page shell pattern (``examples/vue-inertia-jinja``)
 with the Inertia SSR pipeline (``examples/vue-inertia-ssr``). Demonstrates:
 
 - ``mode="template"`` + ``TemplateConfig(JinjaTemplateEngine)``
-- ``InertiaSSRConfig(command=...)`` so the plugin spawns the Node /render server.
+- In development mode, Vite 7+ renders SSR in-memory via ``RunnableDevEnvironment.runner``.
+- In production mode, ``InertiaConfig(ssr=True)`` spawns the built Node stdio worker.
 - The Jinja-rendered HTML's ``#app`` element gets its outer HTML replaced
-  with the Node-rendered Inertia tree before the page is sent to the browser.
+  with the rendered Inertia tree before the page is sent to the browser.
 
-One command, two processes:
+One command:
 
 .. code-block:: bash
 
@@ -27,15 +28,7 @@ from litestar.plugins.jinja import JinjaTemplateEngine
 from litestar.template import TemplateConfig
 from msgspec import Struct
 
-from litestar_vite import (
-    InertiaConfig,
-    InertiaSSRConfig,
-    PathConfig,
-    RuntimeConfig,
-    TypeGenConfig,
-    ViteConfig,
-    VitePlugin,
-)
+from litestar_vite import InertiaConfig, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig, VitePlugin
 
 here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
@@ -120,14 +113,10 @@ templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEng
 
 vite = VitePlugin(
     config=ViteConfig(
-        mode="template",  # Explicit template mode for Jinja-based Inertia SSR
+        mode="template",
         dev_mode=DEV_MODE,
         paths=PathConfig(root=here, resource_dir="resources"),
-        # Explicit InertiaSSRConfig so target_selector="#app" is documented inline
-        # and the plugin manages the Node /render process. The Jinja shell renders
-        # <div id="app"></div>; SSR replaces that element outerHTML with the
-        # Node-rendered Inertia tree.
-        inertia=InertiaConfig(ssr=InertiaSSRConfig(target_selector="#app", command=["npm", "run", "dev:ssr"])),
+        inertia=InertiaConfig(ssr=True),
         types=TypeGenConfig(output=Path("resources/generated"), generate_zod=True),
         runtime=RuntimeConfig(port=5015),
     )

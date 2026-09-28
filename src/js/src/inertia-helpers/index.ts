@@ -142,10 +142,11 @@ export async function resolvePageComponent(
     }
 
     const resolved = typeof page === "function" ? await page() : await page
+    // Svelte components take (anchor/renderer, props), unlike React functions.
+    // Preserve their compiled calling convention and module identity.
+    if (p.endsWith(".svelte")) return resolved
     const wrapped = wrapComponent(resolved)
-
-    const isSvelte = typeof p === "string" && p.endsWith(".svelte")
-    if (options?.rawModule || isSvelte) {
+    if (options?.rawModule) {
       return wrapped
     }
 

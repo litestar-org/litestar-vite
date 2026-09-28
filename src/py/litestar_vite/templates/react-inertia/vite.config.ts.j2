@@ -24,6 +24,7 @@ export default defineConfig({
 {% endif %}
     react(),
     litestar({
+      resourceDir: "{{ resource_dir }}",
       input: ["{{ resource_dir }}/main.tsx"{% if use_tailwind %}, "{{ resource_dir }}/tailwind.css"{% endif %}],
 {% if enable_ssr %}
       ssr: "{{ resource_dir }}/ssr.tsx",
@@ -40,7 +41,21 @@ export default defineConfig({
         ? {
             entryFileNames: "ssr.js",
           }
-        : undefined,
+        : {
+            entryFileNames: "assets/[name]-[hash].js",
+            chunkFileNames: "assets/[name]-[hash].js",
+            assetFileNames: "assets/[name]-[hash][extname]",
+          },
+    },
+  },
+{% else %}
+  build: {
+    rolldownOptions: {
+      output: {
+        entryFileNames: "assets/[name]-[hash].js",
+        chunkFileNames: "assets/[name]-[hash].js",
+        assetFileNames: "assets/[name]-[hash][extname]",
+      },
     },
   },
 {% endif %}

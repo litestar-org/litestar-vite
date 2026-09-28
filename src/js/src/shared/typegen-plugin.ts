@@ -25,11 +25,14 @@ export interface RequiredTypeGenConfig {
   routesPath: string
   pagePropsPath: string
   schemasTsPath?: string
+  asyncapiPath?: string
+  channelsTsPath?: string
   generateZod: boolean
   generateSdk: boolean
   generateRoutes: boolean
   generatePageProps: boolean
   generateSchemas: boolean
+  generateChannels: boolean
   globalRoute: boolean
   failOnError?: boolean
   debounce: number
@@ -96,6 +99,18 @@ export interface TypesConfigShape {
    */
   schemasTsPath?: string
   /**
+   * Path where the AsyncAPI schema is exported by Litestar.
+   *
+   * @default `${output}/asyncapi.json`
+   */
+  asyncapiPath?: string
+  /**
+   * Path for the generated `channels.ts` realtime helper file.
+   *
+   * @default `${output}/channels.ts`
+   */
+  channelsTsPath?: string
+  /**
    * Generate Zod schemas in addition to TypeScript types.
    *
    * @default false
@@ -128,6 +143,12 @@ export interface TypesConfigShape {
    * @default true
    */
   generateSchemas?: boolean
+  /**
+   * Generate `channels.ts` from `asyncapi.json` when present.
+   *
+   * @default true
+   */
+  generateChannels?: boolean
   /**
    * Register the generated `route()` function on `window`, similar to Laravel's Ziggy,
    * so it can be used without an import.
@@ -163,6 +184,8 @@ function buildTypeDefaults(output: string) {
     routesPath: path.join(output, "routes.json"),
     pagePropsPath: path.join(output, "inertia-pages.json"),
     schemasTsPath: path.join(output, "schemas.ts"),
+    asyncapiPath: path.join(output, "asyncapi.json"),
+    channelsTsPath: path.join(output, "channels.ts"),
   }
 }
 
@@ -176,11 +199,14 @@ function resolveFromPython(pythonConfig: BridgeTypesConfig, defaultOutput: strin
     routesPath: pythonConfig.routesPath ?? defaults.routesPath,
     pagePropsPath: pythonConfig.pagePropsPath ?? defaults.pagePropsPath,
     schemasTsPath: pythonConfig.schemasTsPath ?? defaults.schemasTsPath,
+    asyncapiPath: pythonConfig.asyncapiPath ?? defaults.asyncapiPath,
+    channelsTsPath: pythonConfig.channelsTsPath ?? defaults.channelsTsPath,
     generateZod: pythonConfig.generateZod ?? false,
     generateSdk: pythonConfig.generateSdk ?? true,
     generateRoutes: pythonConfig.generateRoutes ?? true,
     generatePageProps: pythonConfig.generatePageProps ?? true,
     generateSchemas: pythonConfig.generateSchemas ?? true,
+    generateChannels: pythonConfig.generateChannels ?? true,
     globalRoute: pythonConfig.globalRoute ?? false,
     failOnError: pythonConfig.failOnError,
     debounce: DEBOUNCE_MS,
@@ -196,11 +222,14 @@ function resolveDefaultTypesConfig(defaultOutput: string): RequiredTypeGenConfig
     routesPath: defaults.routesPath,
     pagePropsPath: defaults.pagePropsPath,
     schemasTsPath: defaults.schemasTsPath,
+    asyncapiPath: defaults.asyncapiPath,
+    channelsTsPath: defaults.channelsTsPath,
     generateZod: false,
     generateSdk: true,
     generateRoutes: true,
     generatePageProps: true,
     generateSchemas: true,
+    generateChannels: true,
     globalRoute: false,
     failOnError: undefined,
     debounce: DEBOUNCE_MS,
@@ -228,7 +257,7 @@ export function resolveTypesConfig(options: ResolveTypesConfigOptions): Required
   const userProvidedOutput = Object.hasOwn(requested, "output")
   const output = requested.output ?? (mergePythonForObject ? pythonConfig?.output : undefined) ?? defaultOutput
   const defaults = buildTypeDefaults(output)
-  const pathFallback = (key: "openapiPath" | "routesPath" | "pagePropsPath" | "schemasTsPath") => {
+  const pathFallback = (key: "openapiPath" | "routesPath" | "pagePropsPath" | "schemasTsPath" | "asyncapiPath" | "channelsTsPath") => {
     if (!mergePythonForObject || userProvidedOutput) {
       return defaults[key]
     }
@@ -242,11 +271,14 @@ export function resolveTypesConfig(options: ResolveTypesConfigOptions): Required
     routesPath: requested.routesPath ?? pathFallback("routesPath"),
     pagePropsPath: requested.pagePropsPath ?? pathFallback("pagePropsPath"),
     schemasTsPath: requested.schemasTsPath ?? pathFallback("schemasTsPath"),
+    asyncapiPath: requested.asyncapiPath ?? pathFallback("asyncapiPath"),
+    channelsTsPath: requested.channelsTsPath ?? pathFallback("channelsTsPath"),
     generateZod: requested.generateZod ?? (mergePythonForObject ? pythonConfig?.generateZod : undefined) ?? false,
     generateSdk: requested.generateSdk ?? (mergePythonForObject ? pythonConfig?.generateSdk : undefined) ?? true,
     generateRoutes: requested.generateRoutes ?? (mergePythonForObject ? pythonConfig?.generateRoutes : undefined) ?? true,
     generatePageProps: requested.generatePageProps ?? (mergePythonForObject ? pythonConfig?.generatePageProps : undefined) ?? true,
     generateSchemas: requested.generateSchemas ?? (mergePythonForObject ? pythonConfig?.generateSchemas : undefined) ?? true,
+    generateChannels: requested.generateChannels ?? (mergePythonForObject ? pythonConfig?.generateChannels : undefined) ?? true,
     globalRoute: requested.globalRoute ?? (mergePythonForObject ? pythonConfig?.globalRoute : undefined) ?? false,
     failOnError: requested.failOnError ?? pythonConfig?.failOnError,
     debounce: requested.debounce ?? DEBOUNCE_MS,
@@ -261,10 +293,11 @@ async function getFileMtime(filePath: string): Promise<string> {
 /**
  * Unified Litestar type generation Vite plugin.
  *
- * Watches OpenAPI, routes.json, and inertia page props metadata and generates:
+ * Watches OpenAPI, routes.json, inertia page props, and asyncapi.json metadata and generates:
  * - API types via @hey-api/openapi-ts (optional)
  * - routes.ts (optional)
  * - page-props.ts (optional)
+ * - channels.ts (optional)
  */
 export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, options: TypeGenPluginOptions): Plugin {
   const { pluginName, frameworkName, sdkClientPlugin, executor, hasPythonConfig } = options
@@ -272,6 +305,7 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
   let lastTypesHash: string | null = null
   let lastPagePropsHash: string | null = null
   let lastRoutesHash: string | null = null
+  let lastAsyncapiHash: string | null = null
   let server: ViteDevServer | null = null
   let generationPromise: Promise<TypeGenResult> | null = null
   let rerunRequested = false
@@ -330,6 +364,9 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
             generatePageProps: typesConfig.generatePageProps,
             generateSchemas: typesConfig.generateSchemas,
             schemasTsPath: typesConfig.schemasTsPath,
+            asyncapiPath: typesConfig.asyncapiPath,
+            channelsTsPath: typesConfig.channelsTsPath,
+            generateChannels: typesConfig.generateChannels,
             sdkClientPlugin,
             executor,
           }
@@ -343,7 +380,15 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
           combined.durationMs += result.durationMs || Date.now() - startTime
 
           for (const file of result.skippedFiles) {
-            const label = file.endsWith("page-props.ts") ? "Page props types" : file.endsWith("schemas.ts") ? "Schema types" : file.includes("api") ? "TypeScript types" : file
+            const label = file.endsWith("page-props.ts")
+              ? "Page props types"
+              : file.endsWith("schemas.ts")
+                ? "Schema types"
+                : file.endsWith("channels.ts")
+                  ? "Channels types"
+                  : file.includes("api")
+                    ? "TypeScript types"
+                    : file
             resolvedConfig?.logger.info(`${colors.cyan("•")} ${label} ${colors.dim("(unchanged)")}`)
           }
         } while (rerunRequested)
@@ -377,17 +422,19 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
     return generationPromise
   }
 
-  const debouncedRunTypeGeneration = debounce(async (file: string, cacheKey: "openapi" | "pageProps" | "routes") => {
+  const debouncedRunTypeGeneration = debounce(async (file: string, cacheKey: "openapi" | "pageProps" | "routes" | "asyncapi") => {
     const newHash = await getFileMtime(file)
     if (cacheKey === "openapi" && lastTypesHash === newHash) return
     if (cacheKey === "pageProps" && lastPagePropsHash === newHash) return
     if (cacheKey === "routes" && lastRoutesHash === newHash) return
+    if (cacheKey === "asyncapi" && lastAsyncapiHash === newHash) return
 
     const result = await runTypeGenerationWithCache()
     if (result.errors.length === 0) {
       if (cacheKey === "openapi") lastTypesHash = newHash
       if (cacheKey === "pageProps") lastPagePropsHash = newHash
       if (cacheKey === "routes") lastRoutesHash = newHash
+      if (cacheKey === "asyncapi") lastAsyncapiHash = newHash
     }
   }, typesConfig.debounce)
 
@@ -449,10 +496,12 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
         const openapiPath = path.resolve(projectRoot, typesConfig.openapiPath)
         const pagePropsPath = path.resolve(projectRoot, typesConfig.pagePropsPath)
         const routesPath = path.resolve(projectRoot, typesConfig.routesPath)
+        const asyncapiPath = typesConfig.asyncapiPath ? path.resolve(projectRoot, typesConfig.asyncapiPath) : null
         const hasOpenapi = fs.existsSync(openapiPath)
         const hasPageProps = typesConfig.generatePageProps && fs.existsSync(pagePropsPath)
         const hasRoutes = typesConfig.generateSchemas && fs.existsSync(routesPath)
-        if (hasOpenapi || hasPageProps || hasRoutes) {
+        const hasAsyncapi = Boolean(typesConfig.generateChannels && asyncapiPath && fs.existsSync(asyncapiPath))
+        if (hasOpenapi || hasPageProps || hasRoutes || hasAsyncapi) {
           const result = await runTypeGenerationWithCache()
           reportTypegenErrors(result, this)
         }
@@ -470,14 +519,16 @@ export function createLitestarTypeGenPlugin(typesConfig: RequiredTypeGenConfig, 
       const openapiPath = path.resolve(root, typesConfig.openapiPath)
       const pagePropsPath = path.resolve(root, typesConfig.pagePropsPath)
       const routesPath = path.resolve(root, typesConfig.routesPath)
+      const asyncapiPath = typesConfig.asyncapiPath ? path.resolve(root, typesConfig.asyncapiPath) : null
 
       const isOpenapi = absoluteFile === openapiPath
       const isPageProps = typesConfig.generatePageProps && absoluteFile === pagePropsPath
       const isRoutes = typesConfig.generateSchemas && absoluteFile === routesPath
+      const isAsyncapi = Boolean(typesConfig.generateChannels && asyncapiPath && absoluteFile === asyncapiPath)
 
-      if (isOpenapi || isPageProps || isRoutes) {
+      if (isOpenapi || isPageProps || isRoutes || isAsyncapi) {
         resolvedConfig?.logger.info(`${colors.cyan(frameworkName)} ${colors.dim("schema changed:")} ${colors.yellow(relativePath)}`)
-        debouncedRunTypeGeneration(absoluteFile, isOpenapi ? "openapi" : isPageProps ? "pageProps" : "routes")
+        debouncedRunTypeGeneration(absoluteFile, isOpenapi ? "openapi" : isPageProps ? "pageProps" : isRoutes ? "routes" : "asyncapi")
       }
     },
   }

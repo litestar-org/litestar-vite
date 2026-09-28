@@ -1,25 +1,28 @@
-import { createInertiaApp } from "@inertiajs/vue3";
-import createServer from "@inertiajs/vue3/server";
-import { renderToString } from "@vue/server-renderer";
-import { createSSRApp, h } from "vue";
+import { startSsrWorker } from "litestar-vite-plugin/ssr-worker"
+import { createInertiaApp } from "@inertiajs/vue3"
+import { renderToString } from "@vue/server-renderer"
+import { createSSRApp, h, type DefineComponent } from "vue"
+import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers"
 
-import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
+const pages = import.meta.glob<{ default: DefineComponent }>("./pages/**/*.vue")
 
-createServer(
-  (page) =>
-    createInertiaApp({
-      // litestar-vite defaults to the script-element bootstrap for Inertia.
-      // - Inertia v3 reads the #app_page payload automatically.
-      // - If you pin Inertia v2, mirror defaults.future.useScriptElementForInitialPage
-      //   here too or set use_script_element=False on the Python side.
-      page,
-      render: renderToString,
-      resolve: (name) => resolvePageComponent(`./pages/${name}.vue`, import.meta.glob("./pages/**/*.vue")),
-      setup({ App, props, plugin }) {
-        return createSSRApp({
-          render: () => h(App, props),
-        }).use(plugin);
-      },
-    }),
-  Number.parseInt(process.env.INERTIA_SSR_PORT || "13714"),
-);
+export default async function render(page: any): Promise<any> {
+  return createInertiaApp({
+    // litestar-vite defaults to the script-element bootstrap for Inertia.
+    // - Inertia v3 uses it automatically.
+    // - If you pin Inertia v2, enable defaults.future.useScriptElementForInitialPage
+    //   or set use_script_element=False on the Python side.
+    page,
+    render: renderToString,
+    resolve: (name) => resolvePageComponent(`./pages/${name}.vue`, pages),
+    setup({ App, props, plugin }) {
+      return createSSRApp({
+        render: () => h(App, props),
+      }).use(plugin)
+    },
+  })
+}
+
+if (!import.meta.env?.DEV) {
+  startSsrWorker({ render })
+}

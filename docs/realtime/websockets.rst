@@ -7,7 +7,9 @@ Litestar provides two ways to build WebSocket endpoints:
 1. Low-level ``@websocket`` route handlers for explicit lifecycle and stream management.
 2. Declarative ``websocket_listener`` handlers for automatic deserialization, validation, and response serialization.
 
-Both handler styles are automatically introspected into AsyncAPI 3.0 channels by ``litestar-vite``.
+For generated contracts, register ``litestar-asyncapi.AsyncAPIPlugin`` and configure
+the endpoint schemas there. ``litestar-vite`` exports its document; it does not
+infer contracts directly from these handlers.
 
 Declarative WebSocket Listeners
 --------------------------------
@@ -36,12 +38,8 @@ The ``websocket_listener`` decorator is the recommended way to build WebSocket m
 
    app = Litestar(route_handlers=[handle_chat_message])
 
-When introspected by ``litestar-vite``:
-
-- The path ``/ws/chat`` becomes an AsyncAPI channel with address ``/ws/chat``.
-- The inbound message payload schema is generated from ``ChatMessage``.
-- The outbound response schema is generated from ``ChatResponse``.
-- A bidirectional operation pair (send and receive) is documented.
+Document ``ChatMessage`` and ``ChatResponse`` in your AsyncAPI configuration to
+carry their payload shapes into generated frontend contracts.
 
 Low-Level WebSocket Handlers
 ----------------------------
@@ -79,11 +77,8 @@ WebSocket routes support URL parameters:
        await socket.accept()
        await socket.send_json({"room": room_id, "status": "connected"})
 
-In the generated AsyncAPI 3.0 schema:
-
-- The channel address is recorded as ``/ws/rooms/{room_id}``.
-- The ``room_id`` parameter is documented in the channel parameters dictionary with type ``integer``.
-- The emitted TypeScript definition in ``channels.ts`` types ``room_id`` as a required numeric parameter.
+The generated TypeScript parameter types follow the channel parameters in the
+AsyncAPIPlugin document. Review that document when configuring typed URL parameters.
 
 Authentication and Guards
 -------------------------

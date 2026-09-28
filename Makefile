@@ -88,7 +88,7 @@ upgrade:                                            ## Upgrade all dependencies 
 	@uv lock --upgrade
 	@NODE_OPTIONS="--no-deprecation --disable-warning=ExperimentalWarning" npm update --no-fund
 	@echo "${OK} Dependencies updated 🔄"
-	@uv run prek auto-update
+	@uv run prek update
 	@echo "${OK} Updated Pre-commit hooks 🔄"
 
 .PHONY: lock
@@ -269,7 +269,7 @@ oxfmt:                                             ## Run oxfmt format check on 
 .PHONY: docs-examples
 docs-examples:                                     ## Verify documentation code examples
 	@echo "${INFO} Verifying documentation examples... 🔍"
-	@uv run python tools/check_docs_examples.py || (test "$${DOCS_EXAMPLES_STRICT:-}" = "1" && exit 1 || echo "${WARN} Docs examples verification reported issues pending task 10.1 remediation ⚠️")
+	@uv run python tools/check_docs_examples.py || (test "$${DOCS_EXAMPLES_STRICT:-}" = "1" && exit 1 || echo "${WARN} Docs examples verification reported issues ⚠️")
 	@echo "${OK} Documentation examples verified ✨"
 
 .PHONY: lint

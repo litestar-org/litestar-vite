@@ -5,11 +5,12 @@ This module provides a single entry point for exporting all integration artifact
 - routes.json (route metadata)
 - routes.ts (Ziggy-style typed routes)
 - inertia-pages.json (Inertia page props metadata)
+- asyncapi.json (AsyncAPI schema when AsyncAPIPlugin is registered)
 
 Both CLI and Plugin should call this function to guarantee byte-identical output.
 """
 
-import contextlib
+import warnings
 from dataclasses import dataclass, field
 from functools import partial
 from importlib.metadata import PackageNotFoundError, version
@@ -38,10 +39,7 @@ class ExportResult:
     """The OpenAPI schema dict (for downstream use)."""
 
     asyncapi_schema: "dict[str, Any] | None" = None
-    """The AsyncAPI 3.0 schema dict (for downstream use)."""
-
-    asyncapi_source: "str | None" = None
-    """The authoritative source for the AsyncAPI schema ('litestar-asyncapi' or 'builtin')."""
+    """The AsyncAPI schema dict (for downstream use)."""
 
 
 def fmt_path(path: Path) -> str:
@@ -66,59 +64,6 @@ def typegen_outputs_requested(types_config: "TypeGenConfig") -> bool:
         types_config.generate_page_props,
         types_config.generate_channels,
     ))
-
-
-def app_has_realtime_surface(app: "Litestar") -> bool:
-    """Return whether the Litestar application defines any realtime surface.
-
-    A realtime surface includes:
-    - Any plugin in ``app.plugins`` that provides AsyncAPI schemas.
-    - Any route in ``app.routes`` that is a ``litestar.routes.WebSocketRoute``.
-    - Any plugin in ``app.plugins`` that is a ``litestar.channels.ChannelsPlugin``.
-    - Any HTTP route handler whose return annotation represents a Server-Sent Event (SSE).
-
-    Args:
-        app: The Litestar application instance.
-
-    Returns:
-        True if any realtime route, plugin, or SSE handler is detected, otherwise False.
-    """
-    from litestar_vite.codegen._asyncapi import find_asyncapi_plugin
-
-    if find_asyncapi_plugin(app) is not None:
-        return True
-
-    from litestar.channels import ChannelsPlugin
-
-    plugins = getattr(app, "plugins", None)
-    if plugins is not None and hasattr(plugins, "get"):
-        with contextlib.suppress(KeyError, AttributeError):
-            if plugins.get(ChannelsPlugin) is not None:
-                return True
-        with contextlib.suppress(KeyError, AttributeError):
-            if plugins.get("ChannelsPlugin") is not None:
-                return True
-
-    from litestar.routes import HTTPRoute, WebSocketRoute
-
-    for route in app.routes:
-        if isinstance(route, WebSocketRoute):
-            return True
-
-    from litestar_vite.codegen._asyncapi import _is_sse_type  # pyright: ignore[reportPrivateUsage]
-
-    for route in app.routes:
-        if not isinstance(route, HTTPRoute):
-            continue
-        for handler in route.route_handlers:
-            return_field = getattr(handler, "parsed_return_field", None)
-            annotation = getattr(return_field, "annotation", None)
-            if annotation is None:
-                annotation = getattr(handler, "return_type", None)
-            if _is_sse_type(annotation):
-                return True
-
-    return False
 
 
 def _resolve_serializer(
@@ -147,6 +92,37 @@ def _resolve_serializer(
     return partial(encode_json, serializer=get_serializer(encoders if isinstance(encoders, dict) else None))  # pyright: ignore[reportUnknownArgumentType]
 
 
+def _invalidate_missing_asyncapi_outputs(app: "Litestar", types_config: "TypeGenConfig") -> None:
+    """Warn about missing schema providers and remove obsolete generated contracts."""
+    stale_paths = [
+        types_config.asyncapi_path or types_config.output / "asyncapi.json",
+        types_config.channels_ts_path or types_config.output / "channels.ts",
+    ]
+    stale = any(path.exists() for path in stale_paths)
+    from litestar.channels import ChannelsPlugin
+    from litestar.response import ServerSentEvent
+    from litestar.routes import HTTPRoute, WebSocketRoute
+
+    has_realtime = any(isinstance(plugin, ChannelsPlugin) for plugin in app.plugins)
+    for route in app.routes:
+        if isinstance(route, WebSocketRoute):
+            has_realtime = True
+        elif isinstance(route, HTTPRoute):
+            for handler in route.route_handlers:
+                annotation = handler.parsed_return_field.annotation
+                if isinstance(annotation, type) and issubclass(annotation, ServerSentEvent):
+                    has_realtime = True
+    if stale or has_realtime:
+        warnings.warn(
+            "Channel type generation requires litestar-asyncapi and a registered AsyncAPIPlugin. "
+            "Stale asyncapi.json and channels.ts outputs are removed when the plugin is absent.",
+            UserWarning,
+            stacklevel=2,
+        )
+    for path in stale_paths:
+        path.unlink(missing_ok=True)
+
+
 def export_integration_assets(
     app: "Litestar", config: "ViteConfig", *, serializer: "Callable[[Any], bytes] | None" = None
 ) -> ExportResult:
@@ -155,13 +131,10 @@ def export_integration_assets(
     This is the single source of truth for code generation. Both CLI commands
     and Plugin startup should call this function to ensure byte-identical output.
 
-    AsyncAPI export is independent of OpenAPI availability when channels are
-    enabled and a realtime surface is present on the application (WebSocket routes,
-    ChannelsPlugin, or SSE handlers). The configuration flag generate_channels=True
-    is an opt-in ceiling rather than a mandate, so a REST-only application produces
-    no AsyncAPI artifacts even when generate_channels is true. OpenAPI schema, route
-    metadata, route definitions, and Inertia page prop artifacts require an active
-    OpenAPI configuration.
+    OpenAPI schema, route metadata, route definitions, and Inertia page prop
+    artifacts require an active OpenAPIPlugin configuration. AsyncAPI export
+    requires a registered AsyncAPIPlugin (litestar-asyncapi) on the application
+    and generate_channels=True.
 
     The export order is critical:
     1. Register Inertia page prop types in OpenAPI schema (mutates schema_dict)
@@ -169,7 +142,7 @@ def export_integration_assets(
     3. Export routes.json (uses schema for component refs)
     4. Export routes.ts (if enabled)
     5. Export inertia-pages.json (if enabled)
-    6. Export asyncapi.json (if enabled)
+    6. Export asyncapi.json (if enabled and AsyncAPIPlugin is registered)
 
     Args:
         app: The Litestar application instance.
@@ -181,6 +154,7 @@ def export_integration_assets(
     """
     from litestar._openapi.plugin import OpenAPIPlugin
 
+    from litestar_vite.codegen._asyncapi import find_asyncapi_plugin
     from litestar_vite.codegen._inertia import generate_inertia_pages_json
     from litestar_vite.codegen._routes import extract_route_metadata
     from litestar_vite.config import InertiaConfig, InertiaTypeGenConfig, TypeGenConfig
@@ -206,8 +180,12 @@ def export_integration_assets(
         except ImproperlyConfiguredException:
             has_openapi = False
 
+    has_asyncapi = find_asyncapi_plugin(app) is not None
+    if types_config.generate_channels and not has_asyncapi:
+        _invalidate_missing_asyncapi_outputs(app, types_config)
+
     if not has_openapi:
-        if types_config.generate_channels and app_has_realtime_surface(app):
+        if types_config.generate_channels and has_asyncapi:
             export_asyncapi(
                 app=app, types_config=types_config, serializer=_resolve_serializer(app, serializer), result=result
             )
@@ -256,7 +234,7 @@ def export_integration_assets(
     ):
         export_inertia_pages(pages_data=inertia_pages_data, types_config=types_config, result=result)
 
-    if types_config.generate_channels and app_has_realtime_surface(app):
+    if types_config.generate_channels and has_asyncapi:
         export_asyncapi(app=app, types_config=types_config, serializer=serializer, result=result)
 
     return result
@@ -367,7 +345,7 @@ def export_asyncapi(
     serializer: "Callable[[Any], bytes] | None" = None,
     result: ExportResult,
 ) -> None:
-    """Export AsyncAPI 3.0 schema to file.
+    """Export AsyncAPI schema to file when AsyncAPIPlugin is registered.
 
     Args:
         app: The Litestar application instance.
@@ -378,13 +356,15 @@ def export_asyncapi(
     from litestar_vite.codegen._asyncapi import resolve_asyncapi_document
     from litestar_vite.codegen._utils import encode_deterministic_json, write_if_changed
 
+    schema_dict = resolve_asyncapi_document(app)
+    if schema_dict is None:
+        return
+
     asyncapi_path = types_config.asyncapi_path
     if asyncapi_path is None:
         asyncapi_path = types_config.output / "asyncapi.json"
 
-    schema_dict, source = resolve_asyncapi_document(app)
     result.asyncapi_schema = schema_dict
-    result.asyncapi_source = source
 
     schema_content = encode_deterministic_json(schema_dict, serializer=serializer)
 

@@ -17,6 +17,9 @@
 {%- endfor %}
   },
   "devDependencies": {
+{%- if not has_dev_dependency('@types/node') %}
+    "@types/node": "{{ package_version('@types/node') }}",
+{%- endif %}
 {%- for name, version in dev_dependencies_map.items() %}
     "{{ name }}": "{{ version }}"{% if not loop.last %},{% endif %}
 {%- endfor %}

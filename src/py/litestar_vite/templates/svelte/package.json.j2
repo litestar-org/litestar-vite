@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build{% if use_typescript %} && tsc -b --noEmit{% endif %}",
+    "build": "vite build{% if use_typescript %} && {% if framework in ['vue', 'vue-inertia'] %}vue-tsc -b --noEmit{% else %}tsc -b --noEmit{% endif %}{% endif %}",
     "preview": "vite preview",
     "serve": "vite preview",
     "watch": "npm run serve",
@@ -16,6 +16,9 @@
     "zod": "{{ package_version('zod') }}"{% endif %}
   },
   "devDependencies": {
+{%- if not has_dev_dependency('@types/node') %}
+    "@types/node": "{{ package_version('@types/node') }}",
+{%- endif %}
 {%- if enable_types %}
     "@hey-api/openapi-ts": "{{ package_version('@hey-api/openapi-ts') }}",
 {%- endif %}

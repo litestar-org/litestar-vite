@@ -2,21 +2,22 @@
 Inertia SSR (JS)
 ================
 
-Server-side rendering settings for Inertia.js responses (Node SSR server).
+``InertiaConfig(ssr=True)`` renders initial HTML responses through Vite in development
+and a managed stdio worker in production. Litestar sends the full Inertia page object
+and injects the returned head tags and body markup into the HTML response.
 
-``InertiaConfig(ssr=True)`` enables a separate Node SSR server for initial HTML responses.
-Litestar sends the full Inertia page object to that server, then injects the rendered
-head tags and body markup back into the HTML response.
+For existing HTTP SSR integrations, see :doc:`../../migration/0.32`.
 
 This SSR path is distinct from framework proxy mode:
 
 - Inertia SSR: ``InertiaConfig(ssr=True)``
 - Meta-framework proxy mode: ``ViteConfig(mode="framework")`` or alias ``mode="ssr"``
 
-The SSR server is a Node ``/render`` endpoint. Litestar posts the page object to
-``InertiaSSRConfig.url`` and uses the returned ``head`` and ``body`` fields when building the
-initial HTML response. This request is required when SSR is enabled; failures to contact the
-configured endpoint are errors, not a silent fallback to client-side rendering.
+In development mode, Litestar sends the page object to the running Vite dev server's
+``/__litestar_ssr__`` endpoint, which evaluates your SSR entrypoint via Vite's
+``RunnableDevEnvironment.runner``. In production mode, Litestar spawns the built SSR bundle over
+``StdioIPCTransport`` and uses the returned ``head`` and ``body`` fields when building the
+initial HTML response.
 
 Typical file layout:
 
@@ -26,7 +27,7 @@ Typical file layout:
 Process management
 ------------------
 
-``InertiaSSRConfig.command`` can start the Node ``/render`` server during Litestar lifespan:
+``InertiaSSRConfig.command`` configures the production ``stdio`` worker command started on the first render request:
 
 .. code-block:: python
 
@@ -34,16 +35,19 @@ Process management
 
    InertiaConfig(
        ssr=InertiaSSRConfig(
-           command=["npm", "run", "start:ssr"],
-           auto_start=True,
-           health_check=True,
+           command=["node", "resources/bootstrap/ssr/ssr.js"],
+           timeout=2.0,
+           fallback_to_client=True,
        )
    )
 
-When ``command`` is set and ``auto_start`` is true, litestar-vite starts the process on
-application startup and stops it on shutdown. Set ``auto_start=False`` when another process
-manager owns the SSR server. With ``health_check=True``, startup polls the configured SSR URL up
-to ``health_check_timeout`` seconds and logs a warning if the endpoint does not become reachable.
+When ``dev_mode=False``, ``litestar-vite`` starts the configured ``command`` lazily on the first render request and closes its ``stdin`` pipe on shutdown. When ``fallback_to_client=True`` (the default), SSR errors or circuit breaker trips fall back gracefully to the client-side SPA shell. Set ``fallback_to_client=False`` to propagate SSR failures.
+When ``command`` is omitted, the worker loads ``ssr.js`` from
+``PathConfig.ssr_output_dir`` when configured, or from
+``<resource_dir>/bootstrap/ssr`` otherwise. Relative paths are anchored to the
+project root. With ``resource_dir="resources"``, this is
+``resources/bootstrap/ssr/ssr.js``; the default ``resource_dir="src"`` instead uses
+``src/bootstrap/ssr/ssr.js``. Explicit ``command`` and ``cwd`` settings remain available. Each application worker owns its SSR subprocess.
 
 Plugin boundary
 ---------------

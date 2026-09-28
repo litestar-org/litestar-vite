@@ -1,26 +1,24 @@
-import createServer from "@inertiajs/react/server";
-import { createInertiaApp } from "@inertiajs/react";
-import type { ComponentType } from "react";
-import { renderToString } from "react-dom/server";
+import { startSsrWorker } from "litestar-vite-plugin/ssr-worker"
+import { createInertiaApp } from "@inertiajs/react"
+import type { ComponentType } from "react"
+import { renderToString } from "react-dom/server"
+import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers"
 
-import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
+const pages = import.meta.glob<{ default: ComponentType }>("./pages/**/*.tsx")
 
-const pages = import.meta.glob<{ default: ComponentType }>("./pages/**/*.tsx");
+export default async function render(page: any): Promise<any> {
+  return createInertiaApp({
+    // litestar-vite defaults to the script-element bootstrap for Inertia.
+    // - Inertia v3 uses it automatically.
+    // - If you pin Inertia v2, enable defaults.future.useScriptElementForInitialPage
+    //   or set use_script_element=False on the Python side.
+    page,
+    render: renderToString,
+    resolve: (name) => resolvePageComponent(`./pages/${name}.tsx`, pages),
+    setup: ({ App, props }) => <App {...props} />,
+  })
+}
 
-createServer(
-  async (page) => {
-    const inertia = await createInertiaApp({
-      // litestar-vite defaults to the script-element bootstrap for Inertia.
-      // - Inertia v3 reads the #app_page payload automatically.
-      // - If you pin Inertia v2, mirror defaults.future.useScriptElementForInitialPage
-      //   here too or set use_script_element=False on the Python side.
-      page,
-      render: renderToString,
-      resolve: (name) => resolvePageComponent(`./pages/${name}.tsx`, pages),
-      setup: ({ App, props }) => <App {...props} />,
-    });
-
-    return inertia;
-  },
-  Number.parseInt(process.env.INERTIA_SSR_PORT || "13714"),
-);
+if (!import.meta.env?.DEV) {
+  startSsrWorker({ render })
+}

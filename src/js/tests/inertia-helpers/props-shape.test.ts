@@ -74,15 +74,16 @@ describe("inertia-helpers props shape", () => {
   })
 
   it("preserves module shape with default export for .svelte page components", async () => {
-    const SvelteComponent = (received: Record<string, unknown>) => received
-    const pages = {
-      "./pages/Home.svelte": Promise.resolve({ default: SvelteComponent }),
+    const renderer = { html: "" }
+    const SvelteComponent = (target: typeof renderer, props: { message: string }) => {
+      target.html = props.message
     }
-
-    const resolved = (await resolvePageComponent("./pages/Home.svelte", pages)) as { default: unknown }
-
-    expect(resolved).toHaveProperty("default")
-    expect(typeof resolved.default).toBe("function")
+    const module = { default: SvelteComponent }
+    const pages = { "./pages/Home.svelte": Promise.resolve(module) }
+    const resolved = await resolvePageComponent("./pages/Home.svelte", pages, { rawModule: true })
+    expect(resolved).toBe(module)
+    resolved.default(renderer, { message: "SSR body" })
+    expect(renderer.html).toBe("SSR body")
   })
 
   it("preserves module shape when rawModule: true option is provided", async () => {

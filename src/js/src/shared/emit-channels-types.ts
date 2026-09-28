@@ -435,27 +435,32 @@ export async function emitChannelsTypes(
   channelsTsPath?: string,
   projectRoot?: string,
   logger?: { warn?: (msg: string) => void; error?: (msg: string) => void },
+  parsedDoc?: AsyncAPIDoc,
 ): Promise<boolean> {
   const root = projectRoot ?? process.cwd()
-  const resolvedAsyncapiPath = path.isAbsolute(asyncapiPath) ? asyncapiPath : path.resolve(root, asyncapiPath)
-
-  if (!fs.existsSync(resolvedAsyncapiPath)) {
-    return false
-  }
-
-  const rawContent = await fs.promises.readFile(resolvedAsyncapiPath, "utf-8")
   let doc: AsyncAPIDoc
-  try {
-    doc = JSON.parse(rawContent) as AsyncAPIDoc
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    if (logger?.error) {
-      logger.error(`Failed to parse ${resolvedAsyncapiPath}: ${msg}`)
-    } else {
-      // eslint-disable-next-line no-console
-      console.warn(`litestar-vite: Failed to parse ${resolvedAsyncapiPath}: ${msg}`)
+  if (parsedDoc !== undefined) {
+    doc = parsedDoc
+  } else {
+    const resolvedAsyncapiPath = path.isAbsolute(asyncapiPath) ? asyncapiPath : path.resolve(root, asyncapiPath)
+
+    if (!fs.existsSync(resolvedAsyncapiPath)) {
+      return false
     }
-    return false
+
+    const rawContent = await fs.promises.readFile(resolvedAsyncapiPath, "utf-8")
+    try {
+      doc = JSON.parse(rawContent) as AsyncAPIDoc
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      if (logger?.error) {
+        logger.error(`Failed to parse ${resolvedAsyncapiPath}: ${msg}`)
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(`litestar-vite: Failed to parse ${resolvedAsyncapiPath}: ${msg}`)
+      }
+      return false
+    }
   }
 
   let content: string

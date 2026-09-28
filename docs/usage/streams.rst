@@ -3,7 +3,7 @@ WebSocket and SSE event streams
 ===============================
 
 .. seealso::
-   AsyncAPI 3.0 schema generation, strongly typed contracts (``channels.ts``),
+   AsyncAPIPlugin document export, strongly typed contracts (``channels.ts``),
    and reactive UI framework adapters are covered in :doc:`../realtime/index`.
 
 Litestar Vite includes browser helpers for JSON event streams. They own

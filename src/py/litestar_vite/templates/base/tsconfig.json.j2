@@ -14,7 +14,7 @@
     "noEmit": true,
 {% if framework in ["react", "react-inertia", "react-router", "react-tanstack"] %}
     "jsx": "react-jsx",
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
 {% elif framework == "vue" or framework == "vue-inertia" %}
     "jsx": "preserve",
 {% endif %}
@@ -27,7 +27,6 @@
     "noUncheckedSideEffectImports": true,
 
     /* Paths */
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./{{ resource_dir }}/*"]
     }

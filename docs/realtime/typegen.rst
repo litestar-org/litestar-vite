@@ -2,16 +2,19 @@
 AsyncAPI Export & Type Generation
 ==================================
 
-Just as ``litestar-vite`` exports OpenAPI schemas and generates TypeScript SDKs for REST routes, it provides first-class export and code generation for real-time channels using the AsyncAPI 3.0 standard.
+``litestar-vite`` exports AsyncAPI schemas from a registered ``AsyncAPIPlugin`` and generates TypeScript channel contracts alongside its OpenAPI and route generators.
 
 Configuration
 -------------
 
-Enable channel generation in your ``ViteConfig``:
+Register ``AsyncAPIPlugin`` from ``litestar-asyncapi`` and enable channel generation in your ``ViteConfig``:
 
 .. code-block:: python
 
    from pathlib import Path
+   from litestar import Litestar
+   from litestar_asyncapi import AsyncAPIPlugin
+   from litestar_vite import VitePlugin
    from litestar_vite.config import TypeGenConfig, ViteConfig
 
    vite_config = ViteConfig(
@@ -22,6 +25,16 @@ Enable channel generation in your ``ViteConfig``:
            channels_ts_path=Path("src/generated/channels.ts"),
        ),
    )
+
+   app = Litestar(
+       plugins=[
+           AsyncAPIPlugin(),
+           VitePlugin(config=vite_config),
+       ],
+   )
+
+Without ``AsyncAPIPlugin``, no realtime schema is exported. See
+:doc:`../migration/0.32` when upgrading from automatic route inference.
 
 CLI Commands
 ------------
@@ -46,7 +59,7 @@ This runs the TypeGen pipeline, generating:
 The Generated ``channels.ts`` Contract
 ---------------------------------------
 
-The emitted ``channels.ts`` file contains strongly typed interfaces mapping every channel in your application:
+The emitted ``channels.ts`` file contains strongly typed interfaces mapping the channels in the exported AsyncAPI document:
 
 .. code-block:: typescript
 
@@ -54,38 +67,45 @@ The emitted ``channels.ts`` file contains strongly typed interfaces mapping ever
    export interface RealtimeChannels {
      "chat": {
        address: "/ws/chat";
-       protocol: "ws";
+       protocol: "websocket";
        params: Record<string, never>;
-       sendPayload: ChatMessage;
-       receivePayload: ChatResponse;
+       send: ChatMessage;
+       receive: ChatResponse;
      };
      "room": {
        address: "/ws/rooms/{room_id}";
-       protocol: "ws";
+       protocol: "websocket";
        params: {
-         room_id: number;
+         room_id: string;
        };
-       sendPayload: unknown;
-       receivePayload: RoomEvent;
+       send: never;
+       receive: RoomEvent;
      };
      "notifications": {
        address: "notifications";
        protocol: "channels";
        params: Record<string, never>;
-       sendPayload: unknown;
-       receivePayload: NotificationPayload;
+       send: never;
+       receive: NotificationPayload;
      };
    }
 
+   export type ChannelKey = keyof RealtimeChannels;
+
+   export interface ChannelMetadata {
+     address: string;
+     protocol: "websocket" | "channels" | "sse";
+   }
+
    // Metadata dictionary containing runtime address information:
-   export const CHANNEL_METADATA = {
+   export const CHANNEL_METADATA: Record<ChannelKey, ChannelMetadata> = {
      "chat": {
        address: "/ws/chat",
-       protocol: "ws",
+       protocol: "websocket",
      },
      "room": {
        address: "/ws/rooms/{room_id}",
-       protocol: "ws",
+       protocol: "websocket",
      },
      "notifications": {
        address: "notifications",
@@ -106,10 +126,10 @@ The generated file exports ergonomic utility types for use in application code:
      - Purpose
    * - ``ChannelKey``
      - Union of all registered channel keys (e.g., ``"chat" | "room" | "notifications"``).
-   * - ``ChannelAddress<K>``
-     - The channel address string or template for channel ``K``.
+   * - ``ChannelAddress``
+     - Union of all registered channel address strings or templates.
    * - ``ChannelProtocol<K>``
-     - The protocol for channel ``K`` (``"ws" | "channels" | "sse"``).
+     - The protocol for channel ``K`` (``"websocket" | "channels" | "sse"``).
    * - ``ChannelParams<K>``
      - TypeScript object representing required URL/channel parameters.
    * - ``ChannelSendPayload<K>``

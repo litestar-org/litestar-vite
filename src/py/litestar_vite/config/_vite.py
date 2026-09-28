@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from litestar.types import Guard  # pyright: ignore[reportUnknownVariableType]
 
     from litestar_vite.executor import JSExecutor
+    from litestar_vite.plugin._core import VitePlugin
 
 __all__ = (
     "FSSPEC_INSTALLED",
@@ -404,6 +405,7 @@ class ViteConfig:
             self.logging = LoggingConfig()
 
     def _apply_dev_mode_shortcut(self) -> None:
+        """Apply dev mode shortcuts to the runtime configuration."""
         if self.dev_mode:
             self.runtime.dev_mode = True
 
@@ -1153,3 +1155,15 @@ class ViteConfig:
         if isinstance(self.logging, LoggingConfig):
             return self.logging
         return LoggingConfig()
+
+    def create_plugin(self) -> "VitePlugin":
+        """Create a VitePlugin instance from this configuration.
+
+        Conforms to Litestar's InitPluginProtocol for config-based plugin instantiation.
+
+        Returns:
+            Configured VitePlugin instance.
+        """
+        from litestar_vite.plugin._core import VitePlugin
+
+        return VitePlugin(config=self)

@@ -4,8 +4,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build{% if use_typescript %} && tsc -b --noEmit{% endif %}",
+    "build": "{% if use_typescript %}tsc -b --noEmit && {% endif %}vite build{% if enable_ssr %} && vite build --ssr {{ resource_dir }}/ssr.ts{% endif %}",
+{% if enable_ssr %}
+    "build:ssr": "vite build --ssr {{ resource_dir }}/ssr.ts",
+{% endif %}
     "preview": "vite preview",
+{% if enable_ssr %}
+    "serve:ssr": "node {{ resource_dir }}/bootstrap/ssr/ssr.js --stdio",
+{% endif %}
     "serve": "vite preview",
     "watch": "npm run serve",
     "update": "npm update"{% if enable_types %},
@@ -17,6 +23,9 @@
     "zod": "{{ package_version('zod') }}"{% endif %}
   },
   "devDependencies": {
+{%- if not has_dev_dependency('@types/node') %}
+    "@types/node": "{{ package_version('@types/node') }}",
+{%- endif %}
 {%- if enable_types %}
     "@hey-api/openapi-ts": "{{ package_version('@hey-api/openapi-ts') }}",
 {%- endif %}

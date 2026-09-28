@@ -212,6 +212,16 @@ describe("litestar-vite-plugin", () => {
     expect(getBuildInput(ssrConfig)).toMatch("resources/js/app.ts")
   })
 
+  it("preserves Vite's CORS defaults and explicit application origins", () => {
+    const plugin = litestar({ input: "resources/js/app.ts", types: false })[0]
+    const defaults = plugin.config({}, { command: "serve", mode: "development" })
+    expect(defaults.server?.cors).toBeUndefined()
+
+    const userConfig = { server: { cors: { origin: "https://app.example" } } }
+    const resolved = mergeConfig(userConfig, plugin.config(userConfig, { command: "serve", mode: "development" }))
+    expect(resolved.server.cors).toEqual({ origin: "https://app.example" })
+  })
+
   it("accepts an array of inputs", () => {
     const plugin = litestar(["resources/js/app.ts", "resources/js/other.js"])[0]
 

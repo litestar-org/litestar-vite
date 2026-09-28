@@ -25,9 +25,12 @@ describe("secondary HTML entry transformation", () => {
       root,
       logLevel: "silent",
       plugins: litestar({ input: "offline.ts", hotFile: path.join(root, "hot"), autoDetectIndex: false }),
-      server: { host: "127.0.0.1", port: 0 },
+      server: { host: "127.0.0.1", watch: null },
     })
-    await server.listen()
+    await new Promise<void>((resolve, reject) => {
+      server!.httpServer!.listen(0, "127.0.0.1", () => resolve())
+      server!.httpServer!.on("error", reject)
+    })
     const address = server.httpServer?.address()
     if (!address || typeof address === "string") throw new Error("Vite did not expose a TCP address")
 
