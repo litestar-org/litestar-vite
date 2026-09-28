@@ -7,7 +7,7 @@ Notable changes to this project are documented in this file.
 Litestar Vite Changelog
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-0.32.0 - 2026-09-25
+0.32.0 - 2026-09-28
 -------------------
 
 - Added AsyncAPI export and TypeScript channel type generation from a registered
