@@ -1,5 +1,3 @@
-import readline from "node:readline"
-
 export interface SsrWorkerOptions {
   render?: (page: any) => unknown | Promise<unknown>
   renderFragment?: (params: Record<string, unknown>) => unknown | Promise<unknown>
@@ -40,20 +38,46 @@ export async function dispatchSsrRequest(request: IPCRequest, options: SsrWorker
 
 /** Start the shared newline-delimited JSON RPC worker for an application's SSR entry. */
 export function startSsrWorker(options: SsrWorkerOptions = {}): void {
-  const rl = readline.createInterface({ input: process.stdin, terminal: false, crlfDelay: Number.POSITIVE_INFINITY })
-  rl.on("line", (line: string) => {
-    if (!line.trim()) return
-    void (async () => {
-      let id: number | string | null = null
-      try {
-        const request = JSON.parse(line) as IPCRequest
-        if (typeof request !== "object" || request === null || Array.isArray(request)) throw new Error("Invalid SSR request")
-        id = request.id ?? null
-        const result = await dispatchSsrRequest(request, options)
-        process.stdout.write(`${JSON.stringify({ id, result })}\n`)
-      } catch (error) {
-        process.stdout.write(`${JSON.stringify({ id, error: error instanceof Error ? error.message : String(error) })}\n`)
+  const dispatchLine = async (line: string): Promise<string> => {
+    const trimmed = line.trim()
+    if (!trimmed) {
+      return ""
+    }
+    let id: number | string | null = null
+    try {
+      const request = JSON.parse(trimmed) as IPCRequest
+      if (typeof request !== "object" || request === null || Array.isArray(request)) {
+        throw new Error("Invalid SSR request")
       }
-    })()
-  })
+      id = request.id ?? null
+      const result = await dispatchSsrRequest(request, options)
+      return JSON.stringify({ id, result })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return JSON.stringify({ id, error: message })
+    }
+  }
+
+  ;(globalThis as Record<string, unknown>).__litestar_ssr_dispatch__ = dispatchLine
+
+  if (typeof process !== "undefined" && process.stdin && typeof process.stdin.on === "function") {
+    if (typeof process.stdin.setEncoding === "function") {
+      process.stdin.setEncoding("utf8")
+    }
+    let buffer = ""
+    process.stdin.on("data", (chunk: string | Uint8Array) => {
+      buffer += typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)
+      let newlineIdx = buffer.indexOf("\n")
+      while (newlineIdx !== -1) {
+        const line = buffer.slice(0, newlineIdx).replace(/\r$/, "")
+        buffer = buffer.slice(newlineIdx + 1)
+        newlineIdx = buffer.indexOf("\n")
+        void dispatchLine(line).then((out) => {
+          if (out) {
+            process.stdout.write(`${out}\n`)
+          }
+        })
+      }
+    })
+  }
 }

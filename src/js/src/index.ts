@@ -474,7 +474,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig, rawConfig?: s
               },
         },
         ssr: {
-          noExternal: noExternalInertiaHelpers(userConfig),
+          noExternal: noExternalInertiaHelpers(userConfig, command),
         },
         // Explicitly set appType if you know you're serving an SPA index.html
         // appType: 'spa', // Try adding this - might simplify things if appropriate
@@ -1336,7 +1336,7 @@ function isIpv6(address: AddressInfo): boolean {
  *
  * @see https://vite.dev/guide/ssr.html#ssr-externals
  */
-function noExternalInertiaHelpers(config: UserConfig): true | Array<string | RegExp> {
+function noExternalInertiaHelpers(config: UserConfig, command: "build" | "serve" = "serve"): true | Array<string | RegExp> {
   const ssrConfig = typeof config.ssr === "object" && config.ssr !== null ? (config.ssr as SSROptions) : undefined
   const userNoExternal = ssrConfig?.noExternal
   const pluginNoExternal = ["litestar-vite-plugin"]
@@ -1345,8 +1345,12 @@ function noExternalInertiaHelpers(config: UserConfig): true | Array<string | Reg
     return true
   }
 
-  if (typeof userNoExternal === "undefined") {
+  if ((userNoExternal as unknown) === false) {
     return pluginNoExternal
+  }
+
+  if (typeof userNoExternal === "undefined") {
+    return command === "build" ? true : pluginNoExternal
   }
 
   return [...(Array.isArray(userNoExternal) ? userNoExternal : [userNoExternal]), ...pluginNoExternal]
