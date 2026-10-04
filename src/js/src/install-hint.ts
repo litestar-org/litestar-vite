@@ -93,9 +93,6 @@ export interface PackageExecutorArgvOptions {
   packageSpec?: string
   /**
    * Additional package specs required in the temporary execution environment.
-   *
-   * npm, pnpm, and Yarn support this. Bun and Deno do not currently expose a
-   * reliable equivalent, so their resolver returns no fallback.
    */
   additionalPackageSpecs?: readonly string[]
   /** Binary command exposed by packageSpec. */
