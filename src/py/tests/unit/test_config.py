@@ -5,6 +5,7 @@ import pytest
 
 from litestar_vite.config import (
     JINJA_INSTALLED,
+    BundleConfig,
     DeployConfig,
     ExternalDevServer,
     PathConfig,
@@ -1176,3 +1177,37 @@ def test_vite_config_auto_detect_react_from_deno_json(
     config = ViteConfig(paths=PathConfig(root=tmp_path))
 
     assert config.is_react is expected_is_react
+
+
+def test_bundle_config_from_pyproject_and_vite_config_normalization(tmp_path: Path) -> None:
+    """BundleConfig.from_pyproject parses [tool.litestar.bundle] and ViteConfig.bundle normalizes booleans."""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "sample-service"\n\n'
+        "[tool.litestar.bundle]\n"
+        'exec_module = "sample_service.cli"\n'
+        'python_version = "3.12"\n'
+        'install_root = "~/.sample-service/runtime"\n'
+        'compile_ssr_worker = "bun"\n'
+        "use_zigbuild = true\n"
+        'glibc_version = "2.28"\n'
+        'output_dir = "dist/out"\n',
+        encoding="utf-8",
+    )
+
+    loaded = BundleConfig.from_pyproject(pyproject)
+    assert loaded.enabled is True
+    assert loaded.binary_name == "sample-service"
+    assert loaded.exec_module == "sample_service.cli"
+    assert loaded.install_root == "~/.sample-service/runtime"
+    assert loaded.compile_ssr_worker == "bun"
+    assert loaded.use_zigbuild is True
+    assert loaded.glibc_version == "2.28"
+    assert loaded.output_dir == Path("dist/out")
+
+    cfg_auto = ViteConfig(mode="template", paths=PathConfig(root=tmp_path))
+    assert cfg_auto.bundle_config is not None
+    assert cfg_auto.bundle_config.binary_name == "sample-service"
+
+    with pytest.raises(ValueError, match="Cannot specify both exec_module and exec_spec"):
+        BundleConfig(exec_module="a.b", exec_spec="a.b:main")

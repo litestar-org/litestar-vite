@@ -31,6 +31,7 @@ For more advanced configuration:
 
 from litestar_vite import inertia
 from litestar_vite.config import (
+    BundleConfig,
     DeployConfig,
     ExternalDevServer,
     InertiaConfig,
@@ -46,6 +47,7 @@ from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.plugin import StaticPlacement, StaticServerConfig, StaticServerMount, VitePlugin
 
 __all__ = (
+    "BundleConfig",
     "ComponentResponse",
     "DeployConfig",
     "ExternalDevServer",

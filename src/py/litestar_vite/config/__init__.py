@@ -23,6 +23,7 @@ Example usage::
     VitePlugin(config=ViteConfig(mode="template", dev_mode=True))
 """
 
+from litestar_vite.config._bundle import BundleConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._constants import (  # pyright: ignore[reportPrivateUsage]
     FSSPEC_INSTALLED,
     JINJA_INSTALLED,
@@ -48,6 +49,7 @@ __all__ = (
     "FSSPEC_INSTALLED",
     "JINJA_INSTALLED",
     "TRUE_VALUES",
+    "BundleConfig",
     "DeployConfig",
     "ExternalDevServer",
     "InertiaConfig",

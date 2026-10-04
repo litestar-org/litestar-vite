@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkabl
 from litestar.exceptions import SerializationException
 from litestar.serialization import decode_json
 
+from litestar_vite.config._bundle import BundleConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._constants import (  # pyright: ignore[reportPrivateUsage]
     FSSPEC_INSTALLED,
     JINJA_INSTALLED,
@@ -45,6 +46,7 @@ if TYPE_CHECKING:
 __all__ = (
     "FSSPEC_INSTALLED",
     "JINJA_INSTALLED",
+    "BundleConfig",
     "DeployConfig",
     "ExternalDevServer",
     "InertiaConfig",
@@ -240,6 +242,7 @@ class ViteConfig:
     dev_mode: bool = False
     base_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
     deploy: "DeployConfig | bool" = False
+    bundle: "BundleConfig | bool" = False
     enabled: "bool | None" = None
     """Whether the plugin actively serves assets/routes.
 
@@ -334,6 +337,7 @@ class ViteConfig:
         self._apply_proxy_mode_defaults()
         self._validate_proxy_mode()
         self._normalize_deploy()
+        self._normalize_bundle()
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
 
@@ -549,6 +553,19 @@ class ViteConfig:
             self.deploy = DeployConfig(enabled=True)
         elif self.deploy is False:
             self.deploy = DeployConfig(enabled=False)
+
+    def _normalize_bundle(self) -> None:
+        pyproject_path = self.root_dir / "pyproject.toml"
+        if self.bundle is True:
+            if pyproject_path.is_file():
+                self.bundle = BundleConfig.from_pyproject(pyproject_path).with_overrides(enabled=True)
+            else:
+                self.bundle = BundleConfig(enabled=True)
+        elif self.bundle is False:
+            if pyproject_path.is_file():
+                self.bundle = BundleConfig.from_pyproject(pyproject_path)
+            else:
+                self.bundle = BundleConfig(enabled=False)
 
     def _resolve_type_paths(self, types: TypeGenConfig) -> None:
         """Resolve type generation paths relative to the configured root.
@@ -1238,6 +1255,17 @@ class ViteConfig:
         """
         if isinstance(self.deploy, DeployConfig) and self.deploy.enabled:
             return self.deploy
+        return None
+
+    @property
+    def bundle_config(self) -> "BundleConfig | None":
+        """Get PyApp bundle configuration if enabled.
+
+        Returns:
+            BundleConfig instance when bundling is enabled, None otherwise.
+        """
+        if isinstance(self.bundle, BundleConfig) and self.bundle.enabled:
+            return self.bundle
         return None
 
     @property
