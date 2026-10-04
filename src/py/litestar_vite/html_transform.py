@@ -6,7 +6,7 @@ Regex patterns are compiled once at import time for performance.
 import re
 from functools import lru_cache, partial
 from html.parser import HTMLParser
-from typing import Any
+from typing import Any, cast
 
 __all__ = (
     "inject_head_html",
@@ -480,6 +480,66 @@ window.__vite_plugin_react_preamble_installed__ = true"""
     return html + "\n" + script_content
 
 
+def _collect_manifest_entry_assets(
+    manifest: dict[str, Any], entry_key: str, emitted_css: set[str], emitted_preloads: set[str]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Collect CSS descriptors and imported chunk descriptors recursively for a manifest entry.
+
+    Args:
+        manifest: The parsed Vite manifest dictionary.
+        entry_key: Normalized manifest entry key.
+        emitted_css: Set of already emitted CSS paths across the HTML document.
+        emitted_preloads: Set of already emitted modulepreload file paths across the HTML document.
+
+    Returns:
+        A tuple of ``(css_items, import_items)``.
+    """
+    visited: set[str] = {entry_key}
+    css_items: list[dict[str, Any]] = []
+    import_items: list[dict[str, Any]] = []
+
+    def _append_css_from(manifest_item: dict[str, Any]) -> None:
+        for css_file in manifest_item.get("css", []):
+            if isinstance(css_file, str) and css_file not in emitted_css:
+                emitted_css.add(css_file)
+                css_items.append({"file": css_file})
+
+    def _walk(keys: list[str]) -> None:
+        for key in keys:
+            if key in visited or key not in manifest:
+                continue
+            visited.add(key)
+            raw_imp = manifest[key]
+            if not isinstance(raw_imp, dict):
+                continue
+            imp_item = cast("dict[str, Any]", raw_imp)
+            _append_css_from(imp_item)
+            imp_file = imp_item.get("file")
+            if (
+                isinstance(imp_file, str)
+                and imp_file
+                and not imp_file.endswith(".css")
+                and imp_file not in emitted_preloads
+            ):
+                emitted_preloads.add(imp_file)
+                import_items.append(imp_item)
+            raw_nested = imp_item.get("imports", [])
+            if isinstance(raw_nested, list):
+                nested = cast("list[Any]", raw_nested)
+                _walk([str(k) for k in nested])
+
+    raw_root = manifest.get(entry_key)
+    if isinstance(raw_root, dict):
+        root_entry = cast("dict[str, Any]", raw_root)
+        _append_css_from(root_entry)
+        raw_direct = root_entry.get("imports", [])
+        if isinstance(raw_direct, list):
+            direct_imports = cast("list[Any]", raw_direct)
+            _walk([str(k) for k in direct_imports])
+
+    return css_items, import_items
+
+
 def transform_asset_urls(
     html: str, manifest: dict[str, Any], asset_url: str = "/static/", base_url: str | None = None
 ) -> str:
@@ -514,12 +574,13 @@ def transform_asset_urls(
         manifest = {"resources/main.tsx": {"file": "assets/main-abc123.js"}}
         html = '<script type="module" src="/resources/main.tsx"></script>'
         result = transform_asset_urls(html, manifest)
-        # Result: '<script type="module" src="/static/assets/main-abc123.js"></script>'
     """
     if not manifest:
         return html
 
     url_base = base_url or asset_url
+    emitted_css: set[str] = set()
+    emitted_preloads: set[str] = set()
 
     def _normalize_path(path: str) -> str:
         """Normalize a path for manifest lookup by removing leading slash.
@@ -539,10 +600,10 @@ def transform_asset_urls(
         return base + file_path
 
     def replace_script_src(match: re.Match[str]) -> str:
-        """Replace script src with manifest lookup.
+        """Replace script src with manifest lookup and prepend recursive CSS and modulepreload links.
 
         Returns:
-            The transformed script tag with updated src, or original if not found.
+            The transformed script tag with updated src and companion link tags, or original if not found.
         """
         prefix = match.group(1)
         src = match.group(2)
@@ -552,7 +613,17 @@ def transform_asset_urls(
         if normalized in manifest:
             entry = manifest[normalized]
             new_src = _build_url(entry.get("file", src))
-            return prefix + new_src + suffix
+            css_items, import_items = _collect_manifest_entry_assets(
+                manifest, normalized, emitted_css, emitted_preloads
+            )
+            companion_tags: list[str] = []
+            for css_item in css_items:
+                css_url = _build_url(css_item["file"])
+                companion_tags.append(f'<link rel="stylesheet" href="{css_url}" />')
+            for imp_item in import_items:
+                imp_url = _build_url(imp_item["file"])
+                companion_tags.append(f'<link rel="modulepreload" crossorigin href="{imp_url}" />')
+            return "".join(companion_tags) + prefix + new_src + suffix
         return match.group(0)
 
     def replace_link_href(match: re.Match[str]) -> str:

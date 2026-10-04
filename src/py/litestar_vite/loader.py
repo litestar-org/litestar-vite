@@ -24,7 +24,7 @@ from urllib.parse import unquote, urljoin, urlsplit
 import anyio
 import httpx2
 import markupsafe
-from litestar.exceptions import SerializationException
+from litestar.exceptions import ImproperlyConfiguredException, SerializationException
 from litestar.serialization import decode_json
 
 from litestar_vite.exceptions import AssetNotFoundError, HTMLEntryResolutionError, ManifestNotFoundError
@@ -610,7 +610,7 @@ class ViteAssetLoader:
             HTML markup for script and link tags.
         """
         paths = [str(p) for p in path] if isinstance(path, list) else [str(path)]
-        return markupsafe.Markup("".join(self.generate_asset_tags(p, scripts_attrs=scripts_attrs) for p in paths))
+        return markupsafe.Markup(self.generate_asset_tags(paths, scripts_attrs=scripts_attrs))
 
     def get_static_asset(self, path: str) -> str:
         """Get the URL for a static asset.
@@ -668,14 +668,79 @@ class ViteAssetLoader:
                 """)
         return ""
 
+    def _collect_manifest_graph(
+        self, paths: list[str], visited_entries: "set[str] | None" = None
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+        """Collect entry chunks, transitive imported chunks, and CSS files in deterministic order.
+
+        Traverses the Vite manifest graph starting from ``paths`` while preventing
+        cycles via a visited key set and deduplicating entries and stylesheets.
+
+        Args:
+            paths: Normalized manifest entry keys.
+            visited_entries: Optional shared set of visited manifest keys.
+
+        Returns:
+            A tuple of ``(entry_items, import_items, css_files)``.
+        """
+        visited: set[str] = set() if visited_entries is None else visited_entries
+        entry_keys = set(paths)
+        entry_items: list[dict[str, Any]] = []
+        import_items: list[dict[str, Any]] = []
+        seen_imports: set[str] = set()
+        css_files: list[str] = []
+        seen_css: set[str] = set()
+
+        def _append_css(manifest_entry: dict[str, Any]) -> None:
+            for css_path in manifest_entry.get("css", []):
+                if isinstance(css_path, str) and css_path not in seen_css:
+                    seen_css.add(css_path)
+                    css_files.append(css_path)
+
+        def _walk_imports(import_keys: list[str]) -> None:
+            for imp_key in import_keys:
+                if imp_key in visited or imp_key not in self._manifest:
+                    continue
+                visited.add(imp_key)
+                raw_imp = self._manifest[imp_key]
+                if not isinstance(raw_imp, dict):
+                    continue
+                imp_entry = cast("dict[str, Any]", raw_imp)
+                _append_css(imp_entry)
+                if imp_key not in entry_keys and imp_key not in seen_imports:
+                    seen_imports.add(imp_key)
+                    import_items.append(imp_entry)
+                raw_nested = imp_entry.get("imports", [])
+                if isinstance(raw_nested, list):
+                    nested_imports = cast("list[Any]", raw_nested)
+                    _walk_imports([str(item) for item in nested_imports])
+
+        for entry_key in paths:
+            if not entry_key or entry_key in visited:
+                continue
+            visited.add(entry_key)
+            raw_entry = self._manifest[entry_key]
+            if not isinstance(raw_entry, dict):
+                continue
+            entry = cast("dict[str, Any]", raw_entry)
+            entry_items.append(entry)
+            _append_css(entry)
+            raw_direct = entry.get("imports", [])
+            if isinstance(raw_direct, list):
+                direct_imports = cast("list[Any]", raw_direct)
+                _walk_imports([str(item) for item in direct_imports])
+
+        return entry_items, import_items, css_files
+
     def generate_asset_tags(
         self, path: "str | list[str]", scripts_attrs: "dict[str, str] | None" = None, _visited: "set[str] | None" = None
     ) -> str:
         """Generate all asset tags for the specified file(s).
 
-        Tracks visited manifest entries across recursive import traversals
-        to prevent infinite loops on circular dependencies and avoid duplicate
-        asset tags.
+        Follows the official Vite Backend Integration specification:
+        1. Emits ``<link rel="stylesheet">`` tags for entry and transitive imported CSS.
+        2. Emits ``<script type="module">`` tags (without default ``async``) for entry scripts.
+        3. Emits ``<link rel="modulepreload" crossorigin>`` tags for transitive imported chunks.
 
         Args:
             path: Path or list of paths to assets.
@@ -688,16 +753,16 @@ class ViteAssetLoader:
         Raises:
             ImproperlyConfiguredException: If asset not found in manifest.
         """
-        from litestar.exceptions import ImproperlyConfiguredException
-
         raw_paths = [path] if isinstance(path, str) else list(path)
         paths = [p.replace("\\", "/") for p in raw_paths]
+
+        effective_script_attrs = dict(scripts_attrs) if scripts_attrs else {"type": "module"}
 
         if self._is_hot_dev:
             return "".join(
                 self._style_tag(self._vite_server_url(p))
                 if p.endswith(".css")
-                else self._script_tag(self._vite_server_url(p), {"type": "module", "async": "", "defer": ""})
+                else self._script_tag(self._vite_server_url(p), effective_script_attrs)
                 for p in paths
             )
 
@@ -706,35 +771,28 @@ class ViteAssetLoader:
             msg = "Cannot find %s in the Vite manifest. Run 'litestar assets build' and retry."
             raise ImproperlyConfiguredException(msg, missing)
 
-        visited: set[str] = set() if _visited is None else _visited
-        tags: list[str] = []
-        manifest_entries = {p: self._manifest[p] for p in paths if p}
-
-        if not scripts_attrs:
-            scripts_attrs = {"type": "module", "async": "", "defer": ""}
-
+        entry_items, import_items, css_files = self._collect_manifest_graph(paths, visited_entries=_visited)
         asset_url_base = self._config.asset_url
+        tags: list[str] = [self._style_tag(urljoin(asset_url_base, css_path)) for css_path in css_files]
+        emitted_css_urls = {urljoin(asset_url_base, css_path) for css_path in css_files}
 
-        for asset_key, manifest in manifest_entries.items():
-            if asset_key in visited:
+        for entry in entry_items:
+            file_path = entry.get("file", "")
+            if not isinstance(file_path, str) or not file_path:
                 continue
-            visited.add(asset_key)
-
-            if "css" in manifest:
-                tags.extend(self._style_tag(urljoin(asset_url_base, css_path)) for css_path in manifest.get("css", []))
-
-            if "imports" in manifest:
-                tags.extend(
-                    self.generate_asset_tags(vendor_path, scripts_attrs=scripts_attrs, _visited=visited)
-                    for vendor_path in manifest.get("imports", [])
-                    if vendor_path not in visited
-                )
-
-            file_path = manifest.get("file", "")
+            resolved_url = urljoin(asset_url_base, file_path)
             if file_path.endswith(".css"):
-                tags.append(self._style_tag(urljoin(asset_url_base, file_path)))
+                if resolved_url not in emitted_css_urls:
+                    emitted_css_urls.add(resolved_url)
+                    tags.append(self._style_tag(resolved_url))
             else:
-                tags.append(self._script_tag(urljoin(asset_url_base, file_path), attrs=scripts_attrs))
+                tags.append(self._script_tag(resolved_url, attrs=effective_script_attrs))
+
+        for imp_entry in import_items:
+            imp_file = imp_entry.get("file", "")
+            if not isinstance(imp_file, str) or not imp_file or imp_file.endswith(".css"):
+                continue
+            tags.append(self._modulepreload_tag(urljoin(asset_url_base, imp_file)))
 
         return "".join(tags)
 
@@ -775,13 +833,36 @@ class ViteAssetLoader:
         return f'<script {attrs_prefix}src="{src}"></script>'
 
     @staticmethod
-    def _style_tag(href: str) -> str:
+    def _style_tag(href: str, attrs: "dict[str, str] | None" = None) -> str:
         """Generate an HTML link tag for CSS.
 
         Args:
             href: The URL to the CSS file.
+            attrs: Optional attributes for the link tag.
 
         Returns:
             HTML link tag string.
         """
-        return f'<link rel="stylesheet" href="{href}" />'
+        extra_attrs = " ".join(f'{key}="{value}"' for key, value in (attrs or {}).items())
+        extra_suffix = f" {extra_attrs}" if extra_attrs else ""
+        return f'<link rel="stylesheet"{extra_suffix} href="{href}" />'
+
+    @staticmethod
+    def _modulepreload_tag(href: str, attrs: "dict[str, str] | None" = None) -> str:
+        """Generate an HTML link tag for ES module preloading.
+
+        Args:
+            href: The URL to the imported module chunk.
+            attrs: Optional attributes for the link tag.
+
+        Returns:
+            HTML modulepreload link tag string.
+        """
+        merged = dict(attrs) if attrs else {}
+        crossorigin_val = merged.pop("crossorigin", None)
+        crossorigin_str = (
+            "crossorigin" if crossorigin_val is None or crossorigin_val == "" else f'crossorigin="{crossorigin_val}"'
+        )
+        extra_attrs = " ".join(f'{key}="{value}"' for key, value in merged.items())
+        extra_suffix = f" {extra_attrs}" if extra_attrs else ""
+        return f'<link rel="modulepreload" {crossorigin_str}{extra_suffix} href="{href}" />'
