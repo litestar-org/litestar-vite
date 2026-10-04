@@ -656,17 +656,41 @@ def extract_subprotocols(scope: dict[str, Any]) -> list[str]:
 async def _run_websocket_proxy(socket: Any, upstream: Any) -> None:
     """Run bidirectional WebSocket proxy between client and upstream.
 
+    Forwards both text (``str``) and binary (``bytes``) frames in both
+    directions using raw ASGI ``socket.receive()`` messages when available,
+    while preserving fallback support for mock sockets that only define
+    ``receive_text`` or ``receive_bytes``.
+
     Args:
         socket: The client WebSocket connection (Litestar WebSocket).
         upstream: The upstream WebSocket connection (websockets client).
     """
+    socket_dict = getattr(socket, "__dict__", {})
+    use_raw_receive = hasattr(socket, "receive") and (
+        "receive" in socket_dict or ("receive_text" not in socket_dict and "receive_bytes" not in socket_dict)
+    )
 
     async def client_to_upstream() -> None:
         """Forward messages from browser to Vite."""
         try:
             while True:
-                data = await socket.receive_text()
-                await upstream.send(data)
+                if use_raw_receive:
+                    message = await socket.receive()
+                    if message.get("type") == "websocket.disconnect":
+                        break
+                    text_data = message.get("text")
+                    if text_data is not None:
+                        await upstream.send(text_data)
+                        continue
+                    bytes_data = message.get("bytes")
+                    if bytes_data is not None:
+                        await upstream.send(bytes_data)
+                elif "receive_bytes" in socket_dict and "receive_text" not in socket_dict:
+                    data_bytes = await socket.receive_bytes()
+                    await upstream.send(data_bytes)
+                else:
+                    data_text = await socket.receive_text()
+                    await upstream.send(data_text)
         except (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed):
             pass
         finally:
