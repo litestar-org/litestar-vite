@@ -533,6 +533,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
             engine = template_config.engine_instance  # pyright: ignore[reportUnknownMemberType]
             engine.register_template_callable(key="vite_hmr", template_callable=render_hmr_client)
             engine.register_template_callable(key="vite", template_callable=render_asset_tag)
+            engine.register_template_callable(key="vite_asset", template_callable=render_asset_tag)
             engine.register_template_callable(key="vite_static", template_callable=render_static_asset)
             engine.register_template_callable(key="vite_routes", template_callable=render_routes)
             engine.register_template_callable(key="vite_fragment", template_callable=vite_fragment)

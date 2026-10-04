@@ -1,7 +1,11 @@
 """Unit tests for ViteAssetLoader manifest spec compliance, CSP nonces, SRI, and preload headers."""
 
+from litestar import Litestar, get
+from litestar.testing import RequestFactory
+
 from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
-from litestar_vite.loader import ViteAssetLoader
+from litestar_vite.loader import ViteAssetLoader, render_asset_tag, render_hmr_client, render_routes
+from litestar_vite.plugin import VitePlugin
 
 
 def test_generate_asset_tags_recursive_modulepreload_and_css() -> None:
@@ -73,3 +77,85 @@ def test_generate_asset_tags_respects_explicit_scripts_attrs() -> None:
 
     tags = loader.generate_asset_tags("src/main.ts", scripts_attrs={"type": "module", "async": ""})
     assert '<script type="module" async="" src="/static/assets/main-111.js"></script>' in tags
+
+
+def test_generate_asset_tags_csp_nonce_and_sri_integrity() -> None:
+    """Verify CSP nonce and manifest SRI integrity attributes are rendered and HTML-escaped."""
+    config = ViteConfig(
+        paths=PathConfig(asset_url="/static/"),
+        runtime=RuntimeConfig(dev_mode=False, csp_nonce='nonce-"123"'),
+    )
+    loader = ViteAssetLoader(config)
+    loader._manifest = {
+        "src/main.ts": {
+            "file": "assets/main-111.js",
+            "css": ["assets/main-111.css"],
+            "imports": ["_vendor.js"],
+            "integrity": "sha384-mainhash",
+        },
+        "_vendor.js": {
+            "file": "assets/vendor-222.js",
+            "integrity": 'sha384-vendor"hash',
+        },
+    }
+
+    tags = loader.generate_asset_tags("src/main.ts")
+
+    assert 'nonce="nonce-&quot;123&quot;"' in tags
+    assert (
+        '<script type="module" integrity="sha384-mainhash" crossorigin="anonymous" '
+        'nonce="nonce-&quot;123&quot;" src="/static/assets/main-111.js"></script>'
+    ) in tags
+    assert (
+        '<link rel="modulepreload" crossorigin="anonymous" '
+        'integrity="sha384-vendor&quot;hash" nonce="nonce-&quot;123&quot;" '
+        'href="/static/assets/vendor-222.js" />'
+    ) in tags
+    assert '<link rel="stylesheet" nonce="nonce-&quot;123&quot;" href="/static/assets/main-111.css" />' in tags
+
+
+def test_generate_ws_client_tags_includes_csp_nonce() -> None:
+    """Verify Vite dev client script tag includes configured or per-call CSP nonce."""
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True, is_react=True, csp_nonce="dev-nonce-1"))
+    loader = ViteAssetLoader(config)
+
+    ws_tags = loader.generate_ws_client_tags()
+    assert 'nonce="dev-nonce-1"' in ws_tags
+
+    override_hmr = str(loader.render_hmr_client(csp_nonce="req-nonce-2"))
+    assert override_hmr.count('nonce="req-nonce-2"') == 2
+
+
+def test_template_callables_resolve_per_request_csp_nonce() -> None:
+    """Verify render_asset_tag, render_hmr_client, and render_routes read csp_nonce from context or request state."""
+    config = ViteConfig(
+        paths=PathConfig(asset_url="/static/"),
+        runtime=RuntimeConfig(dev_mode=False),
+    )
+    plugin = VitePlugin(config=config)
+
+    @get("/items", name="items")
+    async def get_items() -> list[str]:
+        return []
+
+    app = Litestar(route_handlers=[get_items], plugins=[plugin])
+    plugin.asset_loader._manifest = {
+        "src/main.ts": {"file": "assets/main-111.js", "integrity": "sha384-abc"},
+    }
+
+    req = RequestFactory(app=app).get("/items", state={"csp_nonce": "state-nonce-99"})
+    ctx = {"request": req}
+    asset_markup = str(render_asset_tag(ctx, "src/main.ts"))
+    routes_markup = str(render_routes(ctx))
+
+    assert 'nonce="state-nonce-99"' in asset_markup
+    assert 'integrity="sha384-abc"' in asset_markup
+    assert 'nonce="state-nonce-99"' in routes_markup
+
+    ctx_override = {"request": req, "csp_nonce": "ctx-nonce-77"}
+    assert 'nonce="ctx-nonce-77"' in str(render_asset_tag(ctx_override, "src/main.ts"))
+    assert 'nonce="ctx-nonce-77"' in str(render_routes(ctx_override))
+    assert 'nonce="explicit-nonce-55"' in str(render_routes(ctx_override, csp_nonce="explicit-nonce-55"))
+    _ = render_hmr_client(ctx_override)
+
+

@@ -320,6 +320,14 @@ class AppHandler:
         """
         if not self._manifest:
             return html
+        if self._config.csp_nonce is not None:
+            return transform_asset_urls(
+                html,
+                self._manifest,
+                asset_url=self._config.asset_url,
+                base_url=None,
+                csp_nonce=self._config.csp_nonce,
+            )
         return transform_asset_urls(html, self._manifest, asset_url=self._config.asset_url, base_url=None)
 
     def _inject_dev_scripts(self, html: str) -> str:

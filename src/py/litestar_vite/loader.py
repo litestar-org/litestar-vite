@@ -24,16 +24,16 @@ from urllib.parse import unquote, urljoin, urlsplit
 import anyio
 import httpx2
 import markupsafe
+from litestar.connection import Request
 from litestar.exceptions import ImproperlyConfiguredException, SerializationException
-from litestar.serialization import decode_json
+from litestar.serialization import decode_json, encode_json, get_serializer
 
+from litestar_vite.codegen import generate_routes_json
 from litestar_vite.exceptions import AssetNotFoundError, HTMLEntryResolutionError, ManifestNotFoundError
 from litestar_vite.utils import read_bridge_config
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-
-    from litestar.connection import Request
 
     from litestar_vite.config import ViteConfig
     from litestar_vite.plugin import VitePlugin
@@ -59,8 +59,6 @@ def _get_request_from_context(context: "Mapping[str, Any]") -> "Request[Any, Any
         ValueError: If 'request' is not found in the template context.
         TypeError: If 'request' is not a Litestar Request object.
     """
-    from litestar.connection import Request
-
     request = context.get("request")
     if request is None:
         msg = "Request not found in template context. Ensure 'request' is passed to the template."
@@ -81,7 +79,38 @@ def _get_vite_plugin(context: "Mapping[str, Any]") -> "VitePlugin | None":
     return request.app.plugins.get("VitePlugin")
 
 
-def render_hmr_client(context: "Mapping[str, Any]", /) -> "markupsafe.Markup":
+def _resolve_context_csp_nonce(context: "Mapping[str, Any]", explicit_nonce: "str | None" = None) -> "str | None":
+    """Resolve a per-request CSP nonce from explicit argument, template context, or request state.
+
+    Args:
+        context: The Jinja2 template context.
+        explicit_nonce: Explicit CSP nonce passed to the callable.
+
+    Returns:
+        Resolved CSP nonce string, or ``None`` if not set on the request or context.
+    """
+    if explicit_nonce is not None:
+        return explicit_nonce
+    ctx_nonce = context.get("csp_nonce")
+    if isinstance(ctx_nonce, str) and ctx_nonce:
+        return ctx_nonce
+    request = context.get("request")
+    if request is not None:
+        state_obj = getattr(request, "state", None)
+        state_nonce = getattr(state_obj, "csp_nonce", None) if state_obj is not None else None
+        if isinstance(state_nonce, str) and state_nonce:
+            return state_nonce
+        scope = getattr(request, "scope", None)
+        if isinstance(scope, dict):
+            raw_state = cast("dict[str, Any]", scope).get("state")
+            if isinstance(raw_state, dict):
+                scope_nonce = cast("dict[str, Any]", raw_state).get("csp_nonce")
+                if isinstance(scope_nonce, str) and scope_nonce:
+                    return scope_nonce
+    return None
+
+
+def render_hmr_client(context: "Mapping[str, Any]", /, *, csp_nonce: "str | None" = None) -> "markupsafe.Markup":
     """Render the HMR client script tag.
 
     This is a Jinja2 template callable that renders the Vite HMR client
@@ -89,6 +118,7 @@ def render_hmr_client(context: "Mapping[str, Any]", /) -> "markupsafe.Markup":
 
     Args:
         context: The template context containing the request.
+        csp_nonce: Optional per-request Content Security Policy nonce override.
 
     Returns:
         HTML markup for the HMR client script, or empty markup if
@@ -97,11 +127,17 @@ def render_hmr_client(context: "Mapping[str, Any]", /) -> "markupsafe.Markup":
     vite_plugin = _get_vite_plugin(context)
     if vite_plugin is None:
         return markupsafe.Markup("")
-    return vite_plugin.asset_loader.render_hmr_client()
+    resolved_nonce = _resolve_context_csp_nonce(context, csp_nonce)
+    return vite_plugin.asset_loader.render_hmr_client(csp_nonce=resolved_nonce)
 
 
 def render_asset_tag(
-    context: "Mapping[str, Any]", /, path: "str | list[str]", scripts_attrs: "dict[str, str] | None" = None
+    context: "Mapping[str, Any]",
+    /,
+    path: "str | list[str]",
+    scripts_attrs: "dict[str, str] | None" = None,
+    *,
+    csp_nonce: "str | None" = None,
 ) -> "markupsafe.Markup":
     """Render asset tags for the specified path(s).
 
@@ -112,6 +148,7 @@ def render_asset_tag(
         context: The template context containing the request.
         path: Single path or list of paths to assets.
         scripts_attrs: Optional attributes for script tags.
+        csp_nonce: Optional per-request Content Security Policy nonce override.
 
     Returns:
         HTML markup for the asset tags, or empty markup if VitePlugin
@@ -125,7 +162,8 @@ def render_asset_tag(
     vite_plugin = _get_vite_plugin(context)
     if vite_plugin is None:
         return markupsafe.Markup("")
-    return vite_plugin.asset_loader.render_asset_tag(path, scripts_attrs)
+    resolved_nonce = _resolve_context_csp_nonce(context, csp_nonce)
+    return vite_plugin.asset_loader.render_asset_tag(path, scripts_attrs, csp_nonce=resolved_nonce)
 
 
 def render_static_asset(context: "Mapping[str, Any]", /, path: str) -> str:
@@ -154,6 +192,7 @@ def render_routes(
     only: "list[str] | None" = None,
     exclude: "list[str] | None" = None,
     include_components: bool = False,
+    csp_nonce: "str | None" = None,
 ) -> "markupsafe.Markup":
     """Render inline script tag with route definitions.
 
@@ -171,6 +210,7 @@ def render_routes(
         only: Optional list of route patterns to include.
         exclude: Optional list of route patterns to exclude.
         include_components: Include Inertia component names.
+        csp_nonce: Optional per-request Content Security Policy nonce override.
 
     Returns:
         HTML markup for the inline routes script containing route metadata
@@ -181,12 +221,13 @@ def render_routes(
         {{ vite_routes() }}
         {{ vite_routes(exclude=['/api/internal']) }}
     """
-    from litestar.serialization import encode_json, get_serializer
-
-    from litestar_vite.codegen import generate_routes_json
-
     request = _get_request_from_context(context)
     app = request.app
+
+    vite_plugin = _get_vite_plugin(context)
+    default_nonce = vite_plugin.config.csp_nonce if vite_plugin is not None else None
+    resolved_nonce = _resolve_context_csp_nonce(context, csp_nonce) or default_nonce
+    nonce_attr = f' nonce="{html.escape(resolved_nonce, quote=True)}"' if resolved_nonce else ""
 
     routes_data = generate_routes_json(app, only=only, exclude=exclude, include_components=include_components)
 
@@ -194,7 +235,7 @@ def render_routes(
     routes_json = encode_json(routes_data, serializer=serializer).decode("utf-8")
 
     script = dedent(f"""\
-        <script type="text/javascript">
+        <script type="text/javascript"{nonce_attr}>
         (function() {{
             window.Litestar = window.Litestar || {{}};
             window.Litestar.routes = {routes_json};
@@ -589,28 +630,40 @@ class ViteAssetLoader:
             return hashlib.sha256(self._manifest_content.encode("utf-8")).hexdigest()
         return "1.0"
 
-    def render_hmr_client(self) -> "markupsafe.Markup":
+    def render_hmr_client(self, *, csp_nonce: "str | None" = None) -> "markupsafe.Markup":
         """Render the HMR client script tags.
+
+        Args:
+            csp_nonce: Optional per-request Content Security Policy nonce override.
 
         Returns:
             HTML markup containing React HMR and Vite client script tags.
         """
-        return markupsafe.Markup(f"{self.generate_react_hmr_tags()}{self.generate_ws_client_tags()}")
+        return markupsafe.Markup(
+            f"{self.generate_react_hmr_tags(csp_nonce=csp_nonce)}{self.generate_ws_client_tags(csp_nonce=csp_nonce)}"
+        )
 
     def render_asset_tag(
-        self, path: "str | list[str]", scripts_attrs: "dict[str, str] | None" = None
+        self,
+        path: "str | list[str]",
+        scripts_attrs: "dict[str, str] | None" = None,
+        *,
+        csp_nonce: "str | None" = None,
     ) -> "markupsafe.Markup":
         """Render asset tags for the specified path(s).
 
         Args:
             path: Single path or list of paths to assets.
             scripts_attrs: Optional attributes for script tags.
+            csp_nonce: Optional per-request Content Security Policy nonce override.
 
         Returns:
             HTML markup for script and link tags.
         """
         paths = [str(p) for p in path] if isinstance(path, list) else [str(path)]
-        return markupsafe.Markup(self.generate_asset_tags(paths, scripts_attrs=scripts_attrs))
+        return markupsafe.Markup(
+            self.generate_asset_tags(paths, scripts_attrs=scripts_attrs, csp_nonce=csp_nonce)
+        )
 
     def get_static_asset(self, path: str) -> str:
         """Get the URL for a static asset.
@@ -633,28 +686,38 @@ class ViteAssetLoader:
 
         return urljoin(self._config.asset_url, self._manifest[normalized_path]["file"])
 
-    def generate_ws_client_tags(self) -> str:
+    def generate_ws_client_tags(self, *, csp_nonce: "str | None" = None) -> str:
         """Generate the Vite HMR client script tag.
 
         Only generates output in development mode with hot reload enabled.
+
+        Args:
+            csp_nonce: Optional per-request Content Security Policy nonce override.
 
         Returns:
             Script tag HTML or empty string in production.
         """
         if self._is_hot_dev:
-            return self._script_tag(self._vite_server_url("@vite/client"), {"type": "module"})
+            nonce = csp_nonce if csp_nonce is not None else self._config.csp_nonce
+            attrs: dict[str, str] = {"type": "module"}
+            if nonce:
+                attrs["nonce"] = nonce
+            return self._script_tag(self._vite_server_url("@vite/client"), attrs)
         return ""
 
-    def generate_react_hmr_tags(self) -> str:
+    def generate_react_hmr_tags(self, *, csp_nonce: "str | None" = None) -> str:
         """Generate React Fast Refresh preamble script.
 
         Only generates output when React mode is enabled in development.
+
+        Args:
+            csp_nonce: Optional per-request Content Security Policy nonce override.
 
         Returns:
             React refresh script HTML or empty string.
         """
         if self._config.is_react and self._is_hot_dev:
-            nonce = self._config.csp_nonce
+            nonce = csp_nonce if csp_nonce is not None else self._config.csp_nonce
             nonce_attr = f' nonce="{html.escape(nonce, quote=True)}"' if nonce else ""
             refresh_url = f"{self._vite_server_url()}@react-refresh"
             return dedent(f"""
@@ -732,8 +795,24 @@ class ViteAssetLoader:
 
         return entry_items, import_items, css_files
 
+    def _find_integrity_for_file(self, file_path: str) -> "str | None":
+        """Look up an SRI integrity hash in the manifest for a built file path."""
+        for raw_val in self._manifest.values():
+            if isinstance(raw_val, dict):
+                item = cast("dict[str, Any]", raw_val)
+                if item.get("file") == file_path:
+                    integrity = item.get("integrity")
+                    if isinstance(integrity, str) and integrity:
+                        return integrity
+        return None
+
     def generate_asset_tags(
-        self, path: "str | list[str]", scripts_attrs: "dict[str, str] | None" = None, _visited: "set[str] | None" = None
+        self,
+        path: "str | list[str]",
+        scripts_attrs: "dict[str, str] | None" = None,
+        _visited: "set[str] | None" = None,
+        *,
+        csp_nonce: "str | None" = None,
     ) -> str:
         """Generate all asset tags for the specified file(s).
 
@@ -746,6 +825,7 @@ class ViteAssetLoader:
             path: Path or list of paths to assets.
             scripts_attrs: Optional attributes for script tags.
             _visited: Optional set of already visited paths for cycle prevention.
+            csp_nonce: Optional per-request Content Security Policy nonce override.
 
         Returns:
             HTML string with all necessary script and link tags.
@@ -756,13 +836,17 @@ class ViteAssetLoader:
         raw_paths = [path] if isinstance(path, str) else list(path)
         paths = [p.replace("\\", "/") for p in raw_paths]
 
-        effective_script_attrs = dict(scripts_attrs) if scripts_attrs else {"type": "module"}
+        nonce = csp_nonce if csp_nonce is not None else self._config.csp_nonce
+        base_script_attrs = dict(scripts_attrs) if scripts_attrs else {"type": "module"}
+        if nonce and "nonce" not in base_script_attrs:
+            base_script_attrs["nonce"] = nonce
+        base_style_attrs: dict[str, str] = {"nonce": nonce} if nonce else {}
 
         if self._is_hot_dev:
             return "".join(
-                self._style_tag(self._vite_server_url(p))
+                self._style_tag(self._vite_server_url(p), attrs=base_style_attrs)
                 if p.endswith(".css")
-                else self._script_tag(self._vite_server_url(p), effective_script_attrs)
+                else self._script_tag(self._vite_server_url(p), base_script_attrs)
                 for p in paths
             )
 
@@ -772,27 +856,77 @@ class ViteAssetLoader:
             raise ImproperlyConfiguredException(msg, missing)
 
         entry_items, import_items, css_files = self._collect_manifest_graph(paths, visited_entries=_visited)
+        return self._render_production_asset_tags(
+            entry_items=entry_items,
+            import_items=import_items,
+            css_files=css_files,
+            scripts_attrs=scripts_attrs,
+            nonce=nonce,
+            base_style_attrs=base_style_attrs,
+        )
+
+    def _render_production_asset_tags(
+        self,
+        *,
+        entry_items: list[dict[str, Any]],
+        import_items: list[dict[str, Any]],
+        css_files: list[str],
+        scripts_attrs: "dict[str, str] | None",
+        nonce: "str | None",
+        base_style_attrs: dict[str, str],
+    ) -> str:
+        """Render production HTML tags for resolved manifest entry, import, and CSS items."""
         asset_url_base = self._config.asset_url
-        tags: list[str] = [self._style_tag(urljoin(asset_url_base, css_path)) for css_path in css_files]
-        emitted_css_urls = {urljoin(asset_url_base, css_path) for css_path in css_files}
+        tags: list[str] = []
+        emitted_css_urls: set[str] = set()
+
+        for css_path in css_files:
+            resolved_css_url = urljoin(asset_url_base, css_path)
+            emitted_css_urls.add(resolved_css_url)
+            css_attrs = dict(base_style_attrs)
+            css_integrity = self._find_integrity_for_file(css_path)
+            if css_integrity:
+                css_attrs["integrity"] = css_integrity
+                css_attrs.setdefault("crossorigin", "anonymous")
+            tags.append(self._style_tag(resolved_css_url, attrs=css_attrs))
 
         for entry in entry_items:
             file_path = entry.get("file", "")
             if not isinstance(file_path, str) or not file_path:
                 continue
             resolved_url = urljoin(asset_url_base, file_path)
+            integrity_val = entry.get("integrity")
+            entry_integrity = integrity_val if isinstance(integrity_val, str) and integrity_val else None
+
             if file_path.endswith(".css"):
                 if resolved_url not in emitted_css_urls:
                     emitted_css_urls.add(resolved_url)
-                    tags.append(self._style_tag(resolved_url))
+                    css_attrs = dict(base_style_attrs)
+                    if entry_integrity:
+                        css_attrs["integrity"] = entry_integrity
+                        css_attrs.setdefault("crossorigin", "anonymous")
+                    tags.append(self._style_tag(resolved_url, attrs=css_attrs))
             else:
-                tags.append(self._script_tag(resolved_url, attrs=effective_script_attrs))
+                entry_script_attrs = dict(scripts_attrs) if scripts_attrs else {"type": "module"}
+                if entry_integrity:
+                    entry_script_attrs["integrity"] = entry_integrity
+                    entry_script_attrs.setdefault("crossorigin", "anonymous")
+                if nonce and "nonce" not in entry_script_attrs:
+                    entry_script_attrs["nonce"] = nonce
+                tags.append(self._script_tag(resolved_url, attrs=entry_script_attrs))
 
         for imp_entry in import_items:
             imp_file = imp_entry.get("file", "")
             if not isinstance(imp_file, str) or not imp_file or imp_file.endswith(".css"):
                 continue
-            tags.append(self._modulepreload_tag(urljoin(asset_url_base, imp_file)))
+            preload_attrs: dict[str, str] = {}
+            imp_integrity = imp_entry.get("integrity")
+            if isinstance(imp_integrity, str) and imp_integrity:
+                preload_attrs["crossorigin"] = "anonymous"
+                preload_attrs["integrity"] = imp_integrity
+            if nonce:
+                preload_attrs["nonce"] = nonce
+            tags.append(self._modulepreload_tag(urljoin(asset_url_base, imp_file), attrs=preload_attrs))
 
         return "".join(tags)
 
@@ -817,7 +951,7 @@ class ViteAssetLoader:
 
     @staticmethod
     def _script_tag(src: str, attrs: "dict[str, str] | None" = None) -> str:
-        """Generate an HTML script tag.
+        """Generate an HTML script tag with HTML-escaped attribute values.
 
         Args:
             src: The source URL for the script.
@@ -828,13 +962,13 @@ class ViteAssetLoader:
         """
         if attrs is None:
             attrs = {}
-        attrs_str = " ".join(f'{key}="{value}"' for key, value in attrs.items())
+        attrs_str = " ".join(f'{key}="{html.escape(str(value), quote=True)}"' for key, value in attrs.items())
         attrs_prefix = f"{attrs_str} " if attrs_str else ""
-        return f'<script {attrs_prefix}src="{src}"></script>'
+        return f'<script {attrs_prefix}src="{html.escape(src, quote=True)}"></script>'
 
     @staticmethod
     def _style_tag(href: str, attrs: "dict[str, str] | None" = None) -> str:
-        """Generate an HTML link tag for CSS.
+        """Generate an HTML link tag for CSS with HTML-escaped attribute values.
 
         Args:
             href: The URL to the CSS file.
@@ -843,13 +977,15 @@ class ViteAssetLoader:
         Returns:
             HTML link tag string.
         """
-        extra_attrs = " ".join(f'{key}="{value}"' for key, value in (attrs or {}).items())
+        extra_attrs = " ".join(
+            f'{key}="{html.escape(str(value), quote=True)}"' for key, value in (attrs or {}).items()
+        )
         extra_suffix = f" {extra_attrs}" if extra_attrs else ""
-        return f'<link rel="stylesheet"{extra_suffix} href="{href}" />'
+        return f'<link rel="stylesheet"{extra_suffix} href="{html.escape(href, quote=True)}" />'
 
     @staticmethod
     def _modulepreload_tag(href: str, attrs: "dict[str, str] | None" = None) -> str:
-        """Generate an HTML link tag for ES module preloading.
+        """Generate an HTML link tag for ES module preloading with HTML-escaped attribute values.
 
         Args:
             href: The URL to the imported module chunk.
@@ -861,8 +997,10 @@ class ViteAssetLoader:
         merged = dict(attrs) if attrs else {}
         crossorigin_val = merged.pop("crossorigin", None)
         crossorigin_str = (
-            "crossorigin" if crossorigin_val is None or crossorigin_val == "" else f'crossorigin="{crossorigin_val}"'
+            "crossorigin"
+            if crossorigin_val is None or crossorigin_val == ""
+            else f'crossorigin="{html.escape(str(crossorigin_val), quote=True)}"'
         )
-        extra_attrs = " ".join(f'{key}="{value}"' for key, value in merged.items())
+        extra_attrs = " ".join(f'{key}="{html.escape(str(value), quote=True)}"' for key, value in merged.items())
         extra_suffix = f" {extra_attrs}" if extra_attrs else ""
-        return f'<link rel="modulepreload" {crossorigin_str}{extra_suffix} href="{href}" />'
+        return f'<link rel="modulepreload" {crossorigin_str}{extra_suffix} href="{html.escape(href, quote=True)}" />'

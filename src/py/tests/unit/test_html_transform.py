@@ -39,3 +39,39 @@ def test_transform_asset_urls_preserves_simple_entry_without_extra_tags() -> Non
     result = transform_asset_urls(html, manifest, asset_url="/static/")
 
     assert result == '<script type="module" src="/static/assets/main-abc123.js"></script>'
+
+
+def test_transform_asset_urls_propagates_csp_nonce_and_sri_integrity() -> None:
+    """Verify transform_asset_urls injects CSP nonce and SRI integrity attributes."""
+    manifest = {
+        "resources/main.tsx": {
+            "file": "assets/main-abc123.js",
+            "css": ["assets/main-def456.css"],
+            "imports": ["_vendor-111.js"],
+            "integrity": "sha384-entryhash",
+        },
+        "_vendor-111.js": {
+            "file": "assets/vendor-111.js",
+            "integrity": "sha384-vendorhash",
+        },
+        "resources/extra.css": {
+            "file": "assets/extra-999.css",
+            "integrity": "sha384-csshash",
+        },
+    }
+    html = (
+        '<html><head><link rel="stylesheet" href="/resources/extra.css"></head>'
+        '<body><script type="module" src="/resources/main.tsx"></script></body></html>'
+    )
+
+    result = transform_asset_urls(html, manifest, asset_url="/static/", csp_nonce='req-"nonce"')
+
+    assert '<link rel="stylesheet" nonce="req-&quot;nonce&quot;" href="/static/assets/main-def456.css" />' in result
+    assert (
+        '<link rel="modulepreload" crossorigin="anonymous" '
+        'integrity="sha384-vendorhash" nonce="req-&quot;nonce&quot;" '
+        'href="/static/assets/vendor-111.js" />'
+    ) in result
+    assert 'integrity="sha384-entryhash"' in result
+    assert 'integrity="sha384-csshash"' in result
+    assert result.count('nonce="req-&quot;nonce&quot;"') == 4
