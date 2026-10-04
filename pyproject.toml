@@ -44,6 +44,9 @@ Source = "https://github.com/litestar-org/litestar-vite"
 [project.optional-dependencies]
 jinja = [ "jinja2"]
 nodeenv = ["nodeenv"]
+node = ["nodejs-wheel>=22.0.0"]
+deno = ["deno>=2.0.0"]
+bun = ["bun-wheel>=1.2.0"]
 http2 = ["h2>=4.0.0"]
 asyncapi = ["litestar-asyncapi>=0.2.0"]
 

@@ -588,3 +588,84 @@ def test_nodeenv_executor_update_latest(mock_run: Mock, mock_find: Mock) -> None
     mock_run.assert_called_once()
     args, _ = mock_run.call_args
     assert args[0] == ["/venv/bin/npm", "update", "--save"]
+
+
+def test_executor_resolve_executable_prioritizes_venv_bin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """JSExecutor._resolve_executable prioritizes binaries in Path(sys.executable).parent over PATH."""
+    fake_venv_bin = tmp_path / "venv" / "bin"
+    fake_venv_bin.mkdir(parents=True)
+    fake_python = fake_venv_bin / "python"
+    fake_python.write_text("#!/bin/sh\n")
+    fake_python.chmod(0o755)
+
+    for bin_name in ("npm", "bun", "deno"):
+        binary = fake_venv_bin / bin_name
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
+
+    monkeypatch.setattr(sys, "executable", str(fake_python))
+    with patch("shutil.which", return_value="/usr/local/bin/fallback") as mock_which:
+        assert NodeExecutor()._resolve_executable() == str(fake_venv_bin / "npm")
+        assert BunExecutor()._resolve_executable() == str(fake_venv_bin / "bun")
+        assert DenoExecutor()._resolve_executable() == str(fake_venv_bin / "deno")
+        mock_which.assert_not_called()
+
+
+def test_executor_resolve_executable_windows_venv_extensions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """JSExecutor._resolve_executable resolves .cmd and .exe inside Windows virtualenv Scripts dir."""
+    fake_scripts = tmp_path / "venv" / "Scripts"
+    fake_scripts.mkdir(parents=True)
+    fake_python = fake_scripts / "python.exe"
+    fake_python.write_text("")
+    npm_cmd = fake_scripts / "npm.cmd"
+    npm_cmd.write_text("@echo off\n")
+
+    monkeypatch.setattr(sys, "executable", str(fake_python))
+    with (
+        patch("litestar_vite.executor.platform.system", return_value="Windows"),
+        patch("shutil.which", return_value=None),
+    ):
+        assert NodeExecutor()._resolve_executable() == str(npm_cmd)
+
+
+def test_deno_executor_resolves_deno_wheel_find_deno_bin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """DenoExecutor resolves deno.find_deno_bin() when the deno wheel package is installed."""
+    fake_venv_bin = tmp_path / "venv" / "bin"
+    fake_venv_bin.mkdir(parents=True)
+    fake_python = fake_venv_bin / "python"
+    fake_python.write_text("#!/bin/sh\n")
+    fake_deno_wheel_bin = tmp_path / "site-packages" / "deno" / "bin" / "deno"
+    fake_deno_wheel_bin.parent.mkdir(parents=True)
+    fake_deno_wheel_bin.write_text("#!/bin/sh\n")
+    fake_deno_wheel_bin.chmod(0o755)
+
+    fake_deno_mod = types.ModuleType("deno")
+    setattr(fake_deno_mod, "find_deno_bin", lambda: str(fake_deno_wheel_bin))
+
+    monkeypatch.setattr(sys, "executable", str(fake_python))
+    monkeypatch.setitem(sys.modules, "deno", fake_deno_mod)
+    with patch("litestar_vite.executor.find_spec", return_value=object()), patch("shutil.which", return_value=None):
+        assert DenoExecutor()._resolve_executable() == str(fake_deno_wheel_bin)
+
+
+def test_runtime_config_provisioning_mode() -> None:
+    """RuntimeConfig supports provisioning_mode Literal['auto', 'wheel', 'nodeenv', 'system']."""
+    default_cfg = RuntimeConfig()
+    assert default_cfg.provisioning_mode == "auto"
+    assert default_cfg.detect_nodeenv is False
+
+    wheel_cfg = RuntimeConfig(provisioning_mode="wheel")
+    assert wheel_cfg.provisioning_mode == "wheel"
+
+    nodeenv_cfg = RuntimeConfig(provisioning_mode="nodeenv")
+    assert nodeenv_cfg.provisioning_mode == "nodeenv"
+    assert nodeenv_cfg.detect_nodeenv is True
+
+
+def test_pyproject_declares_wheel_provisioning_extras() -> None:
+    """pyproject.toml declares node, deno, and bun optional dependency extras."""
+    pyproject_path = Path(__file__).resolve().parents[4] / "pyproject.toml"
+    content = pyproject_path.read_text(encoding="utf-8")
+    assert 'node = ["nodejs-wheel>=22.0.0"]' in content
+    assert 'deno = ["deno>=2.0.0"]' in content
+    assert 'bun = ["bun-wheel>=1.2.0"]' in content

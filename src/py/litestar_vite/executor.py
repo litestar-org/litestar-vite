@@ -4,6 +4,7 @@ This module provides executor classes for different JavaScript runtimes
 (Node.js/npm, Bun, Deno, Yarn, pnpm) to run Vite commands.
 """
 
+import importlib
 import os
 import platform
 import shutil
@@ -112,6 +113,41 @@ def _normalize_command(resolved_executable: str, args: list[str], *, binary_name
     return [resolved_executable, *args]
 
 
+def _resolve_venv_executable(bin_name: str) -> "str | None":
+    """Locate an executable inside the current Python virtual environment or wheel package.
+
+    Checks ``Path(sys.executable).parent`` first (supporting ``nodejs-wheel``, ``bun-wheel``,
+    ``deno``, and PyApp distributions), and falls back to ``deno.find_deno_bin()`` when
+    ``bin_name == "deno"`` and the ``deno`` Python package is installed.
+
+    Args:
+        bin_name: Bare binary name (e.g., ``"npm"``, ``"node"``, ``"bun"``, ``"deno"``).
+
+    Returns:
+        Absolute path string to the executable if found in the virtualenv/wheel, otherwise ``None``.
+    """
+    venv_bin_dir = Path(sys.executable).parent
+    is_windows = platform.system() == "Windows"
+    suffixes = (".exe", ".cmd", ".bat", "") if is_windows else ("",)
+    for suffix in suffixes:
+        candidate = venv_bin_dir / f"{bin_name}{suffix}"
+        if candidate.is_file() and (is_windows or os.access(candidate, os.X_OK)):
+            return str(candidate)
+
+    if bin_name == "deno" and find_spec("deno") is not None:
+        try:
+            deno_mod = importlib.import_module("deno")
+            find_deno_bin = getattr(deno_mod, "find_deno_bin", None)
+            if callable(find_deno_bin):
+                deno_bin = str(find_deno_bin())
+                if Path(deno_bin).is_file():
+                    return deno_bin
+        except (ImportError, OSError, TypeError, ValueError, AttributeError):
+            return None
+
+    return None
+
+
 class JSExecutor(ABC):
     """Abstract base class for Javascript executors.
 
@@ -156,6 +192,10 @@ class JSExecutor(ABC):
     def _resolve_executable(self) -> str:
         """Return the executable path or raise if not found.
 
+        Checks explicit ``executable_path`` first, then the active Python virtual
+        environment / PEP 425 wheel binary directory (``Path(sys.executable).parent``
+        and ``deno.find_deno_bin()``), and finally falls back to ``shutil.which``.
+
         Returns:
             Path to the resolved executable.
 
@@ -167,6 +207,10 @@ class JSExecutor(ABC):
         if self.executable_path:
             self._resolved_executable = str(self.executable_path)
             return self._resolved_executable
+        venv_path = _resolve_venv_executable(self.bin_name)
+        if venv_path is not None:
+            self._resolved_executable = venv_path
+            return venv_path
         path = shutil.which(self.bin_name)
         if path is None:
             raise ViteExecutableNotFoundError(self.bin_name)
@@ -224,7 +268,8 @@ class JSExecutor(ABC):
         Returns:
             Command list suitable for ``StdioIPCTransport``.
         """
-        return ["node", str(entry_point)]
+        node_bin = _resolve_venv_executable("node") or "node"
+        return [node_bin, str(entry_point)]
 
 
 class CommandExecutor(JSExecutor):
@@ -284,7 +329,11 @@ class BunExecutor(CommandExecutor):
 
     def ssr_command(self, entry_point: Path) -> list[str]:
         """Return the Bun command list to run a production SSR bundle."""
-        executable = str(self.executable_path) if self.executable_path else self.bin_name
+        executable = (
+            str(self.executable_path)
+            if self.executable_path
+            else (_resolve_venv_executable(self.bin_name) or self.bin_name)
+        )
         return [executable, "run", str(entry_point)]
 
 
@@ -316,7 +365,11 @@ class DenoExecutor(CommandExecutor):
 
     def ssr_command(self, entry_point: Path) -> list[str]:
         """Return the Deno command list to run a production SSR bundle."""
-        executable = str(self.executable_path) if self.executable_path else self.bin_name
+        executable = (
+            str(self.executable_path)
+            if self.executable_path
+            else (_resolve_venv_executable(self.bin_name) or self.bin_name)
+        )
         return [executable, "run", "--allow-read", "--allow-env", str(entry_point)]
 
     def update(self, cwd: Path, *, latest: bool = False) -> None:

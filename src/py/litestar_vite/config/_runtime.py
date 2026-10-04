@@ -226,6 +226,7 @@ class RuntimeConfig:
     is_react: bool = False
     health_check: bool = field(default_factory=lambda: os.getenv("VITE_HEALTH_CHECK", "False") in TRUE_VALUES)
     detect_nodeenv: bool = False
+    provisioning_mode: Literal["auto", "wheel", "nodeenv", "system"] = "auto"
     set_environment: bool = True
     set_static_folders: bool = True
     csp_nonce: "str | None" = None
@@ -278,6 +279,9 @@ class RuntimeConfig:
 
     def __post_init__(self) -> None:
         """Normalize runtime settings and apply derived defaults."""
+        if self.provisioning_mode == "nodeenv":
+            self.detect_nodeenv = True
+
         if isinstance(self.extra_route_prefixes, str):
             self.extra_route_prefixes = (self.extra_route_prefixes,)
         else:

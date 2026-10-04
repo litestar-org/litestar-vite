@@ -171,6 +171,21 @@ wheels = [
 ]
 
 [[package]]
+name = "bun-wheel"
+version = "1.4.2"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0d/21/bc7bd4094d50556624242b4ad8a2ff8d9897d5262d4a1cf7e6ee7939bb33/bun_wheel-1.4.2-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:cec168116dbbc8a0a7cc09ea2a101c1363308b040393479797044d988e03f81d", size = 28462732, upload-time = "2026-09-05T10:37:33.233Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/fc/ba4a9a20f2a6e96fc90a665924168a0b21dae49dcfc821b6e78052db7065/bun_wheel-1.4.2-py3-none-macosx_11_0_arm64.whl", hash = "sha256:462e8d89d1efea7f9f9e04afc5194b9b8bb90c99e3978197199ce9bfa1f7cfea", size = 25399797, upload-time = "2026-09-05T10:37:36.185Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/33/3226664b8a4d159c6830726441bba41f624368e7a2538936454df63e1ecb/bun_wheel-1.4.2-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:65d8ebd433743cd626fbc15efde321e14157be476b5212a73c8593dda4f3aa54", size = 36625072, upload-time = "2026-09-05T10:37:38.912Z" },
+    { url = "https://files.pythonhosted.org/packages/be/af/6e61829bedd4ab9081a6c95c1e10ed8852637c6854fc2e9b2b1733be7810/bun_wheel-1.4.2-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:76b1806502cfd6c22e45e22147fd7d2f5d0352bf3c120709ad9bd1d861edf75b", size = 36669150, upload-time = "2026-09-05T10:37:41.712Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/a4/2f4e87a6ae1df2397f5aa6746e01e0663a21984e635294a9d8d54fce59c2/bun_wheel-1.4.2-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:d5ddb494692bc4da0d5f7900ffb2581627b08ba0abf5e2d2257788ff87723895", size = 33997370, upload-time = "2026-09-05T10:37:44.337Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/0b/bd64ad5da052be03a2e90313ae6ae69d6acf2d14c363843d307ffc7bccaf/bun_wheel-1.4.2-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:2cef67a9012d4b25d535017aafd0b5c2b0c891f13465c7f1c5a1e0a8357910ed", size = 34123149, upload-time = "2026-09-05T10:37:47.135Z" },
+    { url = "https://files.pythonhosted.org/packages/41/78/089443aadc635d50f0e77549532eb7337cca4977d917e5a0d930ce780d7d/bun_wheel-1.4.2-py3-none-win_amd64.whl", hash = "sha256:fef6ebeda9ce5b0bdb6faa2e55dfc1a7d2210c5af11cd7cb7a54a4aeac8b1d4c", size = 39829718, upload-time = "2026-09-05T10:37:50.046Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/9e/2e21e4d25372899559525bb6b5f89287f0d197fef14f19317775d6468f00/bun_wheel-1.4.2-py3-none-win_arm64.whl", hash = "sha256:c003738f89023ad9b6530ae04b2ebeb92a36cb3aa7851d23d096cddd84cd0280", size = 36352254, upload-time = "2026-09-05T10:37:53.047Z" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.7.22"
 source = { registry = "https://pypi.org/simple" }
@@ -658,6 +673,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/1d/e0/e786934472e3ac4ecdecc7b129a0ca1a2a40dffdafcf2c3ea9d4397f8def/cryptography-50.0.1-pp311-pypy311_pp73-manylinux_2_34_aarch64.whl", hash = "sha256:d63ae8f6481fec907ac0f588eee8a90aefde112c633131fe540e5711ddbb5a4e", size = 4698378, upload-time = "2026-08-25T19:45:33.043Z" },
     { url = "https://files.pythonhosted.org/packages/51/cf/5b3f53a0b74d122f023476ede40ba5d3e70d5cf475f73b899740d26a4fb2/cryptography-50.0.1-pp311-pypy311_pp73-manylinux_2_34_x86_64.whl", hash = "sha256:804728ce710890870f3aaa344b2e161172d258d768ac139d02cfd9092d0d94e6", size = 4706889, upload-time = "2026-08-25T19:45:35.086Z" },
     { url = "https://files.pythonhosted.org/packages/71/44/711e61f7d014be825ef79b285b047292d1bf893732ac1bc030a351fb517f/cryptography-50.0.1-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:693c99b49bd37d0d096e4334c10232c77248c415b98d35236094cdf96d57258b", size = 3824006, upload-time = "2026-08-25T19:45:37.281Z" },
+]
+
+[[package]]
+name = "deno"
+version = "2.9.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/f1/0d7ca153f2363559d4462faed0d742632eedb74c9f7b8c05ee0d0bacdaaf/deno-2.9.7.tar.gz", hash = "sha256:79f4b7acdd9a37e98a4d1e0ca08d71c4e55f6c0cb13bd1e0946fa9b5497be2d9", size = 8168, upload-time = "2026-09-17T09:08:45.061Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fd/fe/661ee70cc000917881432ab306317c75bb6f97631323a60b35e91808c400/deno-2.9.7-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:826634a6719f0183d85ef33f702de4388adb47d1f097b0732f70e033599a43c2", size = 42301208, upload-time = "2026-09-17T09:08:23.59Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/60/291756d3ac61ec70dd13ab3c542eb7eccf3b303d38bd5bad77c2f570c4d5/deno-2.9.7-py3-none-macosx_11_0_arm64.whl", hash = "sha256:adc015b5630572c06d04d28741e6ac9eed8b053c501d0ae776bfb155f5b7204b", size = 38475190, upload-time = "2026-09-17T09:08:28.269Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/58/ed29b6599ebe73e61d612b62fed303d359601d7357b1cb7847bab974c5dd/deno-2.9.7-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:d8f4622774a5bed3a6b6305340495abe699f09c99b70d2882f52abc1ff23321a", size = 39827935, upload-time = "2026-09-17T09:08:32.907Z" },
+    { url = "https://files.pythonhosted.org/packages/97/83/7168eaf88abd94777a62cf8fed9a849a2bd1adf9118d3b470b0b4ff5f08d/deno-2.9.7-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:836f2ab5918723b47b638a05bc4fdac99fc35e69b49a6771c24e32b19dff5d8a", size = 41608137, upload-time = "2026-09-17T09:08:37.461Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/90/87d4b92f3076832aae7aa06b0a4be95ceb29867d45e6f8e8ca7cde6abc16/deno-2.9.7-py3-none-win_amd64.whl", hash = "sha256:80b90a0aad3f167ffbfefe55830b7b14e9d49865eed741c013bb48f1c5996681", size = 41552994, upload-time = "2026-09-17T09:08:42.592Z" },
 ]
 
 [[package]]
@@ -1294,11 +1322,20 @@ dependencies = [
 asyncapi = [
     { name = "litestar-asyncapi" },
 ]
+bun = [
+    { name = "bun-wheel" },
+]
+deno = [
+    { name = "deno" },
+]
 http2 = [
     { name = "h2" },
 ]
 jinja = [
     { name = "jinja2" },
+]
+node = [
+    { name = "nodejs-wheel" },
 ]
 nodeenv = [
     { name = "nodeenv" },
@@ -1394,6 +1431,8 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "bun-wheel", marker = "extra == 'bun'", specifier = ">=1.2.0" },
+    { name = "deno", marker = "extra == 'deno'", specifier = ">=2.0.0" },
     { name = "h2", marker = "extra == 'http2'", specifier = ">=4.0.0" },
     { name = "httpx2", specifier = ">=2.13.1" },
     { name = "jinja2", marker = "extra == 'jinja'" },
@@ -1401,10 +1440,11 @@ requires-dist = [
     { name = "litestar-asyncapi", marker = "extra == 'asyncapi'", specifier = ">=0.2.0" },
     { name = "markupsafe", specifier = ">=2.0" },
     { name = "nodeenv", marker = "extra == 'nodeenv'" },
+    { name = "nodejs-wheel", marker = "extra == 'node'", specifier = ">=22.0.0" },
     { name = "typing-extensions" },
     { name = "websockets", specifier = ">=12.0" },
 ]
-provides-extras = ["jinja", "nodeenv", "http2", "asyncapi"]
+provides-extras = ["jinja", "nodeenv", "node", "deno", "bun", "http2", "asyncapi"]
 
 [package.metadata.requires-dev]
 build = [{ name = "bump-my-version" }]
@@ -1919,6 +1959,34 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/24/bf/d1bda4f6168e0b2e9e5958945e01910052158313224ada5ce1fb2e1113b8/nodeenv-1.10.0.tar.gz", hash = "sha256:996c191ad80897d076bdfba80a41994c2b47c68e224c542b48feba42ba00f8bb", size = 55611, upload-time = "2025-12-20T14:08:54.006Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/b2/d0896bdcdc8d28a7fc5717c305f1a861c26e18c05047949fb371034d98bd/nodeenv-1.10.0-py2.py3-none-any.whl", hash = "sha256:5bb13e3eed2923615535339b3c620e76779af4cb4c6a90deccc9e36b274d3827", size = 23438, upload-time = "2025-12-20T14:08:52.782Z" },
+]
+
+[[package]]
+name = "nodejs-wheel"
+version = "24.19.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "nodejs-wheel-binaries" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/23/4e/90211cc219742505baea0cbaac86d18fd9cc78b89e4a8695b05238ef5446/nodejs_wheel-24.19.0.tar.gz", hash = "sha256:ff479430d3ed9b964e7c44dce7a8b40aaa58c7fe8466acc883195477a93f0c44", size = 2968, upload-time = "2026-08-19T21:47:18.844Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ae/94/b29c133f65bb75e62b27f8a88237d70ec46b1a471ca356d66bad1111e542/nodejs_wheel-24.19.0-py3-none-any.whl", hash = "sha256:9bec7369a0b364e041bd129be385fdb29fb77efb7a8fbf0eb35752e8f841a9a8", size = 3986, upload-time = "2026-08-19T21:46:40.072Z" },
+]
+
+[[package]]
+name = "nodejs-wheel-binaries"
+version = "24.19.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/76/7e97195e14346598565a0de4ca8bdbd5e634b3fb5b1ba590b7b1b89f8a63/nodejs_wheel_binaries-24.19.0.tar.gz", hash = "sha256:db217eef8cab8551667863379b08db4d9067403f6cbbe87481eb40edceb8aa9b", size = 8058, upload-time = "2026-08-19T21:47:19.671Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8c/52/0774b52c7be8151ad9d5aff44edc100c3f13d6d8eb3765f63ffa40e69fe8/nodejs_wheel_binaries-24.19.0-py2.py3-none-macosx_13_0_arm64.whl", hash = "sha256:e12cbfd69089504e42fb14194ce734a9dcf3eb38c820ca63dd511d36fb964e9c", size = 56047203, upload-time = "2026-08-19T21:46:43.448Z" },
+    { url = "https://files.pythonhosted.org/packages/67/3a/4fdbbfecf2c23d52c0e3f68de7f7c1b3c97a26d328c69c5f6c49c48e340e/nodejs_wheel_binaries-24.19.0-py2.py3-none-macosx_13_0_x86_64.whl", hash = "sha256:1c890adf4b7e6556ccc1ca66c866bb81884b6c9a581dee4e530dc7f78fb9d514", size = 56219459, upload-time = "2026-08-19T21:46:48.45Z" },
+    { url = "https://files.pythonhosted.org/packages/5f/a8/0147149415195c59b8a72a594916bfb80d6be4d586f9fbfda313889e0efc/nodejs_wheel_binaries-24.19.0-py2.py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:4e029dadfae1295876063c96b236f673487e8c27379fe146c1e2250283520227", size = 60588256, upload-time = "2026-08-19T21:46:53.298Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/89/6631d0982353da1bb7bc00bb1988f702822c62b42634f57999ee53b5c337/nodejs_wheel_binaries-24.19.0-py2.py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:4196a947bcc883f2003ab101762d729f3e99b5e86b75bd09151563403e2eceb8", size = 61123607, upload-time = "2026-08-19T21:46:58.117Z" },
+    { url = "https://files.pythonhosted.org/packages/32/a2/fa30f0841e4602995782e124359f9b910c7b481d98decf61ef0b2fc3ebfb/nodejs_wheel_binaries-24.19.0-py2.py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:352e048ab4dd35e7de5f338d1cc4fcbf77a0e93da30bf7336a8217ee246b31d7", size = 62632842, upload-time = "2026-08-19T21:47:03.42Z" },
+    { url = "https://files.pythonhosted.org/packages/18/01/22d97ca72213f66cc386ee638db30c2e62757fdf761c6029074bced83d1c/nodejs_wheel_binaries-24.19.0-py2.py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:28d078b2ced9e2069516e652dc4b1380e7a1a7f2d3934eccd1611586d283ba4c", size = 63250653, upload-time = "2026-08-19T21:47:07.938Z" },
+    { url = "https://files.pythonhosted.org/packages/88/d1/e3be8fa327a795bcaf7a19cd84299e338a7bce32ff0665fdce9cfa22573c/nodejs_wheel_binaries-24.19.0-py2.py3-none-win_amd64.whl", hash = "sha256:67e3abeb9c3830cae8c8487ae8a2af7cc27dfa75af06145cee5ca7d1857c81bd", size = 42448503, upload-time = "2026-08-19T21:47:12.093Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/37/34cf28ba1691a060174948a9927fe61091982d6048b2e403071a9acce443/nodejs_wheel_binaries-24.19.0-py2.py3-none-win_arm64.whl", hash = "sha256:d9074c665ea68b04e183d82482c86dc907d3a9bd15eb6cf85542cb785266bb36", size = 40090155, upload-time = "2026-08-19T21:47:16.032Z" },
 ]
 
 [[package]]
