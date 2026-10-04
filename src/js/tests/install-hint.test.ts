@@ -405,15 +405,35 @@ describe("install-hint", () => {
       expect(resolvePackageExecutorArgv(["--help"], "yarn", options)).toEqual(["yarn", "dlx", "-p", "@hey-api/openapi-ts@0.98.2", "-p", "typescript@6.0.3", "openapi-ts", "--help"])
     })
 
-    it("refuses unsafe multi-package fallbacks for bun and deno", () => {
+    it("supports multi-package fallbacks for bun and deno", () => {
       const options = {
         packageSpec: "@hey-api/openapi-ts@0.98.2",
         additionalPackageSpecs: ["typescript@6.0.3"],
         binName: "openapi-ts",
       }
 
-      expect(resolvePackageExecutorArgv(["--help"], "bun", options)).toEqual([])
-      expect(resolvePackageExecutorArgv(["--help"], "deno", options)).toEqual([])
+      expect(resolvePackageExecutorArgv(["--help"], "bun", options)).toEqual([
+        "bunx",
+        "--package",
+        "@hey-api/openapi-ts@0.98.2",
+        "--package",
+        "typescript@6.0.3",
+        "openapi-ts",
+        "--help",
+      ])
+      expect(resolvePackageExecutorArgv(["--help"], "deno", options)).toEqual(["deno", "run", "-A", "npm:@hey-api/openapi-ts@0.98.2", "--help"])
+      expect(
+        resolvePackageExecutorArgv(["openapi-ts", "-i", "schema.json"], "bun", {
+          packageSpec: "@hey-api/openapi-ts",
+          additionalPackageSpecs: ["@hey-api/client-fetch"],
+        }),
+      ).toEqual(["bunx", "--package", "@hey-api/openapi-ts", "--package", "@hey-api/client-fetch", "openapi-ts", "-i", "schema.json"])
+      expect(
+        resolvePackageExecutorArgv(["openapi-ts", "-i", "schema.json"], "deno", {
+          packageSpec: "@hey-api/openapi-ts",
+          additionalPackageSpecs: ["@hey-api/client-fetch"],
+        }),
+      ).toEqual(["deno", "run", "-A", "npm:@hey-api/openapi-ts", "-i", "schema.json"])
     })
 
     it("returns package-manager specific argv without changing resolvePackageExecutor string output", () => {

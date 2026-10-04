@@ -262,6 +262,7 @@ class ViteDoctor:
             self._check_typegen_artifacts,
             self._check_realtime_config,
             self._check_env_alignment,
+            self._check_runtime_lockfile_alignment,
             self._check_mode_inertia_conflicts,
             self._check_ssr_reachability,
             self._check_static_props_secrets,
@@ -1247,6 +1248,41 @@ class ViteDoctor:
                     auto_fixable=False,
                 )
             )
+
+    def _check_runtime_lockfile_alignment(self) -> None:
+        """Warn when an explicitly configured executor conflicts with repository lockfiles."""
+        if not self.config.runtime.has_explicit_executor:
+            return
+
+        root = self.config.root_dir or Path.cwd()
+        lockfile_executors: tuple[tuple[str, str], ...] = (
+            ("bun.lockb", "bun"),
+            ("bun.lock", "bun"),
+            ("deno.lock", "deno"),
+            ("pnpm-lock.yaml", "pnpm"),
+            ("yarn.lock", "yarn"),
+            ("package-lock.json", "node"),
+        )
+        configured = self.config.runtime.executor or "node"
+        for filename, expected_executor in lockfile_executors:
+            if (root / filename).exists():
+                if configured != expected_executor:
+                    self.issues.append(
+                        DoctorIssue(
+                            check="Runtime / Lockfile Mismatch",
+                            severity="warning",
+                            message=(
+                                f"RuntimeConfig(executor={configured!r}) conflicts with {filename!r} "
+                                f"in {root} (expected executor={expected_executor!r})"
+                            ),
+                            fix_hint=(
+                                f"Set RuntimeConfig(executor={expected_executor!r}) or omit executor to "
+                                "allow automatic lockfile detection"
+                            ),
+                            auto_fixable=False,
+                        )
+                    )
+                return
 
     def _print_config_snapshot(self, *, show_bridge: bool) -> None:
         """Print a detailed view of Python, .litestar.json, and vite.config settings."""

@@ -126,12 +126,15 @@ export function resolvePackageExecutorArgv(args: string[], executor?: string, op
   const requiresMultiplePackages = packageSpecs.length > 1
   switch (runtime) {
     case "bun":
-      if (requiresMultiplePackages) return []
+      if (requiresMultiplePackages) {
+        return ["bunx", ...packageSpecs.flatMap((spec) => ["--package", spec]), ...(binName ? [binName, ...args] : args)]
+      }
       return ["bunx", ...(packageSpec ? [packageSpec, ...args] : args)]
     case "deno": {
-      if (requiresMultiplePackages) return []
       if (packageSpec) {
-        return ["deno", "run", "-A", `npm:${resolveDenoPackageSpec(packageSpec, binName)}`, ...args]
+        const defaultBinName = getPackageNameFromSpec(packageSpec).split("/").pop()
+        const effectiveArgs = !binName && defaultBinName && args[0] === defaultBinName ? args.slice(1) : args
+        return ["deno", "run", "-A", `npm:${resolveDenoPackageSpec(packageSpec, binName)}`, ...effectiveArgs]
       }
       const [firstArg, ...restArgs] = args
       return firstArg ? ["deno", "run", "-A", `npm:${firstArg}`, ...restArgs] : ["deno", "run", "-A"]
