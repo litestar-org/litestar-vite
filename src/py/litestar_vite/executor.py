@@ -16,7 +16,40 @@ from typing import Any, ClassVar, Protocol, runtime_checkable
 
 from litestar.cli._utils import console
 
+from litestar_vite.config import InertiaConfig, InertiaSSRConfig, PathConfig, ViteConfig
+from litestar_vite.config._paths import resolve_ssr_bundle_path
 from litestar_vite.exceptions import ViteExecutableNotFoundError, ViteExecutionError
+
+_DENO_SUBCOMMANDS: frozenset[str] = frozenset({
+    "add",
+    "bench",
+    "cache",
+    "check",
+    "clean",
+    "compile",
+    "completions",
+    "coverage",
+    "doc",
+    "eval",
+    "fmt",
+    "info",
+    "init",
+    "install",
+    "jupyter",
+    "lint",
+    "outdated",
+    "publish",
+    "remove",
+    "repl",
+    "run",
+    "serve",
+    "task",
+    "test",
+    "types",
+    "uninstall",
+    "upgrade",
+    "vendor",
+})
 
 
 def _windows_create_new_process_group_flag() -> int:
@@ -182,6 +215,17 @@ class JSExecutor(ABC):
         """
         return [self.bin_name, "run", "build"]
 
+    def ssr_command(self, entry_point: Path) -> list[str]:
+        """Return the command list to run a production SSR bundle.
+
+        Args:
+            entry_point: Path to the built SSR bundle file.
+
+        Returns:
+            Command list suitable for ``StdioIPCTransport``.
+        """
+        return ["node", str(entry_point)]
+
 
 class CommandExecutor(JSExecutor):
     """Generic command executor."""
@@ -238,6 +282,11 @@ class BunExecutor(CommandExecutor):
     __slots__ = ()
     bin_name = "bun"
 
+    def ssr_command(self, entry_point: Path) -> list[str]:
+        """Return the Bun command list to run a production SSR bundle."""
+        executable = str(self.executable_path) if self.executable_path else self.bin_name
+        return [executable, "run", str(entry_point)]
+
 
 class DenoExecutor(CommandExecutor):
     """Deno executor."""
@@ -245,14 +294,58 @@ class DenoExecutor(CommandExecutor):
     __slots__ = ()
     bin_name = "deno"
     silent_flag: ClassVar[str] = ""
-    update_latest_flag: ClassVar[str] = ""
+    update_latest_flag: ClassVar[str] = "--latest"
 
-    def install(self, cwd: Path) -> None:
-        pass
+    @property
+    def start_command(self) -> list[str]:
+        """Get the default command to start the dev server using Deno tasks.
+
+        Returns:
+            The argv list used to start the dev server.
+        """
+        return [self.bin_name, "task", "start"]
+
+    @property
+    def build_command(self) -> list[str]:
+        """Get the default command to build for production using Deno tasks.
+
+        Returns:
+            The argv list used to build production assets.
+        """
+        return [self.bin_name, "task", "build"]
+
+    def ssr_command(self, entry_point: Path) -> list[str]:
+        """Return the Deno command list to run a production SSR bundle."""
+        executable = str(self.executable_path) if self.executable_path else self.bin_name
+        return [executable, "run", "--allow-read", "--allow-env", str(entry_point)]
 
     def update(self, cwd: Path, *, latest: bool = False) -> None:
-        """Deno doesn't have traditional package management."""
-        del cwd, latest
+        """Update dependencies via ``deno outdated --update [--latest]``."""
+        executable = self._resolve_executable()
+        command = [executable, "outdated", "--update"]
+        if latest and self.update_latest_flag:
+            command.append(self.update_latest_flag)
+        process = subprocess.run(command, cwd=cwd, shell=False, check=False)
+        if process.returncode != 0:
+            raise ViteExecutionError(command, process.returncode, "package update failed")
+
+    def execute(self, args: list[str], cwd: Path) -> None:
+        """Execute a Deno command or script and wait for completion.
+
+        When ``args`` does not begin with a native Deno subcommand (such as
+        ``task`` or ``run``), ``["run", "-A"]`` is prepended before the script
+        or module arguments.
+        """
+        executable = self._resolve_executable()
+        normalized = _normalize_command(executable, args, binary_name=self.bin_name)
+        rest = normalized[1:]
+        command = [executable, "run", "-A", *rest] if rest and rest[0] not in _DENO_SUBCOMMANDS else normalized
+        process = subprocess.run(
+            command, cwd=cwd, shell=False, check=False, stdin=subprocess.PIPE, stdout=None, stderr=subprocess.PIPE
+        )
+        if process.returncode != 0:
+            stderr = process.stderr.decode() if process.stderr else ""
+            raise ViteExecutionError(command, process.returncode, stderr)
 
 
 class YarnExecutor(CommandExecutor):
@@ -395,3 +488,31 @@ class NodeenvExecutor(JSExecutor):
             The argv list used to build production assets.
         """
         return [self._find_npm_in_venv(), "run", "build"]
+
+
+def resolve_ssr_command(config: "ViteConfig | None" = None, ssr_config: "InertiaSSRConfig | None" = None) -> list[str]:
+    """Resolve the production SSR worker command for the active JS runtime.
+
+    Honors an explicit ``ssr_config.command`` override first. Otherwise resolves
+    the built SSR bundle path and returns the runtime-appropriate invocation via
+    the configured executor (``bun run <path>``, ``deno run --allow-read --allow-env <path>``,
+    or ``node <path>``).
+
+    Args:
+        config: Optional active ``ViteConfig`` instance.
+        ssr_config: Optional resolved ``InertiaSSRConfig`` instance.
+
+    Returns:
+        Command list suitable for ``StdioIPCTransport``.
+    """
+    if ssr_config is None and config is not None and isinstance(config.inertia, InertiaConfig):
+        ssr_config = config.inertia.ssr_config
+    if ssr_config is not None and ssr_config.command:
+        return list(ssr_config.command)
+    if config is not None:
+        bundle_path = resolve_ssr_bundle_path(config.paths)
+        return config.executor.ssr_command(bundle_path)
+    cwd = (ssr_config.cwd if ssr_config is not None else None) or Path.cwd()
+    fallback_config = ViteConfig(paths=PathConfig(root=cwd))
+    bundle_path = resolve_ssr_bundle_path(fallback_config.paths)
+    return fallback_config.executor.ssr_command(bundle_path)

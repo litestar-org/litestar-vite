@@ -63,13 +63,12 @@ class FragmentEngine:
                 )
             else:
                 from litestar_vite.config import InertiaConfig
-                from litestar_vite.config._paths import resolve_ssr_bundle_path
+                from litestar_vite.executor import resolve_ssr_command
 
                 inertia = self._config.inertia
                 ssr = inertia.ssr_config if isinstance(inertia, InertiaConfig) else None
                 self._transport = StdioIPCTransport(
-                    command=(ssr.command if ssr else None)
-                    or ["node", str(resolve_ssr_bundle_path(self._config.paths))],
+                    command=resolve_ssr_command(self._config, ssr),
                     cwd=(ssr.cwd if ssr else None) or self._config.root_dir,
                 )
         return self._transport

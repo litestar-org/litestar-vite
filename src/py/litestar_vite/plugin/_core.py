@@ -220,15 +220,12 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         if self._ipc_transport is None:
             from litestar_vite.config._inertia import InertiaConfig
-            from litestar_vite.config._paths import resolve_ssr_bundle_path
+            from litestar_vite.executor import resolve_ssr_command
 
             inertia = self._config.inertia
             ssr_config = ssr_config or (inertia.ssr_config if isinstance(inertia, InertiaConfig) else None)
-            command = ssr_config.command if ssr_config is not None else None
             cwd = (ssr_config.cwd if ssr_config is not None else None) or self._config.root_dir
-            self._ipc_transport = StdioIPCTransport(
-                command=command or ["node", str(resolve_ssr_bundle_path(self._config.paths))], cwd=cwd
-            )
+            self._ipc_transport = StdioIPCTransport(command=resolve_ssr_command(self._config, ssr_config), cwd=cwd)
         return self._ipc_transport
 
     @property

@@ -1,7 +1,10 @@
 """Tests for litestar_vite.executor module."""
 
+import importlib.util
 import os
 import subprocess
+import sys
+import types
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -198,11 +201,78 @@ def test_executor_bun_install(mock_which: Mock, mock_run: Mock) -> None:
     assert args[0] == ["/usr/bin/bun", "install"]
 
 
-def test_executor_deno_install_no_op() -> None:
-    """Test DenoExecutor install is a no-op."""
+@patch("subprocess.run")
+@patch("shutil.which")
+def test_executor_deno_install(mock_which: Mock, mock_run: Mock) -> None:
+    """Test DenoExecutor runs deno install."""
+    mock_which.return_value = "/usr/bin/deno"
+    mock_run.return_value = Mock(returncode=0)
     executor = DenoExecutor()
-    # Should not raise error
+
     executor.install(Path("/tmp"))
+
+    mock_run.assert_called_once()
+    args, _ = mock_run.call_args
+    assert args[0] == ["/usr/bin/deno", "install"]
+
+
+def test_executor_deno_commands() -> None:
+    """Test DenoExecutor start_command and build_command use deno task."""
+    executor = DenoExecutor()
+    assert executor.start_command == ["deno", "task", "start"]
+    assert executor.build_command == ["deno", "task", "build"]
+
+
+@patch("subprocess.run")
+@patch("shutil.which")
+def test_executor_deno_execute_script_prepends_run_allow_all(mock_which: Mock, mock_run: Mock) -> None:
+    """Test DenoExecutor.execute prepends run -A for script arguments."""
+    mock_which.return_value = "/usr/bin/deno"
+    mock_run.return_value = Mock(returncode=0)
+    executor = DenoExecutor()
+
+    executor.execute(["script.ts", "--flag"], Path("/tmp"))
+
+    mock_run.assert_called_once()
+    args, _ = mock_run.call_args
+    assert args[0] == ["/usr/bin/deno", "run", "-A", "script.ts", "--flag"]
+
+
+@patch("subprocess.run")
+@patch("shutil.which")
+def test_executor_deno_execute_preserves_task_subcommand(mock_which: Mock, mock_run: Mock) -> None:
+    """Test DenoExecutor.execute preserves explicit Deno subcommands like task."""
+    mock_which.return_value = "/usr/bin/deno"
+    mock_run.return_value = Mock(returncode=0)
+    executor = DenoExecutor()
+
+    executor.execute(["deno", "task", "build"], Path("/tmp"))
+
+    mock_run.assert_called_once()
+    args, _ = mock_run.call_args
+    assert args[0] == ["/usr/bin/deno", "task", "build"]
+
+
+def test_hatch_build_deno_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test tools/hatch_build.py supports deno install and deno task build."""
+    stub_interface = types.ModuleType("hatchling.builders.hooks.plugin.interface")
+    setattr(stub_interface, "BuildHookInterface", object)
+    monkeypatch.setitem(sys.modules, "hatchling", types.ModuleType("hatchling"))
+    monkeypatch.setitem(sys.modules, "hatchling.builders", types.ModuleType("hatchling.builders"))
+    monkeypatch.setitem(sys.modules, "hatchling.builders.hooks", types.ModuleType("hatchling.builders.hooks"))
+    monkeypatch.setitem(
+        sys.modules, "hatchling.builders.hooks.plugin", types.ModuleType("hatchling.builders.hooks.plugin")
+    )
+    monkeypatch.setitem(sys.modules, "hatchling.builders.hooks.plugin.interface", stub_interface)
+
+    hatch_build_path = Path(__file__).resolve().parents[4] / "tools" / "hatch_build.py"
+    spec = importlib.util.spec_from_file_location("hatch_build", hatch_build_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module._install_command("deno", tmp_path) == ["deno", "install"]
+    assert module._build_command("deno") == ["deno", "task", "build"]
 
 
 # =====================================================
@@ -285,12 +355,22 @@ def test_executor_update_latest_bun(mock_which: Mock, mock_run: Mock) -> None:
     assert args[0] == ["/usr/bin/bun", "update", "--latest"]
 
 
-def test_executor_deno_update_no_op() -> None:
-    """Test DenoExecutor update is a no-op."""
+@patch("subprocess.run")
+@patch("shutil.which")
+def test_executor_deno_update(mock_which: Mock, mock_run: Mock) -> None:
+    """Test DenoExecutor update runs deno outdated --update [--latest]."""
+    mock_which.return_value = "/usr/bin/deno"
+    mock_run.return_value = Mock(returncode=0)
     executor = DenoExecutor()
-    # Should not raise error
-    executor.update(Path("/tmp"))
+
+    executor.update(Path("/tmp"), latest=False)
     executor.update(Path("/tmp"), latest=True)
+
+    assert mock_run.call_count == 2
+    args1, _ = mock_run.call_args_list[0]
+    assert args1[0] == ["/usr/bin/deno", "outdated", "--update"]
+    args2, _ = mock_run.call_args_list[1]
+    assert args2[0] == ["/usr/bin/deno", "outdated", "--update", "--latest"]
 
 
 @patch("subprocess.run")
