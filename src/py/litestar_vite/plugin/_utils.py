@@ -204,6 +204,7 @@ def is_non_serving_assets_cli() -> bool:
     argv_str = " ".join(sys.argv)
     non_serving_commands = (
         " assets build",
+        " assets bundle",
         " assets install",
         " assets deploy",
         " assets doctor",

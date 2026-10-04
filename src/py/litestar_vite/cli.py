@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 from textwrap import dedent
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from click import Choice, Context, group, option
 from click import Path as ClickPath
@@ -17,8 +17,9 @@ from litestar.cli._utils import (  # pyright: ignore[reportPrivateImportUsage]
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
+from litestar_vite.bundler import BundleConfigurationError, PyAppBundler, detect_host_target_triple
 from litestar_vite.codegen import encode_deterministic_json, generate_routes_json, generate_routes_ts, write_if_changed
-from litestar_vite.config import DeployConfig, ExternalDevServer, LoggingConfig, TypeGenConfig, ViteConfig
+from litestar_vite.config import BundleConfig, DeployConfig, ExternalDevServer, LoggingConfig, TypeGenConfig, ViteConfig
 from litestar_vite.deploy import ViteDeployer, format_bytes
 from litestar_vite.doctor import ViteDoctor
 from litestar_vite.exceptions import ViteExecutionError
@@ -876,6 +877,117 @@ def vite_deploy(
         console.print("[dim]No changes applied (dry-run).[/]")
     else:
         console.print("[bold green]✓ Deploy complete[/]")
+
+
+@vite_group.command(name="bundle", help="Build a standalone single-file executable via PyApp.")
+@option(
+    "--target",
+    type=str,
+    default=None,
+    help="Target Rust triple (e.g. x86_64-unknown-linux-gnu). Defaults to host platform.",
+)
+@option(
+    "--output",
+    type=ClickPath(dir_okay=False, path_type=Path),
+    default=None,
+    help="Output executable path.",
+)
+@option("--stage-only", is_flag=True, help="Stage the relocatable distribution without running Cargo.")
+@option(
+    "--compile-ssr",
+    type=Choice(["none", "bun", "deno"], case_sensitive=False),
+    default=None,
+    help="Compile ssr.js into a standalone litestar-ssr-worker binary ('none', 'bun', 'deno').",
+)
+@option("--install-root", type=str, default=None, help="Custom extraction root path (overrides BundleConfig.install_root).")
+@option("--zigbuild", is_flag=True, help="Use cargo zigbuild for cross-compilation.")
+@option("--no-strip", is_flag=True, help="Disable stdlib and binary symbol stripping.")
+@option(
+    "--pyapp-source",
+    type=ClickPath(file_okay=False, path_type=Path),
+    default=None,
+    help="Local path to a PyApp source checkout.",
+)
+@option("--no-build", is_flag=True, help="Skip running Vite asset build before bundling.")
+@option("--verbose", is_flag=True, help="Enable verbose output.")
+def vite_bundle(
+    app: "Litestar",
+    target: "str | None",
+    output: "Path | None",
+    stage_only: bool,
+    compile_ssr: "str | None",
+    install_root: "str | None",
+    zigbuild: bool,
+    no_strip: bool,
+    pyapp_source: "Path | None",
+    no_build: bool,
+    verbose: bool,
+) -> None:
+    """Build a standalone single-file executable containing frontend assets and Python runtime."""
+    if verbose:
+        app.debug = True
+
+    plugin = app.plugins.get(VitePlugin)
+    config = plugin.config
+    root_dir = Path(config.root_dir or Path.cwd())
+
+    base_bundle_config = config.bundle_config
+    if base_bundle_config is None:
+        pyproject_path = root_dir / "pyproject.toml"
+        base_bundle_config = (
+            BundleConfig.from_pyproject(pyproject_path) if pyproject_path.exists() else BundleConfig(enabled=True)
+        )
+
+    compile_ssr_override = (
+        cast("Literal['none', 'bun', 'deno']", compile_ssr.lower()) if compile_ssr is not None else None
+    )
+    bundle_config = base_bundle_config.with_overrides(
+        enabled=True,
+        target_arch=target,
+        compile_ssr_worker=compile_ssr_override,
+        install_root=install_root,
+        use_zigbuild=True if zigbuild else None,
+        strip_dist=False if no_strip else None,
+        strip_symbols=False if no_strip else None,
+    )
+
+    try:
+        _run_vite_build(config, root_dir, console, no_build, app=app, verbose=verbose)
+    except (LitestarCLIException, SystemExit) as exc:
+        console.print(f"[red]{exc}[/]")
+        sys.exit(1)
+
+    resolved_target = bundle_config.target_arch or detect_host_target_triple()
+    console.rule(f"Bundling [blue]{bundle_config.binary_name or 'application'}[/] ({resolved_target})", align="left")
+
+    work_dir = (
+        bundle_config.output_dir
+        if bundle_config.output_dir.is_absolute()
+        else (root_dir / bundle_config.output_dir)
+    ) / "work"
+
+    bundler = PyAppBundler(config=config, bundle_config=bundle_config)
+    try:
+        wheels = bundler.build_project_wheel(work_dir)
+        archive_path = bundler.stage_distribution(work_dir, wheels=wheels, target_triple=resolved_target)
+        if stage_only:
+            console.print(f"[green]✓ Staged distribution archive at {archive_path}[/]")
+            return
+
+        pyapp_dir = bundler.prepare_pyapp_source(work_dir, pyapp_source=pyapp_source)
+        binary_path = bundler.compile_binary(
+            dist_archive=archive_path,
+            pyapp_dir=pyapp_dir,
+            output_path=output,
+            target_triple=resolved_target,
+        )
+    except (BundleConfigurationError, LitestarCLIException, ViteExecutionError, RuntimeError, OSError, ValueError) as exc:
+        console.print(f"[red]✗ Bundle failed: {exc}[/]")
+        sys.exit(1)
+
+    binary_size = binary_path.stat().st_size if binary_path.exists() else 0
+    console.print(f"[bold green]✓ Built standalone binary: {binary_path} ({format_bytes(binary_size)})[/]")
+
 
 
 @vite_group.command(

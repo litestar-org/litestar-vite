@@ -1209,6 +1209,13 @@ class ViteConfig:
         return self.runtime.ssr_transport
 
     @property
+    def ssr_enabled(self) -> bool:
+        """Return whether Server-Side Rendering (Inertia SSR or custom SSR output) is enabled."""
+        return (
+            isinstance(self.inertia, InertiaConfig) and self.inertia.ssr_config is not None
+        ) or self.paths.ssr_output_dir is not None
+
+    @property
     def trusted_proxies(self) -> "list[str] | str | None":
         """Get trusted proxies configuration.
 

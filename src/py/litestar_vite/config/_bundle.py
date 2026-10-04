@@ -158,6 +158,7 @@ class BundleConfig:
         install_root: str | None = None,
         use_zigbuild: bool | None = None,
         strip_dist: bool | None = None,
+        strip_symbols: bool | None = None,
     ) -> "BundleConfig":
         """Return a copy of ``BundleConfig`` with non-None CLI overrides applied."""
         return replace(
@@ -170,6 +171,7 @@ class BundleConfig:
             install_root=self.install_root if install_root is None else install_root,
             use_zigbuild=self.use_zigbuild if use_zigbuild is None else use_zigbuild,
             strip_dist=self.strip_dist if strip_dist is None else strip_dist,
+            strip_symbols=self.strip_symbols if strip_symbols is None else strip_symbols,
         )
 
 

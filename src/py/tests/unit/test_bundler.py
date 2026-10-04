@@ -211,3 +211,39 @@ def test_pyapp_bundler_stage_and_compile_lifecycle(tmp_path: Path) -> None:
     assert cargo_env["BZIP2_SYS_STATIC"] == "1"
     assert cargo_env["LZMA_API_STATIC"] == "1"
     assert isinstance(detect_host_target_triple(), str)
+
+
+def test_pyapp_bundler_build_project_wheel_and_prepare_source(tmp_path: Path) -> None:
+    """Verify build_project_wheel invokes uv build and prepare_pyapp_source copies or clones PyApp."""
+    recorded_cmds: list[list[str]] = []
+
+    def fake_runner(cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
+        del cwd, env
+        recorded_cmds.append(list(cmd))
+        if cmd[:3] == ["uv", "build", "--wheel"]:
+            out_dir = Path(cmd[cmd.index("--out-dir") + 1])
+            (out_dir / "demo_app-0.1.0-py3-none-any.whl").write_bytes(b"wheel")
+        elif cmd[:2] == ["git", "clone"]:
+            dest_dir = Path(cmd[-1])
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            (dest_dir / "Cargo.toml").write_text('[package]\nname = "pyapp"\n', encoding="utf-8")
+
+    vite_cfg = ViteConfig(mode="template", paths=PathConfig(root=tmp_path), bundle=True)
+    bundler = PyAppBundler(config=vite_cfg, runner=fake_runner)
+
+    work_dir = tmp_path / "work"
+    wheels = bundler.build_project_wheel(work_dir)
+    assert len(wheels) == 1
+    assert wheels[0].name == "demo_app-0.1.0-py3-none-any.whl"
+
+    local_pyapp = tmp_path / "local-pyapp"
+    local_pyapp.mkdir(parents=True)
+    (local_pyapp / "Cargo.toml").write_text('[package]\nname = "pyapp-local"\n', encoding="utf-8")
+
+    staged_local = bundler.prepare_pyapp_source(work_dir, pyapp_source=local_pyapp)
+    assert (staged_local / "Cargo.toml").read_text(encoding="utf-8") == '[package]\nname = "pyapp-local"\n'
+
+    staged_cloned = bundler.prepare_pyapp_source(work_dir, pyapp_source=None)
+    assert (staged_cloned / "Cargo.toml").read_text(encoding="utf-8") == '[package]\nname = "pyapp"\n'
+    assert any(cmd[:2] == ["git", "clone"] for cmd in recorded_cmds)
+

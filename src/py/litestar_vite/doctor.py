@@ -6,11 +6,13 @@ Regex patterns used for vite.config parsing are compiled at import time to avoid
 
 import os
 import re
+import shutil
 import socket
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
+import msgspec
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 from litestar.serialization import decode_json, encode_json
 from rich.console import Group
@@ -19,7 +21,8 @@ from rich.prompt import Confirm
 from rich.syntax import Syntax
 from rich.table import Table
 
-from litestar_vite.config import ExternalDevServer, TypeGenConfig
+from litestar_vite.config import BundleConfig, ExternalDevServer, TypeGenConfig
+from litestar_vite.ipc import is_wasm_available
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -263,6 +266,7 @@ class ViteDoctor:
             self._check_realtime_config,
             self._check_env_alignment,
             self._check_runtime_lockfile_alignment,
+            self._check_bundle_config,
             self._check_mode_inertia_conflicts,
             self._check_ssr_reachability,
             self._check_static_props_secrets,
@@ -1283,6 +1287,115 @@ class ViteDoctor:
                         )
                     )
                 return
+
+    def _resolve_active_bundle_config(self) -> tuple[BundleConfig | None, dict[str, Any]]:
+        """Resolve active BundleConfig and parsed pyproject.toml dictionary when bundling is enabled."""
+        root = self.config.root_dir or Path.cwd()
+        pyproject_path = root / "pyproject.toml"
+        pyproject_data: dict[str, Any] = {}
+        has_pyproject_bundle = False
+        if pyproject_path.exists():
+            try:
+                decoded = msgspec.toml.decode(pyproject_path.read_bytes())
+                if isinstance(decoded, dict):
+                    pyproject_data = cast("dict[str, Any]", decoded)
+                    tool_any = pyproject_data.get("tool")
+                    tool_table = cast("dict[str, Any]", tool_any) if isinstance(tool_any, dict) else None
+                    litestar_any = tool_table.get("litestar") if tool_table is not None else None
+                    litestar_table = cast("dict[str, Any]", litestar_any) if isinstance(litestar_any, dict) else None
+                    bundle_any = litestar_table.get("bundle") if litestar_table is not None else None
+                    has_pyproject_bundle = isinstance(bundle_any, dict)
+            except (OSError, msgspec.DecodeError):
+                pyproject_data = {}
+
+        if has_pyproject_bundle:
+            pyproject_bundle = BundleConfig.from_pyproject(pyproject_path)
+            if isinstance(self.config.bundle, bool):
+                return pyproject_bundle, pyproject_data
+            return self.config.bundle, pyproject_data
+
+        if self.config.bundle_config is not None:
+            return self.config.bundle_config, pyproject_data
+
+        return None, pyproject_data
+
+    def _check_bundle_config(self) -> None:
+        """Check PyApp bundle configuration and required host toolchains when bundling is configured."""
+        bundle_cfg, pyproject_data = self._resolve_active_bundle_config()
+        if bundle_cfg is None:
+            return
+
+        if shutil.which("cargo") is None:
+            self.issues.append(
+                DoctorIssue(
+                    check="Bundle Cargo Missing",
+                    severity="warning",
+                    message="Rust 'cargo' binary not found on PATH for PyApp binary compilation",
+                    fix_hint="Install Rust via rustup (https://rustup.rs) or run `litestar assets bundle --stage-only`",
+                    auto_fixable=False,
+                )
+            )
+
+        if bundle_cfg.use_zigbuild and (shutil.which("cargo-zigbuild") is None or shutil.which("zig") is None):
+            self.issues.append(
+                DoctorIssue(
+                    check="Bundle Zigbuild Missing",
+                    severity="warning",
+                    message="BundleConfig(use_zigbuild=True) requires 'cargo-zigbuild' and 'zig' on PATH",
+                    fix_hint="Install zig and cargo-zigbuild (`cargo install cargo-zigbuild` and `pip install ziglang`)",
+                    auto_fixable=False,
+                )
+            )
+
+        project_any = pyproject_data.get("project")
+        project_table = cast("dict[str, Any]", project_any) if isinstance(project_any, dict) else None
+        scripts_any = project_table.get("scripts") if project_table is not None else None
+        has_scripts = isinstance(scripts_any, dict) and len(cast("dict[str, Any]", scripts_any)) > 0
+        if not bundle_cfg.exec_spec and not bundle_cfg.exec_module and not has_scripts:
+            self.issues.append(
+                DoctorIssue(
+                    check="Bundle Entrypoint Missing",
+                    severity="warning",
+                    message="No bundle entrypoint found in BundleConfig(exec_spec/exec_module) or [project.scripts]",
+                    fix_hint="Add a [project.scripts] entry in pyproject.toml or set exec_spec/exec_module in [tool.litestar.bundle]",
+                    auto_fixable=False,
+                )
+            )
+
+        if bundle_cfg.compile_ssr_worker in {"bun", "deno"} and shutil.which(bundle_cfg.compile_ssr_worker) is None:
+            self.issues.append(
+                DoctorIssue(
+                    check="Bundle SSR Compiler Missing",
+                    severity="warning",
+                    message=(
+                        f"BundleConfig(compile_ssr_worker={bundle_cfg.compile_ssr_worker!r}) "
+                        f"requires {bundle_cfg.compile_ssr_worker!r} on PATH"
+                    ),
+                    fix_hint=(
+                        f"Install {bundle_cfg.compile_ssr_worker} or switch to Wasm SSR with "
+                        "`pip install 'litestar-vite[wasm]'`"
+                    ),
+                    auto_fixable=False,
+                )
+            )
+        elif (
+            self.config.ssr_enabled
+            and bundle_cfg.compile_ssr_worker in {"none", "wasm"}
+            and self.config.ssr_transport in {"wasm", "auto"}
+            and not is_wasm_available()
+        ):
+            self.issues.append(
+                DoctorIssue(
+                    check="Bundle Wasm SSR Missing",
+                    severity="warning",
+                    message="SSR is enabled with bundle mode, but quickjs is not installed for in-process Wasm SSR",
+                    fix_hint=(
+                        "Install `litestar-vite[wasm]` (`uv add 'litestar-vite[wasm]'`) "
+                        "or set compile_ssr_worker='bun'/'deno'"
+                    ),
+                    auto_fixable=False,
+                )
+            )
 
     def _print_config_snapshot(self, *, show_bridge: bool) -> None:
         """Print a detailed view of Python, .litestar.json, and vite.config settings."""

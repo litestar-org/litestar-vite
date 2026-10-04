@@ -31,6 +31,7 @@ from litestar_vite.cli import (
     export_routes,
     generate_types,
     vite_build,
+    vite_bundle,
     vite_deploy,
     vite_doctor,
     vite_init,
@@ -39,10 +40,19 @@ from litestar_vite.cli import (
     vite_status,
     vite_update,
 )
-from litestar_vite.config import DeployConfig, ExternalDevServer, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig
+from litestar_vite.config import (
+    BundleConfig,
+    DeployConfig,
+    ExternalDevServer,
+    PathConfig,
+    RuntimeConfig,
+    TypeGenConfig,
+    ViteConfig,
+)
 from litestar_vite.exceptions import ViteExecutionError
 from litestar_vite.executor import JSExecutor
 from litestar_vite.plugin import VitePlugin
+from litestar_vite.plugin._utils import is_non_serving_assets_cli
 from litestar_vite.scaffolding.templates import FrameworkTemplate, FrameworkType
 
 
@@ -1207,3 +1217,106 @@ def test_cli_print_recommended_config_tanstack_includes_extra_commands(capsys: p
     assert "TypeGenConfig" in output
     assert "extra_commands" in output
     assert "tsr" in output
+
+
+def test_is_non_serving_assets_cli_recognizes_assets_bundle(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["litestar", "assets", "bundle", "--stage-only"])
+    assert is_non_serving_assets_cli() is True
+
+
+def test_cli_vite_bundle_stage_only(tmp_path: Path) -> None:
+    app = _make_app(tmp_path)
+    config = app.plugins.get(VitePlugin).config
+    config.bundle = BundleConfig(enabled=True, binary_name="demo-app", strip_dist=True)
+
+    wheel_path = tmp_path / "dist" / "bundle" / "work" / "wheels" / "demo_app-0.1.0-py3-none-any.whl"
+    archive_path = tmp_path / "dist" / "bundle" / "python-dist.tar.gz"
+    fake_bundler = Mock()
+    fake_bundler.build_project_wheel.return_value = [wheel_path]
+    fake_bundler.stage_distribution.return_value = archive_path
+
+    with (
+        patch("litestar_vite.cli._run_vite_build") as run_build,
+        patch("litestar_vite.cli.PyAppBundler", return_value=fake_bundler) as bundler_cls,
+    ):
+        _unwrap_command(vite_bundle)(
+            app,
+            target="x86_64-unknown-linux-gnu",
+            output=None,
+            stage_only=True,
+            compile_ssr=None,
+            install_root=None,
+            zigbuild=False,
+            no_strip=False,
+            pyapp_source=None,
+            no_build=False,
+            verbose=False,
+        )
+
+    run_build.assert_called_once()
+    bundler_cls.assert_called_once()
+    fake_bundler.build_project_wheel.assert_called_once()
+    fake_bundler.stage_distribution.assert_called_once_with(
+        tmp_path / "dist" / "bundle" / "work",
+        wheels=[wheel_path],
+        target_triple="x86_64-unknown-linux-gnu",
+    )
+    fake_bundler.prepare_pyapp_source.assert_not_called()
+    fake_bundler.compile_binary.assert_not_called()
+
+
+def test_cli_vite_bundle_full_compile_with_overrides(tmp_path: Path) -> None:
+    app = _make_app(tmp_path)
+    config = app.plugins.get(VitePlugin).config
+    config.bundle = True
+
+    wheel_path = tmp_path / "dist" / "bundle" / "work" / "wheels" / "demo_app-0.1.0-py3-none-any.whl"
+    archive_path = tmp_path / "dist" / "bundle" / "python-dist.tar.gz"
+    pyapp_dir = tmp_path / "pyapp-src"
+    output_bin = tmp_path / "dist" / "custom-bin"
+    output_bin.parent.mkdir(parents=True, exist_ok=True)
+    output_bin.write_bytes(b"binary-bytes")
+
+    fake_bundler = Mock()
+    fake_bundler.build_project_wheel.return_value = [wheel_path]
+    fake_bundler.stage_distribution.return_value = archive_path
+    fake_bundler.prepare_pyapp_source.return_value = pyapp_dir
+    fake_bundler.compile_binary.return_value = output_bin
+
+    with (
+        patch("litestar_vite.cli._run_vite_build") as run_build,
+        patch("litestar_vite.cli.PyAppBundler", return_value=fake_bundler) as bundler_cls,
+    ):
+        _unwrap_command(vite_bundle)(
+            app,
+            target="aarch64-unknown-linux-gnu",
+            output=output_bin,
+            stage_only=False,
+            compile_ssr="bun",
+            install_root="/opt/app",
+            zigbuild=True,
+            no_strip=True,
+            pyapp_source=pyapp_dir,
+            no_build=True,
+            verbose=True,
+        )
+
+    run_build.assert_called_once()
+    assert run_build.call_args.args[3] is True
+    passed_bundle_cfg = bundler_cls.call_args.kwargs["bundle_config"]
+    assert isinstance(passed_bundle_cfg, BundleConfig)
+    assert passed_bundle_cfg.compile_ssr_worker == "bun"
+    assert passed_bundle_cfg.install_root == "/opt/app"
+    assert passed_bundle_cfg.use_zigbuild is True
+    assert passed_bundle_cfg.strip_dist is False
+    assert passed_bundle_cfg.strip_symbols is False
+    fake_bundler.prepare_pyapp_source.assert_called_once_with(
+        tmp_path / "dist" / "bundle" / "work", pyapp_source=pyapp_dir
+    )
+    fake_bundler.compile_binary.assert_called_once_with(
+        dist_archive=archive_path,
+        pyapp_dir=pyapp_dir,
+        output_path=output_bin,
+        target_triple="aarch64-unknown-linux-gnu",
+    )
+

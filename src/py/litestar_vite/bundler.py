@@ -305,6 +305,28 @@ class PyAppBundler:
             return python_root / "Scripts" / "litestar-ssr-worker.exe"
         return python_root / "bin" / "litestar-ssr-worker"
 
+    def build_project_wheel(self, work_dir: Path) -> list[Path]:
+        """Build the current project's wheel into ``work_dir / 'wheels'`` using ``uv build``."""
+        wheel_dir = work_dir / "wheels"
+        wheel_dir.mkdir(parents=True, exist_ok=True)
+        self._runner(["uv", "build", "--wheel", "--out-dir", str(wheel_dir)], cwd=self._config.root_dir)
+        return sorted(wheel_dir.glob("*.whl"))
+
+    def prepare_pyapp_source(self, work_dir: Path, pyapp_source: Path | None = None) -> Path:
+        """Stage a writable PyApp source checkout under ``work_dir / 'pyapp'``."""
+        dest = work_dir / "pyapp"
+        if dest.exists():
+            shutil.rmtree(dest)
+        if pyapp_source is not None:
+            shutil.copytree(pyapp_source, dest)
+            return dest
+        work_dir.mkdir(parents=True, exist_ok=True)
+        self._runner(
+            ["git", "clone", "--depth", "1", "https://github.com/ofek/pyapp.git", str(dest)],
+            cwd=work_dir,
+        )
+        return dest
+
     def stage_distribution(
         self,
         work_dir: Path,
