@@ -92,3 +92,23 @@ def test_standalone_inertia_plugin_uses_resolve_ssr_command(tmp_path: Path, monk
         transport = active_plugin.ipc_transport
         assert isinstance(transport, StdioIPCTransport)
         assert transport.command[:2] == ["bun", "run"]
+
+
+def test_resolve_ssr_command_prefers_bundled_ssr_worker_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify resolve_ssr_command auto-detects a compiled litestar-ssr-worker next to sys.executable."""
+    bin_dir = tmp_path / "python" / "bin"
+    bin_dir.mkdir(parents=True)
+    fake_python = bin_dir / "python3"
+    fake_python.write_text("", encoding="utf-8")
+    worker_bin = bin_dir / "litestar-ssr-worker"
+    worker_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    worker_bin.chmod(0o755)
+
+    monkeypatch.setattr("litestar_vite.executor.sys.executable", str(fake_python))
+    config = ViteConfig(
+        mode="template",
+        paths=PathConfig(root=tmp_path),
+        runtime=RuntimeConfig(executor="node", dev_mode=False),
+        inertia=InertiaConfig(ssr=True),
+    )
+    assert resolve_ssr_command(config) == [str(worker_bin)]

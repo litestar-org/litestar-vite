@@ -227,6 +227,7 @@ class RuntimeConfig:
     health_check: bool = field(default_factory=lambda: os.getenv("VITE_HEALTH_CHECK", "False") in TRUE_VALUES)
     detect_nodeenv: bool = False
     provisioning_mode: Literal["auto", "wheel", "nodeenv", "system"] = "auto"
+    ssr_transport: Literal["stdio", "wasm", "auto"] = "auto"
     set_environment: bool = True
     set_static_folders: bool = True
     csp_nonce: "str | None" = None

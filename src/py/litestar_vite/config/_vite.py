@@ -1187,6 +1187,11 @@ class ViteConfig:
         return self.runtime.immutable_cache_headers
 
     @property
+    def ssr_transport(self) -> Literal["stdio", "wasm", "auto"]:
+        """Return the configured production SSR transport mode."""
+        return self.runtime.ssr_transport
+
+    @property
     def trusted_proxies(self) -> "list[str] | str | None":
         """Get trusted proxies configuration.
 

@@ -47,6 +47,7 @@ nodeenv = ["nodeenv"]
 node = ["nodejs-wheel>=22.0.0"]
 deno = ["deno>=2.0.0"]
 bun = ["bun-wheel>=1.2.0"]
+wasm = ["quickjs>=1.19.4"]
 http2 = ["h2>=4.0.0"]
 asyncapi = ["litestar-asyncapi>=0.2.0"]
 

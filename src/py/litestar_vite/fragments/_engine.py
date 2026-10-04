@@ -51,7 +51,7 @@ class FragmentEngine:
         if self._transport is None and self._transport_factory is not None:
             return self._transport_factory()
         if self._transport is None:
-            from litestar_vite.ipc import StdioIPCTransport, TCPStreamIPCTransport
+            from litestar_vite.ipc import TCPStreamIPCTransport, resolve_ssr_transport
 
             if getattr(self._config, "is_dev_mode", False):
                 host = getattr(self._config, "host", "127.0.0.1")
@@ -62,15 +62,7 @@ class FragmentEngine:
                     host=host, port=port, path="/__litestar_ssr__", scheme=self._config.protocol
                 )
             else:
-                from litestar_vite.config import InertiaConfig
-                from litestar_vite.executor import resolve_ssr_command
-
-                inertia = self._config.inertia
-                ssr = inertia.ssr_config if isinstance(inertia, InertiaConfig) else None
-                self._transport = StdioIPCTransport(
-                    command=resolve_ssr_command(self._config, ssr),
-                    cwd=(ssr.cwd if ssr else None) or self._config.root_dir,
-                )
+                self._transport = resolve_ssr_transport(self._config)
         return self._transport
 
     def get_component_css_urls(self, component: str) -> list[str]:

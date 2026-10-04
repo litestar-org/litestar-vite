@@ -199,7 +199,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         Returns:
             Configured BaseIPCTransport instance.
         """
-        from litestar_vite.ipc import StdioIPCTransport, TCPStreamIPCTransport
+        from litestar_vite.ipc import TCPStreamIPCTransport, resolve_ssr_transport
 
         if self._config.is_dev_mode:
             host = self._config.host
@@ -225,13 +225,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
             return self._ipc_dev_transports[target]
 
         if self._ipc_transport is None:
-            from litestar_vite.config._inertia import InertiaConfig
-            from litestar_vite.executor import resolve_ssr_command
-
-            inertia = self._config.inertia
-            ssr_config = ssr_config or (inertia.ssr_config if isinstance(inertia, InertiaConfig) else None)
-            cwd = (ssr_config.cwd if ssr_config is not None else None) or self._config.root_dir
-            self._ipc_transport = StdioIPCTransport(command=resolve_ssr_command(self._config, ssr_config), cwd=cwd)
+            self._ipc_transport = resolve_ssr_transport(self._config, ssr_config)
         return self._ipc_transport
 
     @property
@@ -622,8 +616,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
                 user_hook=user_before_request,
             ),
             "after_request": build_static_after_request_hook(
-                immutable_cache_headers=self._config.immutable_cache_headers,
-                user_hook=user_after_request,
+                immutable_cache_headers=self._config.immutable_cache_headers, user_hook=user_after_request
             ),
         }
         router = create_static_files_router(**static_files_config)

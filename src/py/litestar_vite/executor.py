@@ -189,6 +189,33 @@ class JSExecutor(ABC):
     def execute(self, args: list[str], cwd: Path) -> None:
         """Execute a command and wait for it to finish."""
 
+    @staticmethod
+    def _which(bin_name: str) -> "str | None":
+        """Locate an executable in the active virtualenv/wheel or system PATH.
+
+        Args:
+            bin_name: Bare binary name to resolve.
+
+        Returns:
+            Resolved executable path string if found, otherwise ``None``.
+        """
+        venv_path = _resolve_venv_executable(bin_name)
+        if venv_path is not None:
+            return venv_path
+        return shutil.which(bin_name)
+
+    @classmethod
+    def which(cls, bin_name: str) -> "str | None":
+        """Public helper to locate an executable in the active virtualenv/wheel or system PATH.
+
+        Args:
+            bin_name: Bare binary name to resolve.
+
+        Returns:
+            Resolved executable path string if found, otherwise ``None``.
+        """
+        return cls._which(bin_name)
+
     def _resolve_executable(self) -> str:
         """Return the executable path or raise if not found.
 
@@ -207,11 +234,7 @@ class JSExecutor(ABC):
         if self.executable_path:
             self._resolved_executable = str(self.executable_path)
             return self._resolved_executable
-        venv_path = _resolve_venv_executable(self.bin_name)
-        if venv_path is not None:
-            self._resolved_executable = venv_path
-            return venv_path
-        path = shutil.which(self.bin_name)
+        path = self._which(self.bin_name)
         if path is None:
             raise ViteExecutableNotFoundError(self.bin_name)
         self._resolved_executable = path
@@ -543,13 +566,37 @@ class NodeenvExecutor(JSExecutor):
         return [self._find_npm_in_venv(), "run", "build"]
 
 
+def find_bundled_ssr_worker() -> Path | None:
+    """Detect a compiled standalone SSR worker binary co-located with the Python executable.
+
+    When packaged with PyApp (``PYAPP_FULL_ISOLATION=1``) or staged into a virtual
+    environment, ``litestar-ssr-worker`` (or ``litestar-ssr-worker.exe`` on Windows)
+    resides in ``Path(sys.executable).parent``.
+
+    Returns:
+        Resolved path to the compiled SSR worker binary if present and executable,
+        otherwise ``None``.
+    """
+    bin_dir = Path(sys.executable).parent
+    candidates = (
+        [bin_dir / "litestar-ssr-worker.exe", bin_dir / "litestar-ssr-worker"]
+        if platform.system() == "Windows"
+        else [bin_dir / "litestar-ssr-worker", bin_dir / "litestar-ssr-worker.exe"]
+    )
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
 def resolve_ssr_command(config: "ViteConfig | None" = None, ssr_config: "InertiaSSRConfig | None" = None) -> list[str]:
     """Resolve the production SSR worker command for the active JS runtime.
 
-    Honors an explicit ``ssr_config.command`` override first. Otherwise resolves
-    the built SSR bundle path and returns the runtime-appropriate invocation via
-    the configured executor (``bun run <path>``, ``deno run --allow-read --allow-env <path>``,
-    or ``node <path>``).
+    Honors an explicit ``ssr_config.command`` override first, then checks for a
+    compiled ``litestar-ssr-worker`` binary co-located with ``sys.executable``.
+    Otherwise resolves the built SSR bundle path and returns the runtime-appropriate
+    invocation via the configured executor (``bun run <path>``,
+    ``deno run --allow-read --allow-env <path>``, or ``node <path>``).
 
     Args:
         config: Optional active ``ViteConfig`` instance.
@@ -562,6 +609,9 @@ def resolve_ssr_command(config: "ViteConfig | None" = None, ssr_config: "Inertia
         ssr_config = config.inertia.ssr_config
     if ssr_config is not None and ssr_config.command:
         return list(ssr_config.command)
+    bundled_worker = find_bundled_ssr_worker()
+    if bundled_worker is not None:
+        return [str(bundled_worker)]
     if config is not None:
         bundle_path = resolve_ssr_bundle_path(config.paths)
         return config.executor.ssr_command(bundle_path)
