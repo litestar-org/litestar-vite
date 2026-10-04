@@ -75,6 +75,18 @@ describe("install-hint", () => {
       expect(detectExecutor()).toBe("deno")
     })
 
+    it("returns deno when deno.json exists without deno.lock", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).endsWith("deno.json"))
+
+      expect(detectExecutor()).toBe("deno")
+    })
+
+    it("returns deno when deno.jsonc exists without deno.lock", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).endsWith("deno.jsonc"))
+
+      expect(detectExecutor()).toBe("deno")
+    })
+
     it("reads executor from .litestar.json", () => {
       vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes(".litestar.json"))
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ executor: "bun" }))

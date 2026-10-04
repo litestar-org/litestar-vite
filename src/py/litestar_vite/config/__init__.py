@@ -35,7 +35,11 @@ from litestar_vite.config._inertia import (  # pyright: ignore[reportPrivateUsag
     InertiaTypeGenConfig,
 )
 from litestar_vite.config._paths import PathConfig  # pyright: ignore[reportPrivateUsage]
-from litestar_vite.config._runtime import ExternalDevServer, RuntimeConfig  # pyright: ignore[reportPrivateUsage]
+from litestar_vite.config._runtime import (  # pyright: ignore[reportPrivateUsage]
+    ExternalDevServer,
+    RuntimeConfig,
+    detect_runtime,
+)
 from litestar_vite.config._spa import LoggingConfig, SPAConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._types import TypeGenConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._vite import PaginationContainer, ViteConfig  # pyright: ignore[reportPrivateUsage]
@@ -56,4 +60,5 @@ __all__ = (
     "SPAConfig",
     "TypeGenConfig",
     "ViteConfig",
+    "detect_runtime",
 )

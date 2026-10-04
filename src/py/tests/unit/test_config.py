@@ -1088,3 +1088,91 @@ def test_vite_config_proxy_mode_none_in_production(monkeypatch: pytest.MonkeyPat
     for mode in ("spa", "hybrid", "template", "framework"):
         config = ViteConfig(mode=mode, runtime=RuntimeConfig(dev_mode=False))
         assert config.proxy_mode is None, f"{mode!r} should not have a proxy_mode in production"
+
+
+@pytest.mark.parametrize(
+    ("files", "expected_executor"),
+    [
+        ({"bun.lockb": ""}, "bun"),
+        ({"bun.lock": ""}, "bun"),
+        ({"deno.lock": "{}"}, "deno"),
+        ({"deno.json": "{}"}, "deno"),
+        ({"deno.jsonc": "// comment\n{}"}, "deno"),
+        ({"pnpm-lock.yaml": ""}, "pnpm"),
+        ({"yarn.lock": ""}, "yarn"),
+        ({"package-lock.json": "{}"}, "node"),
+        ({"package.json": '{"packageManager": "pnpm@9.12.0"}'}, "pnpm"),
+        ({"package.json": '{"packageManager": "yarn@4.5.0"}'}, "yarn"),
+        ({"package.json": '{"packageManager": "bun@1.2.4"}'}, "bun"),
+        ({"package.json": '{"packageManager": "deno@2.2.0"}'}, "deno"),
+        ({}, "node"),
+    ],
+)
+def test_detect_runtime_lockfile_and_manifest_precedence(
+    tmp_path: Path, files: dict[str, str], expected_executor: str
+) -> None:
+    """detect_runtime resolves the expected executor from lockfiles, deno configs, and packageManager."""
+    from litestar_vite.config import detect_runtime
+
+    for filename, content in files.items():
+        (tmp_path / filename).write_text(content, encoding="utf-8")
+
+    assert detect_runtime(tmp_path) == expected_executor
+
+
+def test_vite_config_auto_detects_executor_from_root_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """ViteConfig auto-detects runtime.executor and default commands from root_dir when not explicitly set."""
+    from litestar_vite.executor import DenoExecutor
+
+    monkeypatch.delenv("LITESTAR_VITE_RUNTIME", raising=False)
+    monkeypatch.delenv("VITE_EXECUTOR", raising=False)
+    (tmp_path / "deno.json").write_text('{"tasks": {"dev": "vite"}}', encoding="utf-8")
+
+    config = ViteConfig(paths=PathConfig(root=tmp_path))
+
+    assert config.runtime.executor == "deno"
+    assert config.runtime.run_command == ["deno", "task", "dev"]
+    assert config.runtime.build_command == ["deno", "task", "build"]
+    assert isinstance(config.executor, DenoExecutor)
+
+
+def test_vite_config_env_and_explicit_executor_override_lockfiles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """LITESTAR_VITE_RUNTIME and explicit RuntimeConfig(executor=...) take precedence over lockfiles."""
+    (tmp_path / "deno.lock").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setenv("LITESTAR_VITE_RUNTIME", "bun")
+    env_config = ViteConfig(paths=PathConfig(root=tmp_path))
+    assert env_config.runtime.executor == "bun"
+
+    monkeypatch.delenv("LITESTAR_VITE_RUNTIME", raising=False)
+    explicit_config = ViteConfig(paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(executor="pnpm"))
+    assert explicit_config.runtime.executor == "pnpm"
+
+
+@pytest.mark.parametrize(
+    ("filename", "content", "expected_is_react"),
+    [
+        (
+            "deno.json",
+            '{"imports": {"@vitejs/plugin-react": "npm:@vitejs/plugin-react@^4.3.0", "react": "npm:react@^19.0.0"}}',
+            True,
+        ),
+        (
+            "deno.jsonc",
+            '// Deno 2 config with comments\n{"imports": {"react": "npm:react@^19.0.0", "react-dom": "npm:react-dom@^19.0.0"}}',
+            True,
+        ),
+        ("deno.json", '{"imports": {"vue": "npm:vue@^3.5.0"}}', False),
+    ],
+)
+def test_vite_config_auto_detect_react_from_deno_json(
+    tmp_path: Path, filename: str, content: str, expected_is_react: bool
+) -> None:
+    """ViteConfig._auto_detect_react detects React imports inside deno.json and deno.jsonc."""
+    (tmp_path / filename).write_text(content, encoding="utf-8")
+
+    config = ViteConfig(paths=PathConfig(root=tmp_path))
+
+    assert config.is_react is expected_is_react

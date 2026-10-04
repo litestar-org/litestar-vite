@@ -36,7 +36,7 @@ export function detectExecutor(): string {
   if (fs.existsSync(path.join(cwd, "yarn.lock"))) {
     return "yarn"
   }
-  if (fs.existsSync(path.join(cwd, "deno.lock"))) {
+  if (fs.existsSync(path.join(cwd, "deno.lock")) || fs.existsSync(path.join(cwd, "deno.json")) || fs.existsSync(path.join(cwd, "deno.jsonc"))) {
     return "deno"
   }
 

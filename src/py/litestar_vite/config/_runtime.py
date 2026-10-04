@@ -4,11 +4,17 @@ import os
 import warnings
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal, cast
+
+from litestar.exceptions import SerializationException
+from litestar.serialization import decode_json
 
 from litestar_vite.config._constants import TRUE_VALUES
 
-__all__ = ("ExternalDevServer", "RuntimeConfig", "resolve_trusted_proxies")
+__all__ = ("ExternalDevServer", "RuntimeConfig", "detect_runtime", "resolve_trusted_proxies")
+
+ExecutorType = Literal["node", "bun", "deno", "yarn", "pnpm"]
 
 _EXECUTOR_COMMANDS: dict[str, dict[str, tuple[str, ...]]] = {
     "node": {
@@ -262,6 +268,14 @@ class RuntimeConfig:
     your app serves documentation there.
     """
 
+    _executor_explicit: bool = field(default=False, init=False, repr=False)
+    _explicit_commands: frozenset[str] = field(default=frozenset(), init=False, repr=False)
+
+    @property
+    def has_explicit_executor(self) -> bool:
+        """Return whether the runtime executor was explicitly configured via args or env."""
+        return self._executor_explicit
+
     def __post_init__(self) -> None:
         """Normalize runtime settings and apply derived defaults."""
         if isinstance(self.extra_route_prefixes, str):
@@ -275,18 +289,104 @@ class RuntimeConfig:
         if self.external_dev_server is not None and self.proxy_mode in {None, "vite"}:
             self.proxy_mode = "proxy"
 
-        if self.executor is None:
-            self.executor = "node"
+        explicit_cmds: set[str] = set()
+        for cmd_attr in ("run_command", "build_command", "build_watch_command", "serve_command", "install_command"):
+            if getattr(self, cmd_attr) is not None:
+                explicit_cmds.add(cmd_attr)
+        self._explicit_commands = frozenset(explicit_cmds)
 
+        if self.executor is not None:
+            self._executor_explicit = True
+        else:
+            env_executor = (os.getenv("LITESTAR_VITE_RUNTIME") or os.getenv("VITE_EXECUTOR") or "").strip().lower()
+            if env_executor in _EXECUTOR_COMMANDS:
+                self.executor = cast("ExecutorType", env_executor)
+                self._executor_explicit = True
+            else:
+                self.executor = "node"
+                self._executor_explicit = False
+
+        self._populate_default_commands()
+
+    def _populate_default_commands(self) -> None:
+        """Populate unset command lists from the active executor command table."""
         if self.executor in _EXECUTOR_COMMANDS:
             cmds = _EXECUTOR_COMMANDS[self.executor]
-            if self.run_command is None:
+            if "run_command" not in self._explicit_commands:
                 self.run_command = list(cmds["run"])
-            if self.build_command is None:
+            if "build_command" not in self._explicit_commands:
                 self.build_command = list(cmds["build"])
-            if self.build_watch_command is None:
+            if "build_watch_command" not in self._explicit_commands:
                 self.build_watch_command = list(cmds["build_watch"])
-            if self.serve_command is None:
+            if "serve_command" not in self._explicit_commands:
                 self.serve_command = list(cmds["serve"])
-            if self.install_command is None:
+            if "install_command" not in self._explicit_commands:
                 self.install_command = list(cmds["install"])
+
+    def apply_detected_executor(self, executor: ExecutorType) -> None:
+        """Apply a lockfile-detected executor and refresh non-explicit command lists.
+
+        Args:
+            executor: The detected executor identifier.
+        """
+        self.executor = executor
+        self._populate_default_commands()
+
+
+_LOCKFILE_EXECUTORS: tuple[tuple[str, ExecutorType], ...] = (
+    ("bun.lockb", "bun"),
+    ("bun.lock", "bun"),
+    ("deno.lock", "deno"),
+    ("deno.json", "deno"),
+    ("deno.jsonc", "deno"),
+    ("pnpm-lock.yaml", "pnpm"),
+    ("yarn.lock", "yarn"),
+    ("package-lock.json", "node"),
+)
+
+_PACKAGE_MANAGER_EXECUTORS: dict[str, ExecutorType] = {
+    "bun": "bun",
+    "deno": "deno",
+    "pnpm": "pnpm",
+    "yarn": "yarn",
+    "npm": "node",
+    "node": "node",
+}
+
+
+def detect_runtime(root_dir: Path) -> ExecutorType:
+    """Detect the JavaScript runtime/package manager from project lockfiles and manifests.
+
+    Precedence:
+        1. ``bun.lockb`` or ``bun.lock`` -> ``"bun"``
+        2. ``deno.lock``, ``deno.json``, or ``deno.jsonc`` -> ``"deno"``
+        3. ``pnpm-lock.yaml`` -> ``"pnpm"``
+        4. ``yarn.lock`` -> ``"yarn"``
+        5. ``package-lock.json`` -> ``"node"``
+        6. ``package.json`` ``"packageManager"`` field (``pnpm@...``, ``yarn@...``, ``bun@...``, ``deno@...``)
+        7. Fallback -> ``"node"``
+
+    Args:
+        root_dir: Project root directory to inspect.
+
+    Returns:
+        The detected executor identifier.
+    """
+    for filename, executor in _LOCKFILE_EXECUTORS:
+        if (root_dir / filename).exists():
+            return executor
+
+    package_json = root_dir / "package.json"
+    if package_json.exists():
+        try:
+            payload = decode_json(package_json.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, SerializationException):
+            payload = None
+        if isinstance(payload, dict):
+            pkg_manager = cast("dict[str, Any]", payload).get("packageManager")
+            if isinstance(pkg_manager, str):
+                normalized = pkg_manager.strip().lower().split("@", 1)[0]
+                if normalized in _PACKAGE_MANAGER_EXECUTORS:
+                    return _PACKAGE_MANAGER_EXECUTORS[normalized]
+
+    return "node"
