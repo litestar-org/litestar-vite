@@ -1004,3 +1004,131 @@ class ViteAssetLoader:
         extra_attrs = " ".join(f'{key}="{html.escape(str(value), quote=True)}"' for key, value in merged.items())
         extra_suffix = f" {extra_attrs}" if extra_attrs else ""
         return f'<link rel="modulepreload" {crossorigin_str}{extra_suffix} href="{html.escape(href, quote=True)}" />'
+
+    def render_preload_headers(
+        self,
+        path: "str | list[str] | None" = None,
+        *,
+        manifest: "dict[str, Any] | None" = None,
+    ) -> list[str]:
+        """Generate RFC 8288 HTTP Link header values for preloading entry scripts, chunks, and stylesheets.
+
+        Args:
+            path: Optional manifest entry key or list of keys. When omitted, all manifest
+                entries marked with ``isEntry=True`` (or all non-chunk manifest keys) are used.
+            manifest: Optional manifest dictionary override.
+
+        Returns:
+            List of RFC 8288 ``Link`` header values (empty in development mode or when no manifest is loaded).
+        """
+        active_manifest = manifest if manifest is not None else self._manifest
+        if self._is_hot_dev or not active_manifest:
+            return []
+
+        previous_manifest = self._manifest
+        self._manifest = active_manifest
+        try:
+            if path is not None:
+                raw_paths = [path] if isinstance(path, str) else list(path)
+                paths = [p.replace("\\", "/") for p in raw_paths if p.replace("\\", "/") in active_manifest]
+            else:
+                entry_keys = [
+                    key
+                    for key, raw_val in active_manifest.items()
+                    if isinstance(raw_val, dict) and cast("dict[str, Any]", raw_val).get("isEntry") is True
+                ]
+                if not entry_keys:
+                    entry_keys = [
+                        key
+                        for key, raw_val in active_manifest.items()
+                        if isinstance(raw_val, dict) and not key.startswith("_")
+                    ]
+                paths = entry_keys
+
+            if not paths:
+                return []
+
+            entry_items, import_items, css_files = self._collect_manifest_graph(paths)
+        finally:
+            self._manifest = previous_manifest
+        asset_url_base = self._config.asset_url
+        links: list[str] = []
+        seen_links: set[str] = set()
+
+        for entry in entry_items:
+            file_path = entry.get("file", "")
+            if not isinstance(file_path, str) or not file_path:
+                continue
+            resolved_url = urljoin(asset_url_base, file_path)
+            link_val = (
+                f"<{resolved_url}>; rel=preload; as=style"
+                if file_path.endswith(".css")
+                else f"<{resolved_url}>; rel=modulepreload; as=script; crossorigin"
+            )
+            if link_val not in seen_links:
+                seen_links.add(link_val)
+                links.append(link_val)
+
+        for imp_entry in import_items:
+            imp_file = imp_entry.get("file", "")
+            if not isinstance(imp_file, str) or not imp_file or imp_file.endswith(".css"):
+                continue
+            resolved_imp = urljoin(asset_url_base, imp_file)
+            link_val = f"<{resolved_imp}>; rel=modulepreload; as=script; crossorigin"
+            if link_val not in seen_links:
+                seen_links.add(link_val)
+                links.append(link_val)
+
+        for css_path in css_files:
+            resolved_css = urljoin(asset_url_base, css_path)
+            link_val = f"<{resolved_css}>; rel=preload; as=style"
+            if link_val not in seen_links:
+                seen_links.add(link_val)
+                links.append(link_val)
+
+        return links
+
+
+async def send_early_hints(scope: Any, send: Any, preload_headers: list[str]) -> None:
+    """Send an ASGI 103 Early Hints informational frame when supported by the server scope.
+
+    Args:
+        scope: The ASGI connection scope.
+        send: The ASGI send callable.
+        preload_headers: List of RFC 8288 ``Link`` header values to include.
+    """
+    if not preload_headers or not isinstance(scope, dict):
+        return
+    scope_dict = cast("dict[str, Any]", scope)
+    extensions = scope_dict.get("extensions")
+    if not isinstance(extensions, dict):
+        return
+    ext_dict = cast("dict[str, Any]", extensions)
+    raw_headers = [(b"link", header.encode("latin-1")) for header in preload_headers]
+    if "http.response.informational" in ext_dict:
+        await send({"type": "http.response.informational", "status": 103, "headers": raw_headers})
+    elif "http.response.early_hint" in ext_dict:
+        await send({
+            "type": "http.response.early_hint",
+            "status": 103,
+            "headers": raw_headers,
+            "links": [header.encode("latin-1") for header in preload_headers],
+        })
+
+
+class EarlyHintsASGIResponse:
+    """ASGI response wrapper that emits 103 Early Hints before delegating to the inner response."""
+
+    __slots__ = ("_inner", "_preload_headers")
+
+    def __init__(self, inner: Any, preload_headers: list[str]) -> None:
+        self._inner = inner
+        self._preload_headers = preload_headers
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        await send_early_hints(scope, send, self._preload_headers)
+        await self._inner(scope, receive, send)
+

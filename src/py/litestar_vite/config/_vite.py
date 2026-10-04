@@ -1172,6 +1172,21 @@ class ViteConfig:
         return self.runtime.csp_nonce
 
     @property
+    def link_preload_headers(self) -> bool:
+        """Return whether RFC 8288 Link preload headers are emitted in production."""
+        return self.runtime.link_preload_headers
+
+    @property
+    def early_hints(self) -> bool:
+        """Return whether ASGI 103 Early Hints frames are emitted in production."""
+        return self.runtime.early_hints
+
+    @property
+    def immutable_cache_headers(self) -> bool:
+        """Return whether content-hashed static assets receive immutable Cache-Control headers."""
+        return self.runtime.immutable_cache_headers
+
+    @property
     def trusted_proxies(self) -> "list[str] | str | None":
         """Get trusted proxies configuration.
 

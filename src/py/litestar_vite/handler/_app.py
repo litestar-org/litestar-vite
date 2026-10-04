@@ -29,6 +29,7 @@ from litestar_vite.html_transform import (
     set_data_attribute,
     transform_asset_urls,
 )
+from litestar_vite.loader import ViteAssetLoader
 from litestar_vite.utils import get_static_resource_path, read_hotfile_url
 
 if TYPE_CHECKING:
@@ -329,6 +330,22 @@ class AppHandler:
                 csp_nonce=self._config.csp_nonce,
             )
         return transform_asset_urls(html, self._manifest, asset_url=self._config.asset_url, base_url=None)
+
+    @property
+    def config(self) -> "ViteConfig":
+        """Return the ViteConfig associated with this handler."""
+        return self._config
+
+    def get_preload_headers(self) -> list[str]:
+        """Return RFC 8288 Link preload header values for the loaded manifest."""
+        if self._config.is_dev_mode:
+            return []
+        if not self._manifest and not self._initialized:
+            self._load_manifest_sync()
+        if not self._manifest:
+            return []
+        loader = ViteAssetLoader(self._config)
+        return loader.render_preload_headers(manifest=self._manifest)
 
     def _inject_dev_scripts(self, html: str) -> str:
         """Inject Vite dev scripts for hybrid mode HTML served by Litestar.

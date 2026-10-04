@@ -8,16 +8,22 @@ compare structurally (``config.placement == "native"``) without importing this
 package. This module deliberately carries no litestar-granian import.
 """
 
+import inspect
+import re
 from dataclasses import dataclass, fields
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
+
+from litestar.exceptions import NotFoundException
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Sequence
 
+    from litestar.connection import Request
     from litestar.datastructures import CacheControlHeader
     from litestar.openapi.spec import SecurityRequirement
+    from litestar.response import Response
     from litestar.types import (
         AfterRequestHookHandler,  # pyright: ignore[reportUnknownVariableType]
         AfterResponseHookHandler,  # pyright: ignore[reportUnknownVariableType]
@@ -26,6 +32,135 @@ if TYPE_CHECKING:
         Guard,  # pyright: ignore[reportUnknownVariableType]
         Middleware,
     )
+
+IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
+BLOCKED_STATIC_METADATA_FILES: frozenset[str] = frozenset({
+    "manifest.json",
+    ".vite/manifest.json",
+    "ssr-manifest.json",
+    ".vite/ssr-manifest.json",
+    ".litestar.json",
+    "hot",
+})
+_HASHED_ASSET_PATTERN = re.compile(
+    r"[-.](?=[A-Za-z0-9_-]*[0-9]|[A-Za-z0-9_-]*[A-Z][A-Za-z0-9_-]*[a-z]|[A-Za-z0-9_-]*[a-z][A-Za-z0-9_-]*[A-Z])"
+    r"[A-Za-z0-9_-]{6,64}\.[A-Za-z0-9]+(?:\.map)?$"
+)
+
+
+def is_hashed_asset_path(file_path: "str | Path") -> bool:
+    """Return True when ``file_path`` has a Vite/Rollup content-hashed filename."""
+    name = Path(file_path).name
+    return bool(_HASHED_ASSET_PATTERN.search(name))
+
+
+def is_blocked_static_metadata_path(relative_path: str, extra_blocked: "Iterable[str]" = ()) -> bool:
+    """Return True when ``relative_path`` targets an internal build or bridge metadata file."""
+    normalized = relative_path.replace("\\", "/").strip("/")
+    if not normalized:
+        return False
+    blocked = BLOCKED_STATIC_METADATA_FILES.union(
+        item.replace("\\", "/").strip("/") for item in extra_blocked if item
+    )
+    if normalized in blocked:
+        return True
+    parts = normalized.split("/")
+    return ".litestar.json" in parts or normalized.endswith(("/.vite/manifest.json", "/.vite/ssr-manifest.json"))
+
+
+class _StaticBeforeRequestHook:
+    """Callable before_request hook that blocks internal metadata files before delegating to user hook."""
+
+    __slots__ = ("_asset_prefix", "_blocked_paths", "_user_hook")
+
+    def __init__(
+        self,
+        *,
+        asset_url: str,
+        blocked_paths: frozenset[str],
+        user_hook: Any = None,
+    ) -> None:
+        self._asset_prefix = "/" + asset_url.strip("/") if asset_url.strip("/") else ""
+        self._blocked_paths = blocked_paths
+        self._user_hook = user_hook
+
+    async def __call__(self, request: "Request[Any, Any, Any]") -> Any:
+        file_param = request.path_params.get("file_path")
+        if file_param is not None:
+            rel_path = str(file_param).replace("\\", "/").strip("/")
+        else:
+            req_path = request.url.path
+            if self._asset_prefix and req_path.startswith(f"{self._asset_prefix}/"):
+                rel_path = req_path[len(self._asset_prefix) + 1 :].strip("/")
+            else:
+                rel_path = req_path.strip("/")
+
+        if is_blocked_static_metadata_path(rel_path, self._blocked_paths):
+            raise NotFoundException(detail="Static metadata file not found")
+
+        if self._user_hook is not None:
+            result = self._user_hook(request)
+            if inspect.isawaitable(result):
+                return await result
+            return result
+        return None
+
+
+class _StaticAfterRequestHook:
+    """Callable after_request hook that sets immutable Cache-Control on hashed assets."""
+
+    __slots__ = ("_immutable_cache_headers", "_user_hook")
+
+    def __init__(
+        self,
+        *,
+        immutable_cache_headers: bool,
+        user_hook: Any = None,
+    ) -> None:
+        self._immutable_cache_headers = immutable_cache_headers
+        self._user_hook = user_hook
+
+    async def __call__(self, response: "Response[Any]") -> "Response[Any]":
+        if self._immutable_cache_headers:
+            file_path = getattr(response, "file_path", None)
+            if file_path is not None and is_hashed_asset_path(file_path):
+                headers = getattr(response, "headers", None)
+                if headers is not None and "cache-control" not in headers and "Cache-Control" not in headers:
+                    headers["cache-control"] = IMMUTABLE_CACHE_CONTROL
+
+        if self._user_hook is not None:
+            result = self._user_hook(response)
+            if inspect.isawaitable(result):
+                return cast("Response[Any]", await result)
+            return cast("Response[Any]", result)
+        return response
+
+
+def build_static_before_request_hook(
+    *,
+    asset_url: str,
+    manifest_name: str = "manifest.json",
+    hot_file: str = "hot",
+    user_hook: Any = None,
+) -> Any:
+    """Build a static router before_request hook that blocks internal Vite metadata files."""
+    clean_manifest = manifest_name.replace("\\", "/").strip("/")
+    clean_hot = hot_file.replace("\\", "/").strip("/")
+    blocked = BLOCKED_STATIC_METADATA_FILES.union({
+        clean_manifest,
+        f".vite/{clean_manifest}",
+        clean_hot,
+    })
+    return _StaticBeforeRequestHook(asset_url=asset_url, blocked_paths=blocked, user_hook=user_hook)
+
+
+def build_static_after_request_hook(
+    *,
+    immutable_cache_headers: bool,
+    user_hook: Any = None,
+) -> Any:
+    """Build a static router after_request hook that attaches immutable Cache-Control to hashed assets."""
+    return _StaticAfterRequestHook(immutable_cache_headers=immutable_cache_headers, user_hook=user_hook)
 
 
 class StaticPlacement(str, Enum):

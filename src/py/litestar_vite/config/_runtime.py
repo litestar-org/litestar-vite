@@ -230,6 +230,9 @@ class RuntimeConfig:
     set_environment: bool = True
     set_static_folders: bool = True
     csp_nonce: "str | None" = None
+    link_preload_headers: bool = True
+    early_hints: bool = False
+    immutable_cache_headers: bool = True
     spa_handler: bool = True
     http2: bool = True
     start_dev_server: bool = True

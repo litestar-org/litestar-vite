@@ -42,6 +42,7 @@ from litestar_vite.inertia.plugin import InertiaPlugin
 from litestar_vite.inertia.request import InertiaDetails, InertiaRequest
 from litestar_vite.inertia.state import consume_clear_history, persist_transient_state_for_redirect
 from litestar_vite.inertia.types import InertiaHeaderType, PageProps, ScrollPropsConfig
+from litestar_vite.loader import EarlyHintsASGIResponse
 from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
@@ -699,17 +700,29 @@ class InertiaResponse(Response[T]):
         else:
             body = self._render_template(request, page_props, type_encoders, inertia_plugin)
 
-        return ASGIResponse(  # pyright: ignore[reportUnknownMemberType]
+        preload_headers = _resolve_inertia_preload_headers(vite_plugin)
+        html_headers = dict(headers)
+        if (
+            preload_headers
+            and vite_plugin.config.link_preload_headers
+            and not any(k.lower() == "link" for k in html_headers)
+        ):
+            html_headers["Link"] = ", ".join(preload_headers)
+
+        asgi_response = ASGIResponse(  # pyright: ignore[reportUnknownMemberType]
             background=self.background or background,
             body=body,
             cookies=cookies,
             encoded_headers=encoded_headers,
             encoding=self.encoding,
-            headers=headers,
+            headers=html_headers,
             is_head_response=is_head_response,
             media_type=resolved_media_type,
             status_code=resolved_status_code,
         )
+        if preload_headers and vite_plugin.config.early_hints:
+            return cast("ASGIResponse", EarlyHintsASGIResponse(asgi_response, preload_headers))
+        return asgi_response
 
 
 class InertiaExternalRedirect(Response[Any]):
@@ -1136,6 +1149,19 @@ def _dedupe_once_prop_entries(
             continue
         filtered.setdefault(key, entry)
     return list(filtered.values())
+
+
+def _resolve_inertia_preload_headers(vite_plugin: "VitePlugin") -> list[str]:
+    """Resolve RFC 8288 Link preload headers from ViteAssetLoader or AppHandler in production."""
+    if vite_plugin.config.is_dev_mode:
+        return []
+    if not (vite_plugin.config.link_preload_headers or vite_plugin.config.early_hints):
+        return []
+    preload_headers = vite_plugin.asset_loader.render_preload_headers()
+    if not preload_headers and vite_plugin.spa_handler is not None:
+        preload_headers = vite_plugin.spa_handler.get_preload_headers()
+    return preload_headers
+
 
 
 class _AsyncInertiaSSRResponse:

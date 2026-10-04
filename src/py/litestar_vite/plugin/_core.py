@@ -28,7 +28,13 @@ from litestar_vite.plugin._proxy import (
     create_ssr_ws_proxy_handler,
     create_vite_hmr_handler,
 )
-from litestar_vite.plugin._static import StaticPlacement, StaticServerConfig, StaticServerMount
+from litestar_vite.plugin._static import (
+    StaticPlacement,
+    StaticServerConfig,
+    StaticServerMount,
+    build_static_after_request_hook,
+    build_static_before_request_hook,
+)
 from litestar_vite.plugin._utils import (
     build_litestar_route_prefixes,
     create_proxy_client,
@@ -604,7 +610,22 @@ class VitePlugin(InitPlugin, CLIPlugin):
             "exception_handlers": {NotFoundException: static_not_found_handler},
         }
         user_config = self._static_files_config.as_router_kwargs() if self._static_files_config else {}
-        static_files_config: dict[str, Any] = {**base_config, **user_config}
+        user_before_request = user_config.get("before_request")
+        user_after_request = user_config.get("after_request")
+        static_files_config: dict[str, Any] = {
+            **base_config,
+            **user_config,
+            "before_request": build_static_before_request_hook(
+                asset_url=self._config.asset_url,
+                manifest_name=self._config.manifest_name,
+                hot_file=self._config.hot_file,
+                user_hook=user_before_request,
+            ),
+            "after_request": build_static_after_request_hook(
+                immutable_cache_headers=self._config.immutable_cache_headers,
+                user_hook=user_after_request,
+            ),
+        }
         router = create_static_files_router(**static_files_config)
         for route in router.routes:
             for handler in getattr(route, "route_handlers", []):

@@ -159,3 +159,39 @@ def test_template_callables_resolve_per_request_csp_nonce() -> None:
     _ = render_hmr_client(ctx_override)
 
 
+def test_render_preload_headers_formats_rfc8288_links() -> None:
+    """Verify render_preload_headers returns RFC 8288 Link header values for entry scripts, chunks, and CSS."""
+    config = ViteConfig(paths=PathConfig(asset_url="/static/"), runtime=RuntimeConfig(dev_mode=False))
+    loader = ViteAssetLoader(config)
+    loader._manifest = {
+        "src/main.ts": {
+            "file": "assets/main-abc12345.js",
+            "src": "src/main.ts",
+            "isEntry": True,
+            "css": ["assets/main-def67890.css"],
+            "imports": ["_vendor.js"],
+        },
+        "_vendor.js": {
+            "file": "assets/vendor-99887766.js",
+            "css": ["assets/vendor-11223344.css"],
+        },
+    }
+
+    links = loader.render_preload_headers("src/main.ts")
+    assert "</static/assets/main-abc12345.js>; rel=modulepreload; as=script; crossorigin" in links
+    assert "</static/assets/vendor-99887766.js>; rel=modulepreload; as=script; crossorigin" in links
+    assert "</static/assets/main-def67890.css>; rel=preload; as=style" in links
+    assert "</static/assets/vendor-11223344.css>; rel=preload; as=style" in links
+
+    auto_links = loader.render_preload_headers()
+    assert auto_links == links
+
+
+def test_render_preload_headers_returns_empty_in_dev_mode() -> None:
+    """Verify render_preload_headers returns an empty list in hot dev mode."""
+    config = ViteConfig(paths=PathConfig(asset_url="/static/"), runtime=RuntimeConfig(dev_mode=True))
+    loader = ViteAssetLoader(config)
+    assert loader.render_preload_headers("src/main.ts") == []
+
+
+
