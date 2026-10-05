@@ -456,3 +456,26 @@ def test_jinja_fragment_in_before_request_response(tmp_path: Path) -> None:
         response = client.get("/")
         assert response.status_code == 200
         assert response.text == '<div class="card">Hello</div>'
+
+
+def test_component_response_preserves_htmx_headers(tmp_path: Path) -> None:
+    """Verify ComponentResponse passes custom HTMX response headers through to the HTTP response."""
+    config = ViteConfig(paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=False))
+    plugin = VitePlugin(config=config)
+    plugin.fragment_engine._transport = _StubFragmentTransport(response={"result": {"html": "<div>Saved</div>"}})
+
+    @get("/htmx-frag")
+    async def get_htmx_frag() -> ComponentResponse:
+        return ComponentResponse(
+            component="components/Toast.tsx",
+            props={"message": "Saved"},
+            headers={"HX-Trigger": "itemSaved", "HX-Push-Url": "/items", "HX-Reswap": "outerHTML"},
+        )
+
+    with create_test_client(route_handlers=[get_htmx_frag], plugins=[plugin]) as client:
+        resp = client.get("/htmx-frag")
+        assert resp.status_code == 200
+        assert resp.text == "<div>Saved</div>"
+        assert resp.headers["hx-trigger"] == "itemSaved"
+        assert resp.headers["hx-push-url"] == "/items"
+        assert resp.headers["hx-reswap"] == "outerHTML"

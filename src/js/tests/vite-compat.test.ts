@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  assertVite7Plus,
   buildBundlerOptions,
   buildInputOptions,
   hmrServerConfig,
@@ -78,6 +79,13 @@ describe("vite-compat", () => {
     it("recognizes Vite 7+ runtime baseline", () => {
       expect(isVite7Plus).toBe(true)
       expect(viteMajor).toBeGreaterThanOrEqual(7)
+      expect(() => assertVite7Plus(7)).not.toThrow()
+      expect(() => assertVite7Plus(8)).not.toThrow()
+    })
+
+    it("throws a descriptive error when Vite major version is below 7", () => {
+      expect(() => assertVite7Plus(6)).toThrow("litestar-vite-plugin requires Vite >= 7.0.0, but running Vite is 6.x")
+      expect(() => assertVite7Plus(5)).toThrow("litestar-vite-plugin requires Vite >= 7.0.0, but running Vite is 5.x")
     })
   })
 })

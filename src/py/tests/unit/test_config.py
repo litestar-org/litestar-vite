@@ -842,18 +842,25 @@ def test_validate_mode_allows_hybrid_with_inertia() -> None:
     assert isinstance(config.inertia, InertiaConfig)
 
 
+@pytest.mark.parametrize("bad_timeout", [0, 0.0, -1.0])
+def test_inertia_ssr_config_rejects_non_positive_timeout_at_init(bad_timeout: float) -> None:
+    """InertiaSSRConfig validates that timeout is strictly positive at construction time."""
+    with pytest.raises(ValueError, match="timeout must be positive"):
+        InertiaSSRConfig(timeout=bad_timeout)
+
+
 def test_validate_mode_rejects_negative_ssr_timeout() -> None:
-    config = ViteConfig(
-        mode="hybrid", inertia=InertiaConfig(ssr=InertiaSSRConfig(timeout=-1.0)), runtime=RuntimeConfig(dev_mode=True)
-    )
+    ssr = InertiaSSRConfig(timeout=1.0)
+    ssr.timeout = -1.0
+    config = ViteConfig(mode="hybrid", inertia=InertiaConfig(ssr=ssr), runtime=RuntimeConfig(dev_mode=True))
     with pytest.raises(ValueError, match="timeout must be positive"):
         config.validate_mode()
 
 
 def test_validate_mode_rejects_zero_ssr_timeout() -> None:
-    config = ViteConfig(
-        mode="hybrid", inertia=InertiaConfig(ssr=InertiaSSRConfig(timeout=0)), runtime=RuntimeConfig(dev_mode=True)
-    )
+    ssr = InertiaSSRConfig(timeout=1.0)
+    ssr.timeout = 0
+    config = ViteConfig(mode="hybrid", inertia=InertiaConfig(ssr=ssr), runtime=RuntimeConfig(dev_mode=True))
     with pytest.raises(ValueError, match="timeout must be positive"):
         config.validate_mode()
 

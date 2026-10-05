@@ -15,7 +15,7 @@ import { resolveHotFilePath } from "./shared/network.js"
 import type { DevSsrOptions, SsrRenderRequest, SsrRenderResponse } from "./shared/ssr-types.js"
 import { resolveDefaultSdkClientPlugin } from "./shared/typegen-core.js"
 import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig, type TypesConfigShape } from "./shared/typegen-plugin.js"
-import { buildInputOptions, hmrServerConfig, isVite7Plus, mergeDefinedHmrOptions, resolveUserBuildInput, viteMajor } from "./shared/vite-compat.js"
+import { assertVite7Plus, buildInputOptions, hmrServerConfig, mergeDefinedHmrOptions, resolveUserBuildInput } from "./shared/vite-compat.js"
 
 export { litestarViteSsrPlugin }
 export type { DevSsrOptions, SsrRenderRequest, SsrRenderResponse }
@@ -234,9 +234,7 @@ const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((p) => fs.ex
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function litestar(config: string | string[] | PluginConfig): any[] {
-  if (!isVite7Plus) {
-    throw new Error(`litestar-vite-plugin requires Vite >= 7.0.0, but running Vite is ${viteMajor}.x. Please upgrade Vite.`)
-  }
+  assertVite7Plus()
   const pluginConfig = resolvePluginConfig(config)
 
   const plugins: Plugin[] = [resolveLitestarPlugin(pluginConfig, config), ...(resolveFullReloadConfig(pluginConfig) as Plugin[])]

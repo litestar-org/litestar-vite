@@ -7,7 +7,9 @@ import pytest
 from litestar.serialization import decode_json
 
 from litestar_vite.exceptions import MissingDependencyError
+from litestar_vite.scaffolding import TemplateContext, generate_project
 from litestar_vite.scaffolding.templates import CURRENT_NPM_VERSION_RANGES as V
+from litestar_vite.scaffolding.templates import FrameworkType, get_template
 
 pytestmark = pytest.mark.anyio
 
@@ -473,3 +475,36 @@ def test_scaffolding_generated_package_manifests_pin_dependency_versions(tmp_pat
         if "node_modules" in example_package.parts:
             continue
         assert '"latest"' not in example_package.read_text(), f"{example_package}: example package should pin versions"
+
+
+@pytest.mark.parametrize(
+    ("framework_type", "ssr_entry"),
+    [
+        (FrameworkType.REACT_INERTIA, "resources/ssr.tsx"),
+        (FrameworkType.VUE_INERTIA, "resources/ssr.ts"),
+        (FrameworkType.SVELTE_INERTIA, "resources/ssr.ts"),
+    ],
+)
+def test_scaffolding_inertia_ssr_templates_use_stdio_worker(
+    tmp_path: Path, framework_type: FrameworkType, ssr_entry: str
+) -> None:
+    """Verify React, Vue, and Svelte Inertia SSR templates generate startSsrWorker and --stdio scripts."""
+    framework = get_template(framework_type)
+    assert framework is not None
+    target = tmp_path / framework_type.value
+    generate_project(
+        target, TemplateContext(project_name="ssr-app", framework=framework, enable_ssr=True, enable_inertia=True)
+    )
+
+    ssr_path = target / ssr_entry
+    assert ssr_path.exists()
+    ssr_source = ssr_path.read_text(encoding="utf-8")
+    assert "startSsrWorker" in ssr_source
+    assert "createServer" not in ssr_source
+
+    package_json = decode_json((target / "package.json").read_text(encoding="utf-8"))
+    scripts = package_json["scripts"]
+    assert "build:ssr" in scripts
+    assert "--ssr" in scripts["build:ssr"]
+    assert "serve:ssr" in scripts
+    assert "--stdio" in scripts["serve:ssr"]

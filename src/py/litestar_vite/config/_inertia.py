@@ -55,6 +55,11 @@ class InertiaSSRConfig:
     circuit_breaker_reset_timeout: float = 30.0
     """Cooldown seconds to wait before probing SSR worker health after tripping."""
 
+    def __post_init__(self) -> None:
+        if self.timeout <= 0:
+            msg = "timeout must be positive"
+            raise ValueError(msg)
+
 
 @dataclass
 class InertiaConfig:

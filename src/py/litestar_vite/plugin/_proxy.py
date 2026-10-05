@@ -244,7 +244,10 @@ async def _proxy_http_request(
     """Forward HTTP with pooled connections and per-operation inactivity timeouts.
 
     HTTPX2 handles HTTP framing and informational responses. Raw response bytes
-    retain their Content-Encoding so browsers can decode compressed assets.
+    retain their Content-Encoding so browsers can decode compressed assets. If an
+    upstream HTTP error occurs after ``http.response.start`` has been sent, the
+    exception is re-raised to abort the downstream response instead of reporting
+    truncated data as complete.
     """
     response_started = False
     async with AsyncExitStack() as stack:
@@ -266,7 +269,6 @@ async def _proxy_http_request(
                 await send({"type": "http.response.body", "body": b"", "more_body": False})
         except httpx2.HTTPError as exc:
             if response_started:
-                # Abort the downstream response instead of reporting truncated data as complete.
                 raise
             status = error_status if isinstance(exc, httpx2.ConnectError) else 502
             message = error_message if isinstance(exc, httpx2.ConnectError) else None
