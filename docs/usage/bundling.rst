@@ -132,8 +132,10 @@ picks the first available option:
 1. An explicit ``InertiaSSRConfig(command=...)``.
 2. A compiled ``litestar-ssr-worker`` next to ``sys.executable`` (requires
    ``compile_ssr_worker`` and ``full_isolation``).
-3. The configured JavaScript runtime (``node``, ``bun``, ``deno``) from the virtual
-   environment or ``PATH``.
+3. The configured JavaScript runtime (``node``, ``bun``, ``deno``) located according to
+   ``RuntimeConfig.provisioning_mode`` (``"auto"``: virtual environment then ``PATH``;
+   ``"wheel"``: virtual environment only, raising ``ViteExecutableNotFoundError`` at
+   startup when missing; ``"system"``: ``PATH`` only).
 4. The in-process :class:`~litestar_vite.ipc.WasmIPCTransport` when the
    ``litestar-vite[wasm]`` extra is installed (experimental; no host runtime needed).
 

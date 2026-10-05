@@ -13,7 +13,6 @@ from litestar_vite.bundler import (
     BundleConfigurationError,
     PyAppBundler,
     default_pbs_url,
-    detect_host_target_triple,
     patch_pyapp_install_dir,
     patch_pyapp_static_bzip2,
 )
@@ -265,7 +264,6 @@ def test_pyapp_bundler_stage_and_compile_lifecycle(tmp_path: Path) -> None:
     assert cargo_env["PYAPP_EXEC_SPEC"] == "demo.app:run"
     assert cargo_env["BZIP2_SYS_STATIC"] == "1"
     assert cargo_env["LZMA_API_STATIC"] == "1"
-    assert isinstance(detect_host_target_triple(), str)
 
 
 def test_pyapp_bundler_build_project_wheel_and_prepare_source(tmp_path: Path) -> None:

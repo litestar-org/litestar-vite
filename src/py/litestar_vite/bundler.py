@@ -344,10 +344,12 @@ class PyAppBundler:
     def strip_staged_distribution(self, python_root: Path) -> None:
         """Remove bytecode caches, stdlib test suites, static libs, and C headers from a staged distribution.
 
-        Only the standard library's own ``test`` and ``idle_test`` packages are
-        removed; ``site-packages`` content is left intact apart from
-        ``__pycache__`` directories so that installed projects shipping a
-        ``tests`` package keep working.
+        Only the standard library's own test packages (``test``,
+        ``idlelib/idle_test``, ``lib2to3/tests``, ``tkinter/test``,
+        ``unittest/test``) are removed; ``site-packages`` content is left intact
+        apart from ``__pycache__`` directories so that installed projects shipping
+        a ``tests`` package keep working. Static archives are removed only from
+        the interpreter ``lib``/``libs`` roots, never from ``site-packages``.
         """
         include_dir = python_root / "include"
         if include_dir.is_dir():

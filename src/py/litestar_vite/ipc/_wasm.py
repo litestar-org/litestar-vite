@@ -336,18 +336,15 @@ class WasmIPCTransport(BaseIPCTransport):
 
     async def close(self) -> None:
         """Shut down the worker thread and release the QuickJS context."""
-        self._is_running = False
-        self._context = None
-        if self._executor is not None:
-            self._executor.shutdown(wait=False, cancel_futures=True)
-            self._executor = None
+        self._teardown()
 
-    def _reset_after_timeout(self) -> None:
-        """Discard the wedged context and executor so the next request rebuilds a fresh engine.
+    def _teardown(self) -> None:
+        """Discard the context and executor so the next request rebuilds a fresh engine.
 
-        A timed-out dispatch may still be executing on the worker thread until
-        the engine's interrupt fires; abandoning the executor guarantees that
-        subsequent requests never queue behind it.
+        Used by :meth:`close` and after a timeout: a timed-out dispatch may still
+        be executing on the worker thread until the engine's interrupt fires, and
+        abandoning the executor guarantees that subsequent requests never queue
+        behind it.
         """
         self._is_running = False
         self._context = None
@@ -358,9 +355,13 @@ class WasmIPCTransport(BaseIPCTransport):
     async def send_request(self, payload: dict[str, Any], timeout: float = 10.0) -> dict[str, Any]:
         """Serialize a request, dispatch it to the in-process SSR worker, and decode the response.
 
+        Dispatches are serialized on a single engine thread. ``timeout`` bounds the
+        execution of this request only; time spent waiting for an earlier request
+        to finish is not counted, so a queued request never resets a healthy engine.
+
         Args:
             payload: Outbound IPC request dictionary.
-            timeout: Maximum duration in seconds to wait for a response.
+            timeout: Maximum duration in seconds to wait for a response once dispatched.
 
         Returns:
             Decoded response dictionary from the SSR worker.
@@ -370,30 +371,28 @@ class WasmIPCTransport(BaseIPCTransport):
         outbound = {**payload, "id": req_id}
         request_line = encode_json(outbound).decode("utf-8")
 
-        async def _execute_locked() -> str:
-            async with self._lock:
-                if not self._is_running:
-                    await self.start()
-                if self._executor is None:
-                    msg = "WASM SSR executor is not running."
-                    raise IPCWorkerCrashError(msg)
-                loop = asyncio.get_running_loop()
-                return await loop.run_in_executor(self._executor, self._dispatch_sync, request_line, timeout)
-
-        try:
-            raw_response = await asyncio.wait_for(_execute_locked(), timeout=timeout)
-        except asyncio.TimeoutError as exc:
-            self._reset_after_timeout()
-            msg = f"WASM SSR request {req_id} timed out after {timeout}s"
-            raise IPCTimeoutError(msg) from exc
-        except IPCTimeoutError:
-            self._reset_after_timeout()
-            raise
-        except IPCError:
-            raise
-        except Exception as exc:
-            msg = f"WASM SSR execution failed: {exc}"
-            raise IPCWorkerCrashError(msg) from exc
+        async with self._lock:
+            if not self._is_running:
+                await self.start()
+            if self._executor is None:
+                msg = "WASM SSR executor is not running."
+                raise IPCWorkerCrashError(msg)
+            loop = asyncio.get_running_loop()
+            dispatch = loop.run_in_executor(self._executor, self._dispatch_sync, request_line, timeout)
+            try:
+                raw_response = await asyncio.wait_for(dispatch, timeout=timeout)
+            except asyncio.TimeoutError as exc:
+                self._teardown()
+                msg = f"WASM SSR request {req_id} timed out after {timeout}s"
+                raise IPCTimeoutError(msg) from exc
+            except IPCTimeoutError:
+                self._teardown()
+                raise
+            except IPCError:
+                raise
+            except Exception as exc:
+                msg = f"WASM SSR execution failed: {exc}"
+                raise IPCWorkerCrashError(msg) from exc
 
         try:
             decoded = decode_json(raw_response)
@@ -461,16 +460,13 @@ def resolve_ssr_transport(
     if mode == "wasm":
         return WasmIPCTransport(bundle_path=bundle_path)
 
-    has_explicit_or_bundled_worker = bool(ssr_config is not None and ssr_config.command) or (
-        find_bundled_ssr_worker() is not None
-    )
-    provisioning_mode = config.runtime.provisioning_mode if config is not None else "auto"
-    if (
-        mode == "auto"
-        and not has_explicit_or_bundled_worker
-        and JSExecutor.which(_resolve_ssr_runtime_binary_name(config), provisioning_mode) is None
-        and is_wasm_available()
-    ):
-        return WasmIPCTransport(bundle_path=bundle_path)
+    if mode == "auto" and not (ssr_config is not None and ssr_config.command):
+        provisioning_mode = config.runtime.provisioning_mode if config is not None else "auto"
+        if (
+            find_bundled_ssr_worker() is None
+            and JSExecutor.which(_resolve_ssr_runtime_binary_name(config), provisioning_mode) is None
+            and is_wasm_available()
+        ):
+            return WasmIPCTransport(bundle_path=bundle_path)
 
     return StdioIPCTransport(command=resolve_ssr_command(config, ssr_config), cwd=cwd)

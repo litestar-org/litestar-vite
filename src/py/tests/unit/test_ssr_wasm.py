@@ -274,6 +274,11 @@ globalThis.__litestar_ssr_dispatch__ = (line) => {
   if (req.method === "spin") {
     for (;;) {}
   }
+  if (req.method === "reschedule") {
+    const tick = () => { setTimeout(tick, 0); };
+    tick();
+    return new Promise(() => {});
+  }
   return new Promise((resolve) => {
     setTimeout(() => {
       queueMicrotask(() => {
@@ -301,4 +306,27 @@ async def test_wasm_ipc_transport_runs_real_quickjs_esm_bundle_and_recovers_from
 
     second = await transport.send_request({"method": "render"}, timeout=5.0)
     assert second["result"]["html"] == "<p>héllo</p>"
+    await transport.close()
+
+
+@pytest.mark.timeout(10)
+async def test_wasm_ipc_transport_drain_deadline_stops_rescheduling_timers(tmp_path: Path) -> None:
+    """Real QuickJS engine: a bundle that reschedules timers forever is cut off by the drain deadline, not left spinning."""
+    pytest.importorskip("quickjs")
+    bundle = tmp_path / "ssr.js"
+    bundle.write_text(_REAL_ESM_BUNDLE, encoding="utf-8")
+
+    transport = WasmIPCTransport(bundle_path=bundle)
+    await transport.start()
+    started = time.monotonic()
+    with pytest.raises(IPCTimeoutError, match="draining timers"):
+        transport._dispatch_sync('{"id": 1, "method": "reschedule"}', time_limit=0.2)
+    assert time.monotonic() - started < 5.0
+
+    with pytest.raises(IPCTimeoutError):
+        await transport.send_request({"method": "reschedule"}, timeout=0.2)
+    assert transport.is_running is False
+
+    recovered = await transport.send_request({"method": "render"}, timeout=5.0)
+    assert recovered["result"]["html"] == "<p>héllo</p>"
     await transport.close()

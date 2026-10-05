@@ -95,7 +95,7 @@ export function resolveInstallHint(pkg: string | readonly string[] = "@hey-api/o
 
 /**
  * Resolves the package executor command based on runtime.
- * Priority: explicit executor > .litestar.json > LITESTAR_VITE_RUNTIME env > lockfile detection > 'npx'
+ * Priority: explicit executor > LITESTAR_VITE_RUNTIME env > .litestar.json > lockfile/packageManager detection > 'npx'
  *
  * @param pkg - The package command to execute (e.g., "@hey-api/openapi-ts -i schema.json -o src/types")
  * @param executor - Optional explicit executor override

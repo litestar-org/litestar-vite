@@ -210,7 +210,7 @@ class JSExecutor(ABC):
         """Execute a command and wait for it to finish."""
 
     @staticmethod
-    def _which(bin_name: str, provisioning_mode: ProvisioningMode = "auto") -> "str | None":
+    def which(bin_name: str, provisioning_mode: ProvisioningMode = "auto") -> "str | None":
         """Locate an executable according to ``provisioning_mode``.
 
         Args:
@@ -226,19 +226,6 @@ class JSExecutor(ABC):
         if venv_path is not None or provisioning_mode == "wheel":
             return venv_path
         return shutil.which(bin_name)
-
-    @classmethod
-    def which(cls, bin_name: str, provisioning_mode: ProvisioningMode = "auto") -> "str | None":
-        """Public helper to locate an executable in the active virtualenv/wheel or system PATH.
-
-        Args:
-            bin_name: Bare binary name to resolve.
-            provisioning_mode: Discovery policy (see :class:`JSExecutor`).
-
-        Returns:
-            Resolved executable path string if found, otherwise ``None``.
-        """
-        return cls._which(bin_name, provisioning_mode)
 
     def _resolve_ssr_runtime_binary(self, bin_name: str) -> str:
         """Resolve the JS runtime binary used to execute a production SSR bundle.
@@ -286,7 +273,7 @@ class JSExecutor(ABC):
         if self.executable_path:
             self._resolved_executable = str(self.executable_path)
             return self._resolved_executable
-        path = self._which(self.bin_name, self.provisioning_mode)
+        path = self.which(self.bin_name, self.provisioning_mode)
         if path is None:
             raise ViteExecutableNotFoundError(self.bin_name)
         self._resolved_executable = path

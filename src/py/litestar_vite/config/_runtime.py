@@ -201,7 +201,10 @@ class RuntimeConfig:
         detect_nodeenv: Detect and use nodeenv in virtualenv (opt-in).
         provisioning_mode: How runtime binaries are located:
             - "auto" (default): active virtual environment / PEP 425 wheel first, then ``PATH``
-            - "wheel": only the virtual environment (fails fast if the runtime wheel is missing)
+            - "wheel": only the virtual environment; build commands and production SSR
+              transport construction raise ``ViteExecutableNotFoundError`` at startup when
+              the runtime wheel is missing (unless an explicit SSR command, a bundled
+              ``litestar-ssr-worker`` or the ``wasm`` extra is available)
             - "nodeenv": like "auto" and additionally enables ``detect_nodeenv``
             - "system": only ``PATH`` (ignores virtual-environment binaries)
         ssr_transport: Production SSR IPC transport selection:
