@@ -7,7 +7,7 @@ import pytest
 
 from litestar_vite.bundler import (
     DEFAULT_PLATFORMS,
-    DEFAULT_URLS,
+    DEFAULT_TARGET_TRIPLES,
     PBS_URL_TEMPLATE,
     PYAPP_REPOSITORY_URL,
     BundleConfigurationError,
@@ -20,8 +20,8 @@ from litestar_vite.bundler import (
 from litestar_vite.config import BundleConfig, PathConfig, ViteConfig
 
 
-def test_default_urls_and_platforms_cover_five_standard_targets() -> None:
-    """Verify DEFAULT_URLS and DEFAULT_PLATFORMS cover all 5 standard target triples."""
+def test_default_pbs_urls_and_platforms_cover_five_standard_targets() -> None:
+    """Verify default_pbs_url and DEFAULT_PLATFORMS cover all 5 standard target triples."""
     expected_targets = {
         "x86_64-unknown-linux-gnu",
         "aarch64-unknown-linux-gnu",
@@ -29,50 +29,104 @@ def test_default_urls_and_platforms_cover_five_standard_targets() -> None:
         "aarch64-apple-darwin",
         "x86_64-pc-windows-msvc",
     }
-    assert set(DEFAULT_URLS.keys()) == expected_targets
+    assert set(DEFAULT_TARGET_TRIPLES) == expected_targets
     assert set(DEFAULT_PLATFORMS.keys()) == expected_targets
     assert DEFAULT_PLATFORMS["x86_64-unknown-linux-gnu"] == "manylinux_2_28_x86_64"
     assert DEFAULT_PLATFORMS["aarch64-unknown-linux-gnu"] == "manylinux_2_28_aarch64"
-    for url in DEFAULT_URLS.values():
+    defaults = BundleConfig()
+    for triple in DEFAULT_TARGET_TRIPLES:
+        url = default_pbs_url(triple, defaults.python_version, defaults.pbs_release)
+        assert url is not None
         assert "install_only_stripped" in url
+        assert triple in url
+
+
+_PYAPP_V0_29_0_INITIALIZE = """\
+pub fn initialize() -> Result<()> {
+    let platform_directories = ProjectDirs::from("", "", "pyapp")
+        .with_context(|| "unable to find platform directories")?;
+    PLATFORM_DIRS
+        .set(platform_directories)
+        .expect("could not set platform directories");
+
+    let install_dir_override = env::var(format!(
+        "PYAPP_INSTALL_DIR_{}",
+        project_name().to_uppercase()
+    ))
+    .unwrap_or_default();
+    let installation_directory = if !install_dir_override.is_empty() {
+        PathBuf::from(install_dir_override)
+    } else {
+        platform_dirs()
+            .data_local_dir()
+            .join(project_name())
+            .join(distribution_id())
+            .join(project_version())
+    };
+    INSTALLATION_DIRECTORY
+        .set(installation_directory)
+        .expect("could not set installation directory");
+
+    Ok(())
+}
+"""
+
+_PRESERVED_INSTALL_SUFFIX = """
+            .join(project_name())
+            .join(distribution_id())
+            .join(project_version())"""
 
 
 def test_patch_pyapp_install_dir_home_relative_and_absolute(tmp_path: Path) -> None:
-    """Verify patch_pyapp_install_dir patches src/app.rs for both ~/ and absolute paths."""
+    """Verify patch_pyapp_install_dir rewrites the real PyApp v0.29.0 install_dir base for ~/ and absolute paths."""
     src_dir = tmp_path / "src"
     src_dir.mkdir(parents=True)
     app_rs = src_dir / "app.rs"
-    original_source = 'pub fn storage_dir() -> PathBuf {\n    project_dirs().data_local_dir().join("pyapp")\n}\n'
-    app_rs.write_text(original_source, encoding="utf-8")
+    app_rs.write_text(_PYAPP_V0_29_0_INITIALIZE, encoding="utf-8")
 
     patch_pyapp_install_dir(tmp_path, "~/.my-app/runtime")
     patched_home = app_rs.read_text(encoding="utf-8")
-    assert (
+    home_expr = (
         'directories::BaseDirs::new().expect("could not find base directories").home_dir().join(".my-app/runtime")'
-        in patched_home
     )
+    assert f"{home_expr}{_PRESERVED_INSTALL_SUFFIX}" in patched_home
+    assert "platform_dirs()\n            .data_local_dir()" not in patched_home
+    assert 'env::var(format!(\n        "PYAPP_INSTALL_DIR_{}"' in patched_home
 
-    app_rs.write_text(original_source, encoding="utf-8")
+    app_rs.write_text(_PYAPP_V0_29_0_INITIALIZE, encoding="utf-8")
     patch_pyapp_install_dir(tmp_path, "/opt/my-app/runtime")
     patched_abs = app_rs.read_text(encoding="utf-8")
-    assert 'std::path::PathBuf::from("/opt/my-app/runtime")' in patched_abs
+    assert f'std::path::PathBuf::from("/opt/my-app/runtime"){_PRESERVED_INSTALL_SUFFIX}' in patched_abs
 
     app_rs.write_text("pub fn unrelated() {}\n", encoding="utf-8")
-    with pytest.raises(BundleConfigurationError, match="storage_dir"):
+    with pytest.raises(BundleConfigurationError, match="install_dir"):
         patch_pyapp_install_dir(tmp_path, "~/.my-app/runtime")
 
 
-def test_patch_pyapp_static_bzip2_updates_cargo_toml_and_env(tmp_path: Path) -> None:
-    """Verify patch_pyapp_static_bzip2 adds static feature to bzip2 in Cargo.toml and returns static env vars."""
+@pytest.mark.parametrize(
+    ("original", "expected"),
+    [
+        ('bzip2 = "0.6.0"\n', 'bzip2 = { version = "0.6.0", features = ["static"] }\n'),
+        ('bzip2 = { version = "0.6.0" }\n', 'bzip2 = { version = "0.6.0", features = ["static"] }\n'),
+        (
+            'bzip2 = { version = "0.6.0", features = ["bzip2-sys"] }\n',
+            'bzip2 = { version = "0.6.0", features = ["static", "bzip2-sys"] }\n',
+        ),
+        (
+            'bzip2 = { version = "0.6.0", features = ["static"] }\n',
+            'bzip2 = { version = "0.6.0", features = ["static"] }\n',
+        ),
+    ],
+)
+def test_patch_pyapp_static_bzip2_updates_cargo_toml_and_env(tmp_path: Path, original: str, expected: str) -> None:
+    """Verify patch_pyapp_static_bzip2 rewrites simple and inline-table bzip2 dependencies and returns static env vars."""
     cargo_toml = tmp_path / "Cargo.toml"
-    cargo_toml.write_text('[package]\nname = "pyapp"\n\n[dependencies]\nbzip2 = "0.4.4"\n', encoding="utf-8")
+    cargo_toml.write_text(f'[package]\nname = "pyapp"\n\n[dependencies]\n{original}', encoding="utf-8")
 
     env_flags = patch_pyapp_static_bzip2(tmp_path)
-    updated = cargo_toml.read_text(encoding="utf-8")
 
     assert env_flags == {"BZIP2_SYS_STATIC": "1", "LZMA_API_STATIC": "1"}
-    assert "static" in updated
-    assert "bzip2" in updated
+    assert cargo_toml.read_text(encoding="utf-8") == f'[package]\nname = "pyapp"\n\n[dependencies]\n{expected}'
 
 
 def test_pyapp_bundler_commands_and_overrides(tmp_path: Path) -> None:
@@ -190,11 +244,9 @@ def test_pyapp_bundler_stage_and_compile_lifecycle(tmp_path: Path) -> None:
 
     pyapp_src = tmp_path / "pyapp-src"
     (pyapp_src / "src").mkdir(parents=True)
-    (pyapp_src / "src" / "app.rs").write_text(
-        'pub fn storage_dir() -> PathBuf { project_dirs().data_local_dir().join("pyapp") }\n', encoding="utf-8"
-    )
+    (pyapp_src / "src" / "app.rs").write_text(_PYAPP_V0_29_0_INITIALIZE, encoding="utf-8")
     (pyapp_src / "Cargo.toml").write_text(
-        '[package]\nname = "pyapp"\n[dependencies]\nbzip2 = "0.4.4"\n', encoding="utf-8"
+        '[package]\nname = "pyapp"\n[dependencies]\nbzip2 = "0.6.0"\n', encoding="utf-8"
     )
 
     out_bin = bundler.compile_binary(staged_tar, pyapp_src)

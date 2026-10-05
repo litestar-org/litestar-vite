@@ -721,3 +721,28 @@ def test_executor_provisioning_mode_controls_binary_discovery(tmp_path: Path, mo
         paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(executor="bun", provisioning_mode="system")
     )
     assert config.executor.provisioning_mode == "system"
+
+
+def test_ssr_command_honors_provisioning_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """ssr_command resolves the runtime binary with the same provisioning_mode policy as _resolve_executable."""
+    venv_bin = tmp_path / "venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    fake_python = venv_bin / "python3"
+    fake_python.write_text("", encoding="utf-8")
+    venv_node = venv_bin / "node"
+    venv_node.write_text("#!/bin/sh\n", encoding="utf-8")
+    venv_node.chmod(0o755)
+    monkeypatch.setattr(sys, "executable", str(fake_python))
+    entry = tmp_path / "ssr.js"
+
+    assert NodeExecutor(provisioning_mode="auto").ssr_command(entry) == [str(venv_node), str(entry)]
+    assert NodeExecutor(provisioning_mode="wheel").ssr_command(entry) == [str(venv_node), str(entry)]
+    assert NodeExecutor(provisioning_mode="system").ssr_command(entry) == ["node", str(entry)]
+
+    assert BunExecutor(provisioning_mode="auto").ssr_command(entry) == ["bun", "run", str(entry)]
+    assert BunExecutor(provisioning_mode="system").ssr_command(entry) == ["bun", "run", str(entry)]
+    with pytest.raises(ViteExecutableNotFoundError):
+        BunExecutor(provisioning_mode="wheel").ssr_command(entry)
+    assert DenoExecutor(executable_path=tmp_path / "deno", provisioning_mode="wheel").ssr_command(entry)[0] == str(
+        tmp_path / "deno"
+    )

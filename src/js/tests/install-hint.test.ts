@@ -87,6 +87,25 @@ describe("install-hint", () => {
       expect(detectExecutor()).toBe("deno")
     })
 
+    it("prefers deno over pnpm when both markers exist (parity with Python detect_runtime_marker)", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).endsWith("deno.json") || String(p).endsWith("pnpm-lock.yaml"))
+
+      expect(detectExecutor()).toBe("deno")
+    })
+
+    it("returns node when package-lock.json exists", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).endsWith("package-lock.json"))
+
+      expect(detectExecutor()).toBe("node")
+    })
+
+    it("falls back to package.json packageManager when no lockfile exists", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).endsWith("package.json"))
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ packageManager: "pnpm@9.1.0" }))
+
+      expect(detectExecutor()).toBe("pnpm")
+    })
+
     it("reads executor from .litestar.json", () => {
       vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes(".litestar.json"))
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ executor: "bun" }))

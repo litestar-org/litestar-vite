@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import re
 import sys
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from importlib.util import find_spec
@@ -23,7 +24,7 @@ from litestar_vite.ipc._stdio import StdioIPCTransport
 __all__ = ("WasmIPCTransport", "is_wasm_available", "resolve_ssr_transport")
 
 _ESM_SYNTAX_RE = re.compile(
-    r"^\s*(?:import\s*[\w{*'\"]|export\s+(?:default|const|let|var|function|class|async|\{|\*))", re.MULTILINE
+    r"^\s*(?:import(?:\s+[\w$]|\s*[{*'\"])|export\s+(?:default|const|let|var|function|class|async|\{|\*))", re.MULTILINE
 )
 
 _QUICKJS_GLOBALS_SHIM = """\
@@ -149,20 +150,16 @@ def is_wasm_available() -> bool:
 class WasmIPCTransport(BaseIPCTransport):
     """In-process SSR transport executing self-contained SSR bundles via QuickJS."""
 
-    __slots__ = ("_bundle_path", "_context", "_cwd", "_engine", "_executor", "_is_running", "_lock", "_request_id")
+    __slots__ = ("_bundle_path", "_context", "_engine", "_executor", "_is_running", "_lock", "_request_id")
 
-    def __init__(
-        self, bundle_path: Path, cwd: Path | None = None, *, engine: Callable[[str], str] | None = None
-    ) -> None:
+    def __init__(self, bundle_path: Path, *, engine: Callable[[str], str] | None = None) -> None:
         """Initialize the in-process WASM/QuickJS SSR transport.
 
         Args:
             bundle_path: Path to the self-contained SSR JavaScript bundle.
-            cwd: Working directory for resolving relative bundle paths.
             engine: Optional synchronous callable ``(line: str) -> str`` override for testing.
         """
         self._bundle_path = bundle_path
-        self._cwd = cwd or bundle_path.parent
         self._engine = engine
         self._context: Any = None
         self._executor: ThreadPoolExecutor | None = None
@@ -174,11 +171,6 @@ class WasmIPCTransport(BaseIPCTransport):
     def bundle_path(self) -> Path:
         """Return the configured SSR bundle path."""
         return self._bundle_path
-
-    @property
-    def cwd(self) -> Path:
-        """Return the configured working directory."""
-        return self._cwd
 
     @property
     def is_running(self) -> bool:
@@ -234,8 +226,18 @@ class WasmIPCTransport(BaseIPCTransport):
         """Return True when a QuickJS exception denotes the engine's time-limit interrupt."""
         return "interrupted" in str(exc).lower()
 
-    def _drain_jobs(self, ctx: Any) -> None:
-        """Run pending Promise jobs and shimmed timers until the dispatch settles or no work remains."""
+    def _drain_jobs(self, ctx: Any, deadline: float | None) -> None:
+        """Run pending Promise jobs and shimmed timers until the dispatch settles or no work remains.
+
+        Args:
+            ctx: Active QuickJS context.
+            deadline: ``time.monotonic()`` instant after which draining aborts. Each timer
+                callback is a fresh Python-to-JS call, so the engine time limit alone cannot
+                stop a bundle that keeps rescheduling timers.
+
+        Raises:
+            IPCTimeoutError: If ``deadline`` passes before the dispatch settles.
+        """
         execute_job = getattr(ctx, "execute_pending_job", None)
         run_timer = ctx.get("__litestar_wasm_run_timer__")
         while True:
@@ -244,6 +246,9 @@ class WasmIPCTransport(BaseIPCTransport):
                     pass
             if ctx.get("__litestar_wasm_settled__"):
                 return
+            if deadline is not None and time.monotonic() >= deadline:
+                msg = "WASM SSR dispatch did not settle before the time limit while draining timers"
+                raise IPCTimeoutError(msg)
             if not callable(run_timer) or not run_timer():
                 return
 
@@ -277,12 +282,15 @@ class WasmIPCTransport(BaseIPCTransport):
         set_time_limit = getattr(ctx, "set_time_limit", None)
         if time_limit is not None and callable(set_time_limit):
             set_time_limit(time_limit)
+        deadline = time.monotonic() + time_limit if time_limit is not None else None
 
         try:
             direct = wasm_call(request_line)
             if isinstance(direct, str):
                 return direct
-            self._drain_jobs(ctx)
+            self._drain_jobs(ctx, deadline)
+        except IPCTimeoutError:
+            raise
         except Exception as exc:
             if self._is_interrupt_error(exc):
                 msg = f"WASM SSR execution exceeded the {time_limit}s time limit"
@@ -357,9 +365,6 @@ class WasmIPCTransport(BaseIPCTransport):
         Returns:
             Decoded response dictionary from the SSR worker.
         """
-        if not self._is_running:
-            await self.start()
-
         self._request_id += 1
         req_id = payload.get("id", self._request_id)
         outbound = {**payload, "id": req_id}
@@ -367,6 +372,8 @@ class WasmIPCTransport(BaseIPCTransport):
 
         async def _execute_locked() -> str:
             async with self._lock:
+                if not self._is_running:
+                    await self.start()
                 if self._executor is None:
                     msg = "WASM SSR executor is not running."
                     raise IPCWorkerCrashError(msg)
@@ -452,17 +459,18 @@ def resolve_ssr_transport(
         mode = "auto"
 
     if mode == "wasm":
-        return WasmIPCTransport(bundle_path=bundle_path, cwd=cwd)
+        return WasmIPCTransport(bundle_path=bundle_path)
 
     has_explicit_or_bundled_worker = bool(ssr_config is not None and ssr_config.command) or (
         find_bundled_ssr_worker() is not None
     )
+    provisioning_mode = config.runtime.provisioning_mode if config is not None else "auto"
     if (
         mode == "auto"
         and not has_explicit_or_bundled_worker
-        and JSExecutor.which(_resolve_ssr_runtime_binary_name(config)) is None
+        and JSExecutor.which(_resolve_ssr_runtime_binary_name(config), provisioning_mode) is None
         and is_wasm_available()
     ):
-        return WasmIPCTransport(bundle_path=bundle_path, cwd=cwd)
+        return WasmIPCTransport(bundle_path=bundle_path)
 
     return StdioIPCTransport(command=resolve_ssr_command(config, ssr_config), cwd=cwd)

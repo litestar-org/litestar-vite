@@ -69,7 +69,10 @@ relevant options:
    * - ``target_arch``
      - Default Rust target triple; ``--target`` overrides it per invocation.
    * - ``install_root``
-     - Where the launcher extracts the runtime at first start. Supports ``~/`` paths.
+     - Base directory where the launcher extracts the runtime at first start. PyApp still
+       appends ``<project_name>/<distribution_id>/<project_version>`` so upgrades never reuse
+       a stale runtime, and ``PYAPP_INSTALL_DIR_<PROJECT_NAME>`` set at runtime still wins.
+       Supports ``~/`` paths.
    * - ``full_isolation`` / ``pass_location`` / ``skip_install``
      - PyApp runtime flags. ``full_isolation=true`` is required for the bundled SSR
        worker to be discovered next to the interpreter.
@@ -78,7 +81,9 @@ relevant options:
        staged distribution; ``"none"`` (default) relies on the WASM transport or a host runtime.
    * - ``strip_dist`` / ``strip_symbols`` / ``static_compression_libs``
      - Remove stdlib test suites, ``__pycache__``, headers and static libs; strip the
-       launcher binary; link ``bzip2``/``xz`` statically.
+       launcher binary; enable the ``bzip2`` crate ``static`` feature. PyApp ``v0.28+``
+       already uses a pure-Rust ``bzip2`` backend, so the last flag only matters for
+       older ``pyapp_version`` pins that link the C library.
    * - ``use_zigbuild`` / ``glibc_version``
      - Cross-compile with ``cargo zigbuild`` targeting a glibc floor (default ``2.17``).
    * - ``pyapp_version``

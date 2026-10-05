@@ -1370,6 +1370,7 @@ dev = [
     { name = "pytest-sugar" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
+    { name = "quickjs" },
     { name = "ruff" },
     { name = "shibuya" },
     { name = "slotscheck" },
@@ -1430,6 +1431,7 @@ test = [
     { name = "pytest-sugar" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
+    { name = "quickjs" },
     { name = "sniffio" },
 ]
 
@@ -1475,6 +1477,7 @@ dev = [
     { name = "pytest-sugar" },
     { name = "pytest-timeout", specifier = ">=2.0.0" },
     { name = "pytest-xdist", specifier = ">=3.6.1" },
+    { name = "quickjs", specifier = ">=1.19.4" },
     { name = "ruff", specifier = ">=0.0.287" },
     { name = "shibuya" },
     { name = "slotscheck" },
@@ -1527,6 +1530,7 @@ test = [
     { name = "pytest-sugar" },
     { name = "pytest-timeout", specifier = ">=2.0.0" },
     { name = "pytest-xdist", specifier = ">=3.6.1" },
+    { name = "quickjs", specifier = ">=1.19.4" },
     { name = "sniffio" },
 ]
 

@@ -114,9 +114,9 @@ browser-facing optimizations controlled by :class:`~litestar_vite.config.Runtime
        once per process from ``manifest.json``.
    * - ``early_hints=True`` (opt-in)
      - The same links are additionally sent as a ``103 Early Hints`` frame when
-       the ASGI server advertises the ``http.response.early_hint`` extension
-       (Hypercorn, Granian). Servers without the extension receive only the
-       ``Link`` header.
+       the ASGI server advertises the ``http.response.early_hint`` extension in
+       ``scope["extensions"]`` (for example Hypercorn). Servers without the
+       extension receive only the ``Link`` header.
    * - ``csp_nonce="..."``
      - Inline scripts injected by the plugin carry ``nonce="..."``. Inertia and
        template responses also honor a per-request

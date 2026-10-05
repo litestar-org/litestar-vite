@@ -1,6 +1,6 @@
 """PyApp single-file executable bundle configuration."""
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -60,7 +60,10 @@ class BundleConfig:
         pbs_urls: Explicit target-triple -> distribution URL overrides.
         platform_map: Target-triple -> pip platform tag overrides.
         target_arch: Default Rust target triple when not passed on the CLI.
-        install_root: ``PYAPP_INSTALL_DIR`` override for extracted runtime.
+        install_root: Base directory that replaces PyApp's platform data-local directory
+            when resolving the extracted runtime location. PyApp still appends
+            ``<project_name>/<distribution_id>/<project_version>`` beneath it, and the
+            runtime ``PYAPP_INSTALL_DIR_<PROJECT_NAME>`` environment variable still wins.
         full_isolation: Set ``PYAPP_FULL_ISOLATION=1`` (required for bundled SSR worker discovery).
         pass_location: Set ``PYAPP_PASS_LOCATION=1``.
         skip_install: Set ``PYAPP_SKIP_INSTALL=1`` (project is pre-installed in the staged distribution).
@@ -68,7 +71,10 @@ class BundleConfig:
         ssr_bytecode: Pass ``--bytecode`` to ``bun build --compile``.
         strip_dist: Remove stdlib test suites and ``__pycache__`` from the staged distribution.
         strip_symbols: Strip debug symbols from the compiled PyApp binary.
-        static_compression_libs: Link compression libraries statically into the PyApp binary.
+        static_compression_libs: Enable the ``bzip2`` crate ``static`` feature and export
+            ``BZIP2_SYS_STATIC``/``LZMA_API_STATIC`` for the cargo build. PyApp ``v0.28+`` uses
+            the pure-Rust ``libbz2-rs-sys`` backend by default, so this only changes linking
+            when a custom ``pyapp_version`` still depends on the C ``bzip2-sys`` backend.
         use_zigbuild: Use ``cargo zigbuild`` for cross-compilation.
         glibc_version: glibc floor appended to Linux targets when ``use_zigbuild`` is enabled.
         pyapp_version: PyApp git tag to clone when building from source.
@@ -173,30 +179,7 @@ class BundleConfig:
             "binary_name": bundle_table.get("binary_name", binary_name_default),
             "project_version": bundle_table.get("project_version", version_default),
         }
-        allowed_keys = {
-            "exec_module",
-            "exec_spec",
-            "python_version",
-            "pbs_release",
-            "pbs_urls",
-            "platform_map",
-            "target_arch",
-            "install_root",
-            "full_isolation",
-            "pass_location",
-            "skip_install",
-            "compile_ssr_worker",
-            "ssr_bytecode",
-            "strip_dist",
-            "strip_symbols",
-            "static_compression_libs",
-            "use_zigbuild",
-            "glibc_version",
-            "pyapp_version",
-            "extra_wheels",
-            "extra_pip_args",
-            "output_dir",
-        }
+        allowed_keys = {f.name for f in fields(cls)} - set(kwargs)
         for key in allowed_keys:
             if key in bundle_table:
                 kwargs[key] = bundle_table[key]

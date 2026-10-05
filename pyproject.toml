@@ -104,6 +104,7 @@ test = [
   "pytest-timeout>=2.0.0",
   "httpx>=0.24.1",
   "litestar-asyncapi>=0.2.0",
+  "quickjs>=1.19.4",
 ]
 
 [tool.bumpversion]

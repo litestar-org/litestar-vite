@@ -70,8 +70,11 @@ export function startSsrWorker(options: SsrWorkerOptions = {}): void {
     let ended = false
 
     const exitIfDrained = (): void => {
-      if (ended && inflight === 0 && typeof process.exit === "function") {
-        process.exit(0)
+      if (ended && inflight === 0) {
+        process.exitCode = 0
+        if (typeof process.stdout.end === "function") {
+          process.stdout.end()
+        }
       }
     }
 

@@ -18,7 +18,6 @@ from litestar_vite.exceptions import LitestarViteError, ViteExecutionError
 __all__ = (
     "DEFAULT_PLATFORMS",
     "DEFAULT_TARGET_TRIPLES",
-    "DEFAULT_URLS",
     "PBS_URL_TEMPLATE",
     "PYAPP_REPOSITORY_URL",
     "BundleConfigurationError",
@@ -63,16 +62,6 @@ def default_pbs_url(target_triple: str, python_version: str, pbs_release: str) -
     return PBS_URL_TEMPLATE.format(release=pbs_release, full_version=full_version, triple=target_triple)
 
 
-_DEFAULT_BUNDLE_CONFIG = BundleConfig()
-
-DEFAULT_URLS: dict[str, str] = {
-    triple: url
-    for triple in DEFAULT_TARGET_TRIPLES
-    if (url := default_pbs_url(triple, _DEFAULT_BUNDLE_CONFIG.python_version, _DEFAULT_BUNDLE_CONFIG.pbs_release))
-    is not None
-}
-"""Default archive URLs for the default ``python_version`` / ``pbs_release`` pair."""
-
 DEFAULT_PLATFORMS: dict[str, str] = {
     "x86_64-unknown-linux-gnu": "manylinux_2_28_x86_64",
     "aarch64-unknown-linux-gnu": "manylinux_2_28_aarch64",
@@ -81,9 +70,12 @@ DEFAULT_PLATFORMS: dict[str, str] = {
     "x86_64-pc-windows-msvc": "win_amd64",
 }
 
-_STORAGE_DIR_EXPR_RE = re.compile(r'project_dirs\(\)\s*\.data_local_dir\(\)\s*\.join\("pyapp"\)')
-_BZIP2_SIMPLE_DEP_RE = re.compile(r'(?m)^bzip2\s*=\s*"([^"]+)"\s*$')
-_BZIP2_TABLE_DEP_RE = re.compile(r"(?m)^bzip2\s*=\s*\{([^\n}]+)\}")
+_INSTALL_DIR_EXPR_RE = re.compile(
+    r"platform_dirs\(\)\s*\.data_local_dir\(\)"
+    r"(?P<suffix>(?:\s*\.join\(\s*(?:project_name|distribution_id|project_version)\(\)\s*\))+)"
+)
+_BZIP2_SIMPLE_DEP_RE = re.compile(r'(?m)^bzip2[ \t]*=[ \t]*"([^"]+)"[ \t]*$')
+_BZIP2_TABLE_DEP_RE = re.compile(r"(?m)^bzip2[ \t]*=[ \t]*\{([^\n}]+)\}")
 
 
 class BundleConfigurationError(LitestarViteError):
@@ -120,14 +112,21 @@ def _rust_install_root_expr(install_root: str) -> str:
 
 
 def patch_pyapp_install_dir(pyapp_dir: Path, install_root: str) -> None:
-    """Patch PyApp's ``src/app.rs`` ``storage_dir`` implementation to use ``install_root``.
+    """Patch PyApp's ``src/app.rs`` installation directory base to use ``install_root``.
+
+    PyApp (``initialize()`` in ``src/app.rs``) resolves the installation directory as
+    ``platform_dirs().data_local_dir().join(project_name()).join(distribution_id()).join(project_version())``
+    unless the ``PYAPP_INSTALL_DIR_<PROJECT_NAME>`` environment variable is set at runtime.
+    Only the ``platform_dirs().data_local_dir()`` base is replaced; the project, distribution
+    and version segments are preserved so upgraded binaries never reuse a stale runtime.
+    The runtime environment override continues to take precedence.
 
     Supports both ``$HOME``-relative paths (e.g. ``~/.my-app/runtime``, expanded at runtime
     via ``directories::BaseDirs``) and literal/absolute paths.
 
     Args:
         pyapp_dir: Root directory of the PyApp Rust source tree.
-        install_root: Target installation directory string.
+        install_root: Base installation directory string.
 
     Raises:
         BundleConfigurationError: If ``src/app.rs`` is missing or the target expression is not found.
@@ -139,9 +138,12 @@ def patch_pyapp_install_dir(pyapp_dir: Path, install_root: str) -> None:
 
     original = app_rs_path.read_text(encoding="utf-8")
     rust_expr = _rust_install_root_expr(install_root)
-    patched, count = _STORAGE_DIR_EXPR_RE.subn(lambda _m: rust_expr, original)
+    patched, count = _INSTALL_DIR_EXPR_RE.subn(lambda m: f"{rust_expr}{m.group('suffix')}", original)
     if count == 0:
-        msg = f"Could not locate PyApp storage_dir expression in {app_rs_path} to patch install_root={install_root!r}."
+        msg = (
+            f"Could not locate PyApp install_dir expression in {app_rs_path} to patch "
+            f"install_root={install_root!r}; the pinned pyapp_version may not be supported."
+        )
         raise BundleConfigurationError(msg)
 
     app_rs_path.write_text(patched, encoding="utf-8")
@@ -325,11 +327,8 @@ class PyAppBundler:
             *(str(w) for w in self._bundle_config.extra_wheels),
         ]
 
-    def build_ssr_compile_command(
-        self, ssr_entry: Path, output_binary: Path, target_triple: str | None = None
-    ) -> list[str]:
+    def build_ssr_compile_command(self, ssr_entry: Path, output_binary: Path) -> list[str]:
         """Build the command to compile ``ssr_entry`` into a native ``litestar-ssr-worker`` binary."""
-        del target_triple
         mode = self._bundle_config.compile_ssr_worker
         if mode == "bun":
             cmd = ["bun", "build", "--compile"]
@@ -366,8 +365,15 @@ class PyAppBundler:
                 shutil.rmtree(current_dir / "__pycache__", ignore_errors=True)
                 dirnames.remove("__pycache__")
             for fname in filenames:
-                if fname.endswith((".pyc", ".pyo", ".a")):
+                if fname.endswith((".pyc", ".pyo")):
                     (current_dir / fname).unlink(missing_ok=True)
+
+        for lib_dir in (python_root / "lib", python_root / "libs"):
+            if not lib_dir.is_dir():
+                continue
+            for archive in lib_dir.rglob("*.a"):
+                if "site-packages" not in archive.parts:
+                    archive.unlink(missing_ok=True)
 
     @staticmethod
     def _iter_stdlib_dirs(python_root: Path) -> list[Path]:
@@ -477,7 +483,7 @@ class PyAppBundler:
             resolved_ssr = ssr_entry or resolve_ssr_bundle_path(self._config.paths)
             ssr_out = self._resolve_ssr_worker_binary_path(python_root, triple)
             ssr_out.parent.mkdir(parents=True, exist_ok=True)
-            ssr_cmd = self.build_ssr_compile_command(resolved_ssr, ssr_out, triple)
+            ssr_cmd = self.build_ssr_compile_command(resolved_ssr, ssr_out)
             self._runner(ssr_cmd, cwd=self._config.root_dir)
 
         if self._bundle_config.strip_dist:

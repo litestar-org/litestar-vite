@@ -100,13 +100,6 @@ def _resolve_context_csp_nonce(context: "Mapping[str, Any]", explicit_nonce: "st
         state_nonce = getattr(state_obj, "csp_nonce", None) if state_obj is not None else None
         if isinstance(state_nonce, str) and state_nonce:
             return state_nonce
-        scope = getattr(request, "scope", None)
-        if isinstance(scope, dict):
-            raw_state = cast("dict[str, Any]", scope).get("state")
-            if isinstance(raw_state, dict):
-                scope_nonce = cast("dict[str, Any]", raw_state).get("csp_nonce")
-                if isinstance(scope_nonce, str) and scope_nonce:
-                    return scope_nonce
     return None
 
 

@@ -118,7 +118,9 @@ describe("SSR worker dispatch", () => {
       writes.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk))
       return true
     }) as any)
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as any)
+    const endSpy = vi.spyOn(process.stdout, "end").mockImplementation((() => process.stdout) as any)
+    const previousExitCode = process.exitCode
+    process.exitCode = undefined
 
     startSsrWorker({
       render: (page: any) => `<h1>${page.component}</h1>`,
@@ -135,13 +137,16 @@ describe("SSR worker dispatch", () => {
 
     expect(writes).toHaveLength(1)
     expect(JSON.parse(writes[0])).toEqual({ id: 20, result: { head: [], body: "<h1>Café ☕</h1>" } })
-    expect(exitSpy).not.toHaveBeenCalled()
+    expect(endSpy).not.toHaveBeenCalled()
+    expect(process.exitCode).toBeUndefined()
 
     listeners.data!('{"id":21,"method":"ping"}')
     listeners.end!()
     await new Promise((resolve) => setTimeout(resolve, 10))
 
     expect(JSON.parse(writes[1])).toEqual({ id: 21, result: { status: "pong" } })
-    expect(exitSpy).toHaveBeenCalledWith(0)
+    expect(process.exitCode).toBe(0)
+    expect(endSpy).toHaveBeenCalledTimes(1)
+    process.exitCode = previousExitCode
   })
 })

@@ -68,7 +68,7 @@ In production, :class:`~litestar_vite.ipc.StdioIPCTransport` spawns the SSR bund
 
        App->>Transport: send_request({"method": "render", "params": page})
        Transport->>Pipe: stdin.send({"id": 1, "method": "render", "params": page}\n)
-       Pipe->>Worker: readline "line" event
+       Pipe->>Worker: stdin "data" chunk (newline split)
        Worker->>Worker: await render(page)
        Worker->>Pipe: stdout.write({"id": 1, "result": {"head": [...], "body": "..."}}\n)
        Pipe->>Transport: stdout reader correlates response id=1
@@ -76,8 +76,8 @@ In production, :class:`~litestar_vite.ipc.StdioIPCTransport` spawns the SSR bund
 
        App->>Transport: close()
        Transport->>Pipe: stdin.aclose() (EOF)
-       Pipe->>Worker: readline "close" event
-       Worker->>Worker: process.exit(0)
+       Pipe->>Worker: stdin "end" (EOF)
+       Worker->>Worker: exit 0 once in-flight renders drain
 
 ``StdioIPCTransport`` resolves platform executable shims (``.cmd`` / ``.exe`` on Windows) via ``shutil.which`` and continuously drains the child ``stderr`` stream in a background task so pipe buffers never block.
 

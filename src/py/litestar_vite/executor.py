@@ -228,16 +228,45 @@ class JSExecutor(ABC):
         return shutil.which(bin_name)
 
     @classmethod
-    def which(cls, bin_name: str) -> "str | None":
+    def which(cls, bin_name: str, provisioning_mode: ProvisioningMode = "auto") -> "str | None":
         """Public helper to locate an executable in the active virtualenv/wheel or system PATH.
 
         Args:
             bin_name: Bare binary name to resolve.
+            provisioning_mode: Discovery policy (see :class:`JSExecutor`).
 
         Returns:
             Resolved executable path string if found, otherwise ``None``.
         """
-        return cls._which(bin_name)
+        return cls._which(bin_name, provisioning_mode)
+
+    def _resolve_ssr_runtime_binary(self, bin_name: str) -> str:
+        """Resolve the JS runtime binary used to execute a production SSR bundle.
+
+        Unlike :meth:`_resolve_executable`, this ignores ``executable_path`` because the
+        package-manager binary (``npm``/``pnpm``/``yarn``) is not the SSR runtime. The lookup
+        honours ``provisioning_mode``: ``"system"`` returns the bare name for PATH lookup by
+        the OS, ``"wheel"`` requires the virtual-environment binary, and ``"auto"``/``"nodeenv"``
+        prefer the virtual-environment binary and otherwise fall back to the bare name.
+
+        Args:
+            bin_name: Bare runtime binary name (``node``, ``bun`` or ``deno``).
+
+        Returns:
+            Executable path or bare binary name suitable for ``subprocess``.
+
+        Raises:
+            ViteExecutableNotFoundError: If ``provisioning_mode`` is ``"wheel"`` and the
+                virtual-environment binary is missing.
+        """
+        if self.provisioning_mode == "system":
+            return bin_name
+        venv_path = _resolve_venv_executable(bin_name)
+        if venv_path is not None:
+            return venv_path
+        if self.provisioning_mode == "wheel":
+            raise ViteExecutableNotFoundError(bin_name)
+        return bin_name
 
     def _resolve_executable(self) -> str:
         """Return the executable path or raise if not found.
@@ -314,8 +343,7 @@ class JSExecutor(ABC):
         Returns:
             Command list suitable for ``StdioIPCTransport``.
         """
-        node_bin = _resolve_venv_executable("node") or "node"
-        return [node_bin, str(entry_point)]
+        return [self._resolve_ssr_runtime_binary("node"), str(entry_point)]
 
 
 class CommandExecutor(JSExecutor):
@@ -376,9 +404,7 @@ class BunExecutor(CommandExecutor):
     def ssr_command(self, entry_point: Path) -> list[str]:
         """Return the Bun command list to run a production SSR bundle."""
         executable = (
-            str(self.executable_path)
-            if self.executable_path
-            else (_resolve_venv_executable(self.bin_name) or self.bin_name)
+            str(self.executable_path) if self.executable_path else self._resolve_ssr_runtime_binary(self.bin_name)
         )
         return [executable, "run", str(entry_point)]
 
@@ -412,9 +438,7 @@ class DenoExecutor(CommandExecutor):
     def ssr_command(self, entry_point: Path) -> list[str]:
         """Return the Deno command list to run a production SSR bundle."""
         executable = (
-            str(self.executable_path)
-            if self.executable_path
-            else (_resolve_venv_executable(self.bin_name) or self.bin_name)
+            str(self.executable_path) if self.executable_path else self._resolve_ssr_runtime_binary(self.bin_name)
         )
         return [executable, "run", "--allow-read", "--allow-env", str(entry_point)]
 

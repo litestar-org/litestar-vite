@@ -132,10 +132,9 @@ async def test_wasm_ipc_transport_lifecycle_and_requests(tmp_path: Path, monkeyp
     bundle = tmp_path / "ssr.js"
     bundle.write_text("globalThis.__litestar_ssr_dispatch__ = function(line) {};", encoding="utf-8")
 
-    transport = WasmIPCTransport(bundle_path=bundle, cwd=tmp_path)
+    transport = WasmIPCTransport(bundle_path=bundle)
     assert transport.is_running is False
     assert transport.bundle_path == bundle
-    assert transport.cwd == tmp_path
 
     await transport.start()
     assert transport.is_running is True
@@ -249,9 +248,21 @@ def test_resolve_ssr_transport_priority(tmp_path: Path, monkeypatch: pytest.Monk
     assert bundled_transport.command == [str(bundled_worker)]
 
     bundled_worker.unlink()
-    monkeypatch.setattr("litestar_vite.executor.JSExecutor._which", staticmethod(lambda _bin: None))
+    monkeypatch.setattr("litestar_vite.executor.shutil.which", lambda _name: None)
     fallback_transport = resolve_ssr_transport(auto_config)
     assert isinstance(fallback_transport, WasmIPCTransport)
+
+    venv_node = fake_bin_dir / "node"
+    venv_node.write_text("#!/bin/sh\n", encoding="utf-8")
+    venv_node.chmod(0o755)
+    assert isinstance(resolve_ssr_transport(auto_config), StdioIPCTransport)
+    system_config = ViteConfig(
+        mode="template",
+        paths=PathConfig(root=tmp_path, resource_dir="resources"),
+        runtime=RuntimeConfig(executor="node", dev_mode=False, ssr_transport="auto", provisioning_mode="system"),
+        inertia=InertiaConfig(ssr=True),
+    )
+    assert isinstance(resolve_ssr_transport(system_config), WasmIPCTransport)
 
 
 _REAL_ESM_BUNDLE = """\
@@ -280,7 +291,7 @@ async def test_wasm_ipc_transport_runs_real_quickjs_esm_bundle_and_recovers_from
     bundle = tmp_path / "ssr.js"
     bundle.write_text(_REAL_ESM_BUNDLE, encoding="utf-8")
 
-    transport = WasmIPCTransport(bundle_path=bundle, cwd=tmp_path)
+    transport = WasmIPCTransport(bundle_path=bundle)
     first = await transport.send_request({"method": "render", "params": {"component": "Home"}}, timeout=5.0)
     assert first["result"] == {"html": "<p>héllo</p>", "head": []}
 

@@ -140,7 +140,7 @@ class _StaticAfterRequestHook:
 
 def build_static_before_request_hook(
     *, asset_url: str, manifest_name: str = "manifest.json", hot_file: str = "hot", user_hook: Any = None
-) -> Any:
+) -> "_StaticBeforeRequestHook":
     """Build a static router before_request hook that blocks internal Vite metadata files."""
     clean_manifest = manifest_name.replace("\\", "/").strip("/")
     clean_hot = hot_file.replace("\\", "/").strip("/")
@@ -148,7 +148,9 @@ def build_static_before_request_hook(
     return _StaticBeforeRequestHook(asset_url=asset_url, blocked_paths=blocked, user_hook=user_hook)
 
 
-def build_static_after_request_hook(*, immutable_cache_headers: bool, user_hook: Any = None) -> Any:
+def build_static_after_request_hook(
+    *, immutable_cache_headers: bool, user_hook: Any = None
+) -> "_StaticAfterRequestHook":
     """Build a static router after_request hook that attaches immutable Cache-Control to hashed assets."""
     return _StaticAfterRequestHook(immutable_cache_headers=immutable_cache_headers, user_hook=user_hook)
 
