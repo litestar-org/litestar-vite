@@ -15,13 +15,16 @@ from litestar.plugins import InitPluginProtocol
 from litestar.response import ServerSentEvent
 from litestar_asyncapi import AsyncAPIConfig, ChannelDefinition, DocsConfig, MessageDefinition, OperationDefinition
 from litestar_asyncapi import AsyncAPIPlugin as RealAsyncAPIPlugin
+from litestar_asyncapi.spec import Server
 
 from litestar_vite.codegen import (
     ExportResult,
     asyncapi_docs_paths,
     export_asyncapi,
     export_integration_assets,
+    extract_ws_server_url,
     find_asyncapi_plugin,
+    generate_routes_json,
     normalize_asyncapi_document,
     resolve_asyncapi_document,
 )
@@ -453,3 +456,52 @@ def test_missing_asyncapi_plugin_removes_stale_outputs(tmp_path: Path) -> None:
         export_integration_assets(app=app, config=config)
     assert not (tmp_path / "asyncapi.json").exists()
     assert not (tmp_path / "channels.ts").exists()
+
+
+def test_asyncapi_servers_passthrough_and_route_channel_key_parity(tmp_path: Path) -> None:
+    """AsyncAPIConfig servers propagate to routes.json/routes.ts and channel_keys match asyncapi.json 1:1."""
+
+    @websocket_listener("/ws/a/b", name="ws_nested")
+    def ws_nested(data: str) -> str:
+        return data
+
+    @websocket_listener("/ws/a_b", name="ws_underscored")
+    def ws_underscored(data: str) -> str:
+        return data
+
+    @websocket_listener("/ws/{room:str}/b", name="ws_room")
+    def ws_room(data: str, room: str) -> str:
+        return f"{room}:{data}"
+
+    asyncapi_plugin = RealAsyncAPIPlugin(
+        config=AsyncAPIConfig(
+            servers={"realtime": Server(host="realtime.example.com:9443", protocol="wss", pathname="/edge")}
+        )
+    )
+    vite_config = ViteConfig(
+        paths=PathConfig(bundle_dir=tmp_path / "public"),
+        types=TypeGenConfig(output=tmp_path / "sdk", generate_channels=True, generate_zod=False),
+    )
+    app = Litestar(
+        route_handlers=[ws_nested, ws_underscored, ws_room], plugins=[VitePlugin(config=vite_config), asyncapi_plugin]
+    )
+
+    result = export_integration_assets(app=app, config=vite_config)
+    assert result.asyncapi_schema is not None
+    assert extract_ws_server_url(result.asyncapi_schema) == "wss://realtime.example.com:9443/edge"
+
+    routes_json = generate_routes_json(
+        app, openapi_schema=result.openapi_schema, asyncapi_schema=result.asyncapi_schema
+    )
+    assert routes_json.get("servers") == {
+        "realtime": {"host": "realtime.example.com:9443", "pathname": "/edge", "protocol": "wss"}
+    }
+
+    ws_channel_keys_from_routes = {
+        meta["channel_key"] for meta in routes_json["routes"].values() if meta.get("protocol") == "websocket"
+    }
+    ws_channel_keys_from_asyncapi = {
+        key for key, ch in result.asyncapi_schema["channels"].items() if "ws" in ch.get("bindings", {})
+    }
+    assert ws_channel_keys_from_routes == ws_channel_keys_from_asyncapi
+    assert ws_channel_keys_from_routes == {"ws__a__b", "ws__a_b", "ws__p_room__b"}

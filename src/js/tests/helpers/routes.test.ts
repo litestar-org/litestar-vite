@@ -4,10 +4,13 @@ import {
   __getRouteWildcardRegexCacheSize,
   createRouteHelpers,
   currentRoute,
+  formatRouteUrl,
   isCurrentRoute,
   isRoute,
   type RouteDefinition,
+  resolveWsUrl,
   toRoute,
+  wsRoute,
 } from "../../src/helpers/routes"
 
 // Sample route definitions matching typical generated output
@@ -376,6 +379,66 @@ describe("route helpers", () => {
       // These should not break the matching
       expect(toRoute("/api/books?q=test(1)", sampleRoutes)).toBe("books")
       expect(toRoute("/api/books?q=[test]", sampleRoutes)).toBe("books")
+    })
+  })
+
+  describe("wsRoute and route.ws", () => {
+    const routesWithWs = {
+      ...sampleRoutes,
+      chat_ws: {
+        path: "/ws/chat/{room_id}",
+        methods: ["WS"] as const,
+        pathParams: ["room_id"] as const,
+        queryParams: ["token"] as const,
+        protocol: "websocket" as const,
+        channelKey: "ws__chat__p_room_id",
+      },
+      notifications_ws: {
+        path: "/ws/notifications",
+        methods: ["WS"] as const,
+        pathParams: [] as const,
+        queryParams: [] as const,
+        protocol: "websocket" as const,
+        channelKey: "ws__notifications",
+      },
+    } as const satisfies Record<string, RouteDefinition>
+
+    it("resolves ws:// and wss:// URLs via resolveWsUrl", () => {
+      expect(resolveWsUrl("/ws/notifications", "ws://localhost:8000")).toBe("ws://localhost:8000/ws/notifications")
+      expect(resolveWsUrl("/ws/notifications", "http://localhost:8000/")).toBe("ws://localhost:8000/ws/notifications")
+      expect(resolveWsUrl("/ws/notifications", "https://example.com")).toBe("wss://example.com/ws/notifications")
+    })
+
+    it("formats HTTP and WebSocket URLs via createRouteHelpers", () => {
+      globalThis.window.location = {
+        protocol: "https:",
+        host: "app.example.com",
+        pathname: "/",
+      } as Location
+
+      const helpers = createRouteHelpers(routesWithWs)
+      expect(helpers.route("book_detail", { book_id: 7 })).toBe("/api/books/7")
+      expect(helpers.route.ws("notifications_ws")).toBe("wss://app.example.com/ws/notifications")
+      expect(helpers.wsRoute("chat_ws", { room_id: "general", token: "abc" })).toBe("wss://app.example.com/ws/chat/general?token=abc")
+    })
+
+    it("honors explicit wsServerUrl and serverUrl options", () => {
+      const helpers = createRouteHelpers(routesWithWs, {
+        serverUrl: "http://api.example.com:8000",
+        wsServerUrl: "wss://ws.example.com:9443/edge",
+      })
+      expect(helpers.route("books")).toBe("http://api.example.com:8000/api/books")
+      expect(helpers.route.ws("notifications_ws")).toBe("wss://ws.example.com:9443/edge/ws/notifications")
+      expect(wsRoute("chat_ws", routesWithWs, { room_id: "room-1" }, { serverUrl: "ws://127.0.0.1:8000" })).toBe("ws://127.0.0.1:8000/ws/chat/room-1")
+      expect(formatRouteUrl("book_detail", routesWithWs, { book_id: 42 })).toBe("/api/books/42")
+    })
+
+    it("throws when wsRoute is called with an HTTP route", () => {
+      expect(() =>
+        wsRoute("books" as unknown as "notifications_ws", routesWithWs, undefined, {
+          serverUrl: "ws://localhost:8000",
+        }),
+      ).toThrow('Route "books" is not a WebSocket route')
     })
   })
 })

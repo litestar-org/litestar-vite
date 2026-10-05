@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from litestar_vite.config import TypeGenConfig, ViteConfig
 
 
-@dataclass
+@dataclass(slots=True)
 class ExportResult:
     """Result of the export operation."""
 
@@ -99,11 +99,16 @@ def _invalidate_missing_asyncapi_outputs(app: "Litestar", types_config: "TypeGen
         types_config.channels_ts_path or types_config.output / "channels.ts",
     ]
     stale = any(path.exists() for path in stale_paths)
-    from litestar.channels import ChannelsPlugin
     from litestar.response import ServerSentEvent
     from litestar.routes import HTTPRoute, WebSocketRoute
 
-    has_realtime = any(isinstance(plugin, ChannelsPlugin) for plugin in app.plugins)
+    from litestar_vite.typing import CHANNELS_INSTALLED
+
+    has_realtime = False
+    if CHANNELS_INSTALLED:
+        from litestar.channels import ChannelsPlugin
+
+        has_realtime = any(isinstance(plugin, ChannelsPlugin) for plugin in app.plugins)
     for route in app.routes:
         if isinstance(route, WebSocketRoute):
             has_realtime = True
@@ -154,7 +159,7 @@ def export_integration_assets(
     """
     from litestar._openapi.plugin import OpenAPIPlugin
 
-    from litestar_vite.codegen._asyncapi import find_asyncapi_plugin
+    from litestar_vite.codegen._asyncapi import find_asyncapi_plugin, resolve_asyncapi_document
     from litestar_vite.codegen._inertia import generate_inertia_pages_json
     from litestar_vite.codegen._routes import extract_route_metadata
     from litestar_vite.config import InertiaConfig, InertiaTypeGenConfig, TypeGenConfig
@@ -194,6 +199,7 @@ def export_integration_assets(
     serializer = _resolve_serializer(app, serializer)
 
     schema_dict = app.openapi_schema.to_schema()
+    asyncapi_schema = resolve_asyncapi_document(app) if has_asyncapi else None
 
     inertia_pages_data: dict[str, Any] | None = None
     if isinstance(config.inertia, InertiaConfig) and types_config.generate_page_props:
@@ -211,10 +217,15 @@ def export_integration_assets(
 
     export_openapi(schema_dict=schema_dict, types_config=types_config, serializer=serializer, result=result)
 
-    routes_metadata = extract_route_metadata(app, openapi_schema=schema_dict)
+    routes_metadata = extract_route_metadata(app, openapi_schema=schema_dict, asyncapi_schema=asyncapi_schema)
 
     export_routes_json(
-        app=app, types_config=types_config, openapi_schema=schema_dict, routes_metadata=routes_metadata, result=result
+        app=app,
+        types_config=types_config,
+        openapi_schema=schema_dict,
+        asyncapi_schema=asyncapi_schema,
+        routes_metadata=routes_metadata,
+        result=result,
     )
 
     if types_config.generate_routes:
@@ -222,6 +233,7 @@ def export_integration_assets(
             app=app,
             types_config=types_config,
             openapi_schema=schema_dict,
+            asyncapi_schema=asyncapi_schema,
             routes_metadata=routes_metadata,
             result=result,
         )
@@ -235,7 +247,9 @@ def export_integration_assets(
         export_inertia_pages(pages_data=inertia_pages_data, types_config=types_config, result=result)
 
     if types_config.generate_channels and has_asyncapi:
-        export_asyncapi(app=app, types_config=types_config, serializer=serializer, result=result)
+        export_asyncapi(
+            app=app, types_config=types_config, serializer=serializer, result=result, asyncapi_schema=asyncapi_schema
+        )
 
     return result
 
@@ -269,6 +283,7 @@ def export_routes_json(
     openapi_schema: "dict[str, Any]",
     routes_metadata: "list[Any]",
     result: ExportResult,
+    asyncapi_schema: "dict[str, Any] | None" = None,
 ) -> None:
     """Export routes metadata to JSON file."""
     from litestar_vite.codegen._routes import generate_routes_json
@@ -284,7 +299,11 @@ def export_routes_json(
         routes_path = types_config.output / "routes.json"
 
     routes_data = generate_routes_json(
-        app, include_components=True, openapi_schema=openapi_schema, routes_metadata=routes_metadata
+        app,
+        include_components=True,
+        openapi_schema=openapi_schema,
+        asyncapi_schema=asyncapi_schema,
+        routes_metadata=routes_metadata,
     )
     routes_data["litestar_version"] = litestar_version
 
@@ -303,6 +322,7 @@ def export_routes_ts(
     openapi_schema: "dict[str, Any]",
     routes_metadata: "list[Any]",
     result: ExportResult,
+    asyncapi_schema: "dict[str, Any] | None" = None,
 ) -> None:
     """Export typed routes TypeScript file."""
     from litestar_vite.codegen._routes import generate_routes_ts
@@ -313,7 +333,11 @@ def export_routes_ts(
         routes_ts_path = types_config.output / "routes.ts"
 
     routes_ts_content = generate_routes_ts(
-        app, openapi_schema=openapi_schema, global_route=types_config.global_route, routes_metadata=routes_metadata
+        app,
+        openapi_schema=openapi_schema,
+        asyncapi_schema=asyncapi_schema,
+        global_route=types_config.global_route,
+        routes_metadata=routes_metadata,
     )
 
     if write_if_changed(routes_ts_path, routes_ts_content):
@@ -344,6 +368,7 @@ def export_asyncapi(
     types_config: "TypeGenConfig",
     serializer: "Callable[[Any], bytes] | None" = None,
     result: ExportResult,
+    asyncapi_schema: "dict[str, Any] | None" = None,
 ) -> None:
     """Export AsyncAPI schema to file when AsyncAPIPlugin is registered.
 
@@ -352,11 +377,12 @@ def export_asyncapi(
         types_config: The type generation configuration.
         serializer: Optional custom serializer for JSON encoding.
         result: ExportResult accumulator for exported or unchanged files.
+        asyncapi_schema: Optional pre-resolved AsyncAPI document dictionary.
     """
     from litestar_vite.codegen._asyncapi import resolve_asyncapi_document
     from litestar_vite.codegen._utils import encode_deterministic_json, write_if_changed
 
-    schema_dict = resolve_asyncapi_document(app)
+    schema_dict = asyncapi_schema if asyncapi_schema is not None else resolve_asyncapi_document(app)
     if schema_dict is None:
         return
 

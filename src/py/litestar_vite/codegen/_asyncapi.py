@@ -38,7 +38,7 @@ def _slug_segment(segment: str) -> str:
     return _NON_ALNUM_RE.sub("_", segment)
 
 
-def _channel_key_base(normalized_address: str) -> str:
+def channel_key_base(normalized_address: str) -> str:
     """Build a deterministic base channel key from a route address.
 
     Strips the leading slash, splits on slash, drops empty segments, applies
@@ -55,8 +55,11 @@ def _channel_key_base(normalized_address: str) -> str:
     return "__".join(segments) or "root"
 
 
+_channel_key_base = channel_key_base
+
+
 @dataclass(slots=True)
-class _ChannelKeyAllocator:
+class ChannelKeyAllocator:
     """Allocate collision-safe channel keys across realtime sources."""
 
     assigned: dict[tuple[str, str], str] = field(default_factory=dict[tuple[str, str], str])
@@ -79,7 +82,7 @@ class _ChannelKeyAllocator:
         if pair in self.assigned:
             return self.assigned[pair]
 
-        base = _channel_key_base(normalized_address)
+        base = channel_key_base(normalized_address)
         candidate = base
         counter = 2
         while candidate in self.taken:
@@ -89,6 +92,9 @@ class _ChannelKeyAllocator:
         self.taken.add(candidate)
         self.assigned[pair] = candidate
         return candidate
+
+
+_ChannelKeyAllocator = ChannelKeyAllocator
 
 
 def _unescape_json_pointer(segment: str) -> str:
@@ -445,3 +451,40 @@ def resolve_asyncapi_document(
 
     msg = "AsyncAPIPlugin did not return an AsyncAPI document"
     raise ValueError(msg)
+
+
+def extract_ws_server_url(asyncapi_schema: dict[str, Any] | None) -> str:
+    """Extract a default WebSocket server base URL from an AsyncAPI document's ``servers`` map.
+
+    Selects ``wss`` when the server protocol is ``wss`` or ``https``, and ``ws`` when
+    the server protocol is ``ws`` or ``http``. Returns an empty string when no server
+    with a valid host is configured.
+
+    Args:
+        asyncapi_schema: Normalized AsyncAPI document dictionary, if available.
+
+    Returns:
+        WebSocket base URL string (e.g. ``"wss://api.example.com/ws"``) or ``""``.
+    """
+    if not isinstance(asyncapi_schema, dict):
+        return ""
+    servers = asyncapi_schema.get("servers")
+    if not isinstance(servers, dict):
+        return ""
+    for server in cast("dict[str, Any]", servers).values():
+        if not isinstance(server, dict):
+            continue
+        server_dict = cast("dict[str, Any]", server)
+        host = server_dict.get("host")
+        protocol = str(server_dict.get("protocol") or "ws").lower()
+        if not isinstance(host, str) or not host.strip():
+            continue
+        if protocol not in {"ws", "wss", "http", "https"}:
+            continue
+        scheme = "wss" if protocol in {"wss", "https"} else "ws"
+        pathname = str(server_dict.get("pathname") or "").strip()
+        if pathname and not pathname.startswith("/"):
+            pathname = f"/{pathname}"
+        pathname = pathname.rstrip("/")
+        return f"{scheme}://{host.strip().strip('/')}{pathname}"
+    return ""
