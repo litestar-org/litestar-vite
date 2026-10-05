@@ -203,8 +203,9 @@ class RuntimeConfig:
             - "auto" (default): active virtual environment / PEP 425 wheel first, then ``PATH``
             - "wheel": only the virtual environment; build commands and production SSR
               transport construction raise ``ViteExecutableNotFoundError`` at startup when
-              the runtime wheel is missing (unless an explicit SSR command, a bundled
-              ``litestar-ssr-worker`` or the ``wasm`` extra is available)
+              the runtime wheel is missing (unless an explicit SSR command or a bundled
+              ``litestar-ssr-worker`` is available, or ``ssr_transport="auto"`` can fall
+              back to the ``wasm`` extra)
             - "nodeenv": like "auto" and additionally enables ``detect_nodeenv``
             - "system": only ``PATH`` (ignores virtual-environment binaries)
         ssr_transport: Production SSR IPC transport selection:

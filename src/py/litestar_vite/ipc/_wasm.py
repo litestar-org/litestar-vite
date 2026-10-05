@@ -108,6 +108,7 @@ if (typeof globalThis.TextDecoder === 'undefined') {
 
 _QUICKJS_DISPATCH_WRAPPER = (
     "globalThis.__litestar_wasm_call__ = function(line) {\n"
+    "    globalThis.__litestar_wasm_timers__.length = 0;\n"
     "    globalThis.__litestar_wasm_settled__ = false;\n"
     "    globalThis.__litestar_wasm_result__ = '';\n"
     "    globalThis.__litestar_wasm_error__ = null;\n"
@@ -190,7 +191,11 @@ class WasmIPCTransport(BaseIPCTransport):
             msg = "Installed 'quickjs' module does not provide a callable Context class."
             raise IPCError(msg)
 
-        bundle_source = self._bundle_path.read_text(encoding="utf-8")
+        try:
+            bundle_source = self._bundle_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            msg = f"Failed to read SSR bundle at {self._bundle_path}: {exc}"
+            raise IPCWorkerCrashError(msg) from exc
         ctx: Any = context_cls()
         try:
             ctx.eval(_QUICKJS_GLOBALS_SHIM)

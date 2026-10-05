@@ -1,5 +1,6 @@
 """Unit tests for WasmIPCTransport and SSR transport resolution."""
 
+import asyncio
 import sys
 import time
 from pathlib import Path
@@ -318,9 +319,13 @@ async def test_wasm_ipc_transport_drain_deadline_stops_rescheduling_timers(tmp_p
 
     transport = WasmIPCTransport(bundle_path=bundle)
     await transport.start()
+    assert transport._executor is not None
     started = time.monotonic()
+    loop = asyncio.get_running_loop()
     with pytest.raises(IPCTimeoutError, match="draining timers"):
-        transport._dispatch_sync('{"id": 1, "method": "reschedule"}', time_limit=0.2)
+        await loop.run_in_executor(
+            transport._executor, transport._dispatch_sync, '{"id": 1, "method": "reschedule"}', 0.2
+        )
     assert time.monotonic() - started < 5.0
 
     with pytest.raises(IPCTimeoutError):

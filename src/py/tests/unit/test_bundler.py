@@ -115,6 +115,7 @@ def test_patch_pyapp_install_dir_home_relative_and_absolute(tmp_path: Path) -> N
             'bzip2 = { version = "0.6.0", features = ["static"] }\n',
             'bzip2 = { version = "0.6.0", features = ["static"] }\n',
         ),
+        ('flate2 = "1.1.2"\n', 'flate2 = "1.1.2"\n'),
     ],
 )
 def test_patch_pyapp_static_bzip2_updates_cargo_toml_and_env(tmp_path: Path, original: str, expected: str) -> None:
