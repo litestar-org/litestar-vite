@@ -13,13 +13,15 @@ import sys
 from abc import ABC, abstractmethod
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any, ClassVar, Protocol, runtime_checkable
+from typing import Any, ClassVar, Literal, Protocol, runtime_checkable
 
 from litestar.cli._utils import console
 
 from litestar_vite.config import InertiaConfig, InertiaSSRConfig, PathConfig, ViteConfig
 from litestar_vite.config._paths import resolve_ssr_bundle_path
 from litestar_vite.exceptions import ViteExecutableNotFoundError, ViteExecutionError
+
+ProvisioningMode = Literal["auto", "wheel", "nodeenv", "system"]
 
 _DENO_SUBCOMMANDS: frozenset[str] = frozenset({
     "add",
@@ -157,11 +159,29 @@ class JSExecutor(ABC):
 
     bin_name: ClassVar[str]
     silent_flag: ClassVar[str] = "--silent"
-    __slots__ = ("_resolved_executable", "executable_path", "silent")
+    __slots__ = ("_resolved_executable", "executable_path", "provisioning_mode", "silent")
 
-    def __init__(self, executable_path: "Path | str | None" = None, *, silent: bool = False) -> None:
+    def __init__(
+        self,
+        executable_path: "Path | str | None" = None,
+        *,
+        silent: bool = False,
+        provisioning_mode: ProvisioningMode = "auto",
+    ) -> None:
+        """Initialize the executor.
+
+        Args:
+            executable_path: Explicit path to the runtime binary; bypasses discovery.
+            silent: Apply the executor's silent flag to package-manager commands.
+            provisioning_mode: Binary discovery policy. ``"auto"``/``"nodeenv"``
+                prefer the active virtual environment then ``PATH``; ``"wheel"``
+                requires the binary to come from the virtual environment (PEP 425
+                runtime wheels); ``"system"`` skips the virtual environment and
+                only consults ``PATH``.
+        """
         self.executable_path = executable_path
         self.silent = silent
+        self.provisioning_mode: ProvisioningMode = provisioning_mode
         self._resolved_executable: "str | None" = None
 
     @abstractmethod
@@ -190,17 +210,20 @@ class JSExecutor(ABC):
         """Execute a command and wait for it to finish."""
 
     @staticmethod
-    def _which(bin_name: str) -> "str | None":
-        """Locate an executable in the active virtualenv/wheel or system PATH.
+    def _which(bin_name: str, provisioning_mode: ProvisioningMode = "auto") -> "str | None":
+        """Locate an executable according to ``provisioning_mode``.
 
         Args:
             bin_name: Bare binary name to resolve.
+            provisioning_mode: Discovery policy (see :class:`JSExecutor`).
 
         Returns:
             Resolved executable path string if found, otherwise ``None``.
         """
+        if provisioning_mode == "system":
+            return shutil.which(bin_name)
         venv_path = _resolve_venv_executable(bin_name)
-        if venv_path is not None:
+        if venv_path is not None or provisioning_mode == "wheel":
             return venv_path
         return shutil.which(bin_name)
 
@@ -234,7 +257,7 @@ class JSExecutor(ABC):
         if self.executable_path:
             self._resolved_executable = str(self.executable_path)
             return self._resolved_executable
-        path = self._which(self.bin_name)
+        path = self._which(self.bin_name, self.provisioning_mode)
         if path is None:
             raise ViteExecutableNotFoundError(self.bin_name)
         self._resolved_executable = path
@@ -571,21 +594,26 @@ def find_bundled_ssr_worker() -> Path | None:
 
     When packaged with PyApp (``PYAPP_FULL_ISOLATION=1``) or staged into a virtual
     environment, ``litestar-ssr-worker`` (or ``litestar-ssr-worker.exe`` on Windows)
-    resides in ``Path(sys.executable).parent``.
+    resides next to the interpreter. The interpreter directory is probed first,
+    followed by its ``Scripts`` and ``bin`` siblings so that both the
+    ``python-build-standalone`` Windows layout (``python.exe`` at the root) and
+    virtual-environment layouts resolve.
 
     Returns:
         Resolved path to the compiled SSR worker binary if present and executable,
         otherwise ``None``.
     """
-    bin_dir = Path(sys.executable).parent
-    candidates = (
-        [bin_dir / "litestar-ssr-worker.exe", bin_dir / "litestar-ssr-worker"]
+    exe_dir = Path(sys.executable).parent
+    names = (
+        ("litestar-ssr-worker.exe", "litestar-ssr-worker")
         if platform.system() == "Windows"
-        else [bin_dir / "litestar-ssr-worker", bin_dir / "litestar-ssr-worker.exe"]
+        else ("litestar-ssr-worker", "litestar-ssr-worker.exe")
     )
-    for candidate in candidates:
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return candidate
+    for directory in (exe_dir, exe_dir / "Scripts", exe_dir / "bin"):
+        for name in names:
+            candidate = directory / name
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return candidate
     return None
 
 

@@ -62,6 +62,7 @@ Reference Paths
    :titlesonly:
    :hidden:
 
+   bundler
    cli
    config
    deploy

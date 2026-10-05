@@ -106,4 +106,42 @@ describe("SSR worker dispatch", () => {
     expect(JSON.parse(writes[0])).toEqual({ id: 10, result: { status: "pong" } })
     expect(JSON.parse(writes[1])).toEqual({ id: 11, result: { head: [], body: "<h1>Settings</h1>" } })
   })
+
+  it("decodes multibyte UTF-8 split across binary chunks and exits on stdin EOF after draining", async () => {
+    const listeners: Record<string, (chunk?: string | Uint8Array) => void> = {}
+    vi.spyOn(process.stdin, "on").mockImplementation(((event: string, listener: (chunk?: string | Uint8Array) => void) => {
+      listeners[event] = listener
+      return process.stdin
+    }) as any)
+    const writes: string[] = []
+    vi.spyOn(process.stdout, "write").mockImplementation(((chunk: string | Uint8Array) => {
+      writes.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk))
+      return true
+    }) as any)
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as any)
+
+    startSsrWorker({
+      render: (page: any) => `<h1>${page.component}</h1>`,
+    })
+
+    expect(listeners.data).toBeDefined()
+    expect(listeners.end).toBeDefined()
+
+    const encoded = new TextEncoder().encode('{"id":20,"method":"render","params":{"page":{"component":"Café ☕"}}}\n')
+    const splitAt = encoded.indexOf(0xe2) + 1
+    listeners.data!(encoded.slice(0, splitAt))
+    listeners.data!(encoded.slice(splitAt))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(writes).toHaveLength(1)
+    expect(JSON.parse(writes[0])).toEqual({ id: 20, result: { head: [], body: "<h1>Café ☕</h1>" } })
+    expect(exitSpy).not.toHaveBeenCalled()
+
+    listeners.data!('{"id":21,"method":"ping"}')
+    listeners.end!()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(JSON.parse(writes[1])).toEqual({ id: 21, result: { status: "pong" } })
+    expect(exitSpy).toHaveBeenCalledWith(0)
+  })
 })

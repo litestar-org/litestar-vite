@@ -1257,9 +1257,7 @@ def test_cli_vite_bundle_stage_only(tmp_path: Path) -> None:
     bundler_cls.assert_called_once()
     fake_bundler.build_project_wheel.assert_called_once()
     fake_bundler.stage_distribution.assert_called_once_with(
-        tmp_path / "dist" / "bundle" / "work",
-        wheels=[wheel_path],
-        target_triple="x86_64-unknown-linux-gnu",
+        tmp_path / "dist" / "bundle" / "work", wheels=[wheel_path], target_triple="x86_64-unknown-linux-gnu"
     )
     fake_bundler.prepare_pyapp_source.assert_not_called()
     fake_bundler.compile_binary.assert_not_called()
@@ -1319,4 +1317,3 @@ def test_cli_vite_bundle_full_compile_with_overrides(tmp_path: Path) -> None:
         output_path=output_bin,
         target_triple="aarch64-unknown-linux-gnu",
     )
-

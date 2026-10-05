@@ -504,10 +504,7 @@ def _inject_tag_attributes(tag_suffix: str, extra_attrs: str) -> str:
 
 
 def _format_companion_link_tags(
-    css_items: list[dict[str, Any]],
-    import_items: list[dict[str, Any]],
-    build_url: Any,
-    nonce_attr: str,
+    css_items: list[dict[str, Any]], import_items: list[dict[str, Any]], build_url: Any, nonce_attr: str
 ) -> str:
     """Render companion ``<link rel="stylesheet">`` and ``<link rel="modulepreload">`` tags."""
     tags: list[str] = []
@@ -553,9 +550,7 @@ def _collect_manifest_entry_assets(
         for css_file in manifest_item.get("css", []):
             if isinstance(css_file, str) and css_file not in emitted_css:
                 emitted_css.add(css_file)
-                css_items.append(
-                    {"file": css_file, "integrity": _find_manifest_integrity_for_file(manifest, css_file)}
-                )
+                css_items.append({"file": css_file, "integrity": _find_manifest_integrity_for_file(manifest, css_file)})
 
     def _walk(keys: list[str]) -> None:
         for key in keys:

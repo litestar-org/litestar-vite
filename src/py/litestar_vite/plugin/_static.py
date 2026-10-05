@@ -42,25 +42,38 @@ BLOCKED_STATIC_METADATA_FILES: frozenset[str] = frozenset({
     ".litestar.json",
     "hot",
 })
-_HASHED_ASSET_PATTERN = re.compile(
-    r"[-.](?=[A-Za-z0-9_-]*[0-9]|[A-Za-z0-9_-]*[A-Z][A-Za-z0-9_-]*[a-z]|[A-Za-z0-9_-]*[a-z][A-Za-z0-9_-]*[A-Z])"
-    r"[A-Za-z0-9_-]{6,64}\.[A-Za-z0-9]+(?:\.map)?$"
-)
+HASHED_ASSETS_DIR = "assets"
+"""Directory name (Vite ``build.assetsDir`` default) that must be an ancestor of a hashed asset."""
+
+_HASHED_ASSET_PATTERN = re.compile(r"[-.][A-Za-z0-9_-]{8,16}\.[A-Za-z0-9]+(?:\.map)?$")
 
 
-def is_hashed_asset_path(file_path: "str | Path") -> bool:
-    """Return True when ``file_path`` has a Vite/Rollup content-hashed filename."""
-    name = Path(file_path).name
-    return bool(_HASHED_ASSET_PATTERN.search(name))
+def is_hashed_asset_path(file_path: "str | Path", assets_dir: str = HASHED_ASSETS_DIR) -> bool:
+    """Return True when ``file_path`` is a Vite/Rollup content-hashed build artifact.
+
+    Two conditions must hold so that hand-named files such as
+    ``icon-192x192.png`` or ``vendor.ReactDOM.js`` outside the build output are
+    never served as immutable:
+
+    1. ``assets_dir`` is an ancestor directory of the file.
+    2. The file name ends in a ``-<hash>.<ext>`` (optionally ``.map``) segment
+       where ``<hash>`` is an 8-16 character base64url/hex digest, matching
+       Rollup's default ``[name]-[hash][extname]`` templates.
+    """
+    path = Path(file_path)
+    parts = path.as_posix().split("/")
+    if assets_dir not in parts[:-1]:
+        return False
+    return bool(_HASHED_ASSET_PATTERN.search(path.name))
 
 
 def is_blocked_static_metadata_path(relative_path: str, extra_blocked: "Iterable[str]" = ()) -> bool:
     """Return True when ``relative_path`` targets an internal build or bridge metadata file."""
-    normalized = relative_path.replace("\\", "/").strip("/")
+    normalized = relative_path.replace("\\", "/").strip("/").lower()
     if not normalized:
         return False
     blocked = BLOCKED_STATIC_METADATA_FILES.union(
-        item.replace("\\", "/").strip("/") for item in extra_blocked if item
+        item.replace("\\", "/").strip("/").lower() for item in extra_blocked if item
     )
     if normalized in blocked:
         return True
@@ -73,13 +86,7 @@ class _StaticBeforeRequestHook:
 
     __slots__ = ("_asset_prefix", "_blocked_paths", "_user_hook")
 
-    def __init__(
-        self,
-        *,
-        asset_url: str,
-        blocked_paths: frozenset[str],
-        user_hook: Any = None,
-    ) -> None:
+    def __init__(self, *, asset_url: str, blocked_paths: frozenset[str], user_hook: Any = None) -> None:
         self._asset_prefix = "/" + asset_url.strip("/") if asset_url.strip("/") else ""
         self._blocked_paths = blocked_paths
         self._user_hook = user_hook
@@ -111,12 +118,7 @@ class _StaticAfterRequestHook:
 
     __slots__ = ("_immutable_cache_headers", "_user_hook")
 
-    def __init__(
-        self,
-        *,
-        immutable_cache_headers: bool,
-        user_hook: Any = None,
-    ) -> None:
+    def __init__(self, *, immutable_cache_headers: bool, user_hook: Any = None) -> None:
         self._immutable_cache_headers = immutable_cache_headers
         self._user_hook = user_hook
 
@@ -137,28 +139,16 @@ class _StaticAfterRequestHook:
 
 
 def build_static_before_request_hook(
-    *,
-    asset_url: str,
-    manifest_name: str = "manifest.json",
-    hot_file: str = "hot",
-    user_hook: Any = None,
+    *, asset_url: str, manifest_name: str = "manifest.json", hot_file: str = "hot", user_hook: Any = None
 ) -> Any:
     """Build a static router before_request hook that blocks internal Vite metadata files."""
     clean_manifest = manifest_name.replace("\\", "/").strip("/")
     clean_hot = hot_file.replace("\\", "/").strip("/")
-    blocked = BLOCKED_STATIC_METADATA_FILES.union({
-        clean_manifest,
-        f".vite/{clean_manifest}",
-        clean_hot,
-    })
+    blocked = BLOCKED_STATIC_METADATA_FILES.union({clean_manifest, f".vite/{clean_manifest}", clean_hot})
     return _StaticBeforeRequestHook(asset_url=asset_url, blocked_paths=blocked, user_hook=user_hook)
 
 
-def build_static_after_request_hook(
-    *,
-    immutable_cache_headers: bool,
-    user_hook: Any = None,
-) -> Any:
+def build_static_after_request_hook(*, immutable_cache_headers: bool, user_hook: Any = None) -> Any:
     """Build a static router after_request hook that attaches immutable Cache-Control to hashed assets."""
     return _StaticAfterRequestHook(immutable_cache_headers=immutable_cache_headers, user_hook=user_hook)
 

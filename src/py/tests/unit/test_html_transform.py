@@ -50,14 +50,8 @@ def test_transform_asset_urls_propagates_csp_nonce_and_sri_integrity() -> None:
             "imports": ["_vendor-111.js"],
             "integrity": "sha384-entryhash",
         },
-        "_vendor-111.js": {
-            "file": "assets/vendor-111.js",
-            "integrity": "sha384-vendorhash",
-        },
-        "resources/extra.css": {
-            "file": "assets/extra-999.css",
-            "integrity": "sha384-csshash",
-        },
+        "_vendor-111.js": {"file": "assets/vendor-111.js", "integrity": "sha384-vendorhash"},
+        "resources/extra.css": {"file": "assets/extra-999.css", "integrity": "sha384-csshash"},
     }
     html = (
         '<html><head><link rel="stylesheet" href="/resources/extra.css"></head>'

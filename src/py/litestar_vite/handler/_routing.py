@@ -24,14 +24,7 @@ class _PreloadHTMLResponse(Response[bytes]):
 
     __slots__ = ("_early_hints", "_preload_headers")
 
-    def __init__(
-        self,
-        content: bytes,
-        *,
-        preload_headers: list[str],
-        early_hints: bool,
-        **kwargs: Any,
-    ) -> None:
+    def __init__(self, content: bytes, *, preload_headers: list[str], early_hints: bool, **kwargs: Any) -> None:
         super().__init__(content=content, **kwargs)
         self._preload_headers = preload_headers
         self._early_hints = early_hints
@@ -41,7 +34,6 @@ class _PreloadHTMLResponse(Response[bytes]):
         if self._early_hints and self._preload_headers:
             return cast("ASGIResponse", EarlyHintsASGIResponse(asgi_response, self._preload_headers))
         return asgi_response
-
 
 
 def is_static_asset_path(request_path: str, asset_prefix: str | None) -> bool:
@@ -175,4 +167,3 @@ async def spa_handler_prod(request: "Request[Any, Any, Any]") -> Response[bytes]
             early_hints=True,
         )
     return Response(content=body, status_code=200, media_type=_HTML_MEDIA_TYPE, headers=headers)
-

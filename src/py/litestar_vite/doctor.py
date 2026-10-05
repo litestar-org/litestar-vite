@@ -21,7 +21,7 @@ from rich.prompt import Confirm
 from rich.syntax import Syntax
 from rich.table import Table
 
-from litestar_vite.config import BundleConfig, ExternalDevServer, TypeGenConfig
+from litestar_vite.config import BundleConfig, ExternalDevServer, TypeGenConfig, detect_runtime_marker
 from litestar_vite.ipc import is_wasm_available
 
 if TYPE_CHECKING:
@@ -1259,63 +1259,54 @@ class ViteDoctor:
             return
 
         root = self.config.root_dir or Path.cwd()
-        lockfile_executors: tuple[tuple[str, str], ...] = (
-            ("bun.lockb", "bun"),
-            ("bun.lock", "bun"),
-            ("deno.lock", "deno"),
-            ("pnpm-lock.yaml", "pnpm"),
-            ("yarn.lock", "yarn"),
-            ("package-lock.json", "node"),
-        )
+        marker = detect_runtime_marker(root)
+        if marker is None:
+            return
+        expected_executor, filename = marker
         configured = self.config.runtime.executor or "node"
-        for filename, expected_executor in lockfile_executors:
-            if (root / filename).exists():
-                if configured != expected_executor:
-                    self.issues.append(
-                        DoctorIssue(
-                            check="Runtime / Lockfile Mismatch",
-                            severity="warning",
-                            message=(
-                                f"RuntimeConfig(executor={configured!r}) conflicts with {filename!r} "
-                                f"in {root} (expected executor={expected_executor!r})"
-                            ),
-                            fix_hint=(
-                                f"Set RuntimeConfig(executor={expected_executor!r}) or omit executor to "
-                                "allow automatic lockfile detection"
-                            ),
-                            auto_fixable=False,
-                        )
-                    )
-                return
+        if configured != expected_executor:
+            self.issues.append(
+                DoctorIssue(
+                    check="Runtime / Lockfile Mismatch",
+                    severity="warning",
+                    message=(
+                        f"RuntimeConfig(executor={configured!r}) conflicts with {filename!r} "
+                        f"in {root} (expected executor={expected_executor!r})"
+                    ),
+                    fix_hint=(
+                        f"Set RuntimeConfig(executor={expected_executor!r}) or omit executor to "
+                        "allow automatic lockfile detection"
+                    ),
+                    auto_fixable=False,
+                )
+            )
 
     def _resolve_active_bundle_config(self) -> tuple[BundleConfig | None, dict[str, Any]]:
-        """Resolve active BundleConfig and parsed pyproject.toml dictionary when bundling is enabled."""
+        """Resolve the active BundleConfig and parsed ``pyproject.toml`` when bundling is configured.
+
+        An enabled ``ViteConfig.bundle`` wins. Otherwise ``[tool.litestar.bundle]``
+        in ``pyproject.toml`` is used when present and enabled. Returns
+        ``(None, data)`` when bundling is not configured anywhere.
+        """
         root = self.config.root_dir or Path.cwd()
         pyproject_path = root / "pyproject.toml"
         pyproject_data: dict[str, Any] = {}
-        has_pyproject_bundle = False
         if pyproject_path.exists():
             try:
                 decoded = msgspec.toml.decode(pyproject_path.read_bytes())
-                if isinstance(decoded, dict):
-                    pyproject_data = cast("dict[str, Any]", decoded)
-                    tool_any = pyproject_data.get("tool")
-                    tool_table = cast("dict[str, Any]", tool_any) if isinstance(tool_any, dict) else None
-                    litestar_any = tool_table.get("litestar") if tool_table is not None else None
-                    litestar_table = cast("dict[str, Any]", litestar_any) if isinstance(litestar_any, dict) else None
-                    bundle_any = litestar_table.get("bundle") if litestar_table is not None else None
-                    has_pyproject_bundle = isinstance(bundle_any, dict)
-            except (OSError, msgspec.DecodeError):
-                pyproject_data = {}
+            except (ImportError, OSError, msgspec.DecodeError):
+                decoded = None
+            if isinstance(decoded, dict):
+                pyproject_data = cast("dict[str, Any]", decoded)
 
-        if has_pyproject_bundle:
+        explicit = self.config.bundle_config
+        if explicit is not None:
+            return explicit, pyproject_data
+
+        if pyproject_data:
             pyproject_bundle = BundleConfig.from_pyproject(pyproject_path)
-            if isinstance(self.config.bundle, bool):
+            if pyproject_bundle.enabled:
                 return pyproject_bundle, pyproject_data
-            return self.config.bundle, pyproject_data
-
-        if self.config.bundle_config is not None:
-            return self.config.bundle_config, pyproject_data
 
         return None, pyproject_data
 
@@ -1380,7 +1371,7 @@ class ViteDoctor:
             )
         elif (
             self.config.ssr_enabled
-            and bundle_cfg.compile_ssr_worker in {"none", "wasm"}
+            and bundle_cfg.compile_ssr_worker == "none"
             and self.config.ssr_transport in {"wasm", "auto"}
             and not is_wasm_available()
         ):

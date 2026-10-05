@@ -82,8 +82,7 @@ def test_generate_asset_tags_respects_explicit_scripts_attrs() -> None:
 def test_generate_asset_tags_csp_nonce_and_sri_integrity() -> None:
     """Verify CSP nonce and manifest SRI integrity attributes are rendered and HTML-escaped."""
     config = ViteConfig(
-        paths=PathConfig(asset_url="/static/"),
-        runtime=RuntimeConfig(dev_mode=False, csp_nonce='nonce-"123"'),
+        paths=PathConfig(asset_url="/static/"), runtime=RuntimeConfig(dev_mode=False, csp_nonce='nonce-"123"')
     )
     loader = ViteAssetLoader(config)
     loader._manifest = {
@@ -93,10 +92,7 @@ def test_generate_asset_tags_csp_nonce_and_sri_integrity() -> None:
             "imports": ["_vendor.js"],
             "integrity": "sha384-mainhash",
         },
-        "_vendor.js": {
-            "file": "assets/vendor-222.js",
-            "integrity": 'sha384-vendor"hash',
-        },
+        "_vendor.js": {"file": "assets/vendor-222.js", "integrity": 'sha384-vendor"hash'},
     }
 
     tags = loader.generate_asset_tags("src/main.ts")
@@ -128,10 +124,7 @@ def test_generate_ws_client_tags_includes_csp_nonce() -> None:
 
 def test_template_callables_resolve_per_request_csp_nonce() -> None:
     """Verify render_asset_tag, render_hmr_client, and render_routes read csp_nonce from context or request state."""
-    config = ViteConfig(
-        paths=PathConfig(asset_url="/static/"),
-        runtime=RuntimeConfig(dev_mode=False),
-    )
+    config = ViteConfig(paths=PathConfig(asset_url="/static/"), runtime=RuntimeConfig(dev_mode=False))
     plugin = VitePlugin(config=config)
 
     @get("/items", name="items")
@@ -139,9 +132,7 @@ def test_template_callables_resolve_per_request_csp_nonce() -> None:
         return []
 
     app = Litestar(route_handlers=[get_items], plugins=[plugin])
-    plugin.asset_loader._manifest = {
-        "src/main.ts": {"file": "assets/main-111.js", "integrity": "sha384-abc"},
-    }
+    plugin.asset_loader._manifest = {"src/main.ts": {"file": "assets/main-111.js", "integrity": "sha384-abc"}}
 
     req = RequestFactory(app=app).get("/items", state={"csp_nonce": "state-nonce-99"})
     ctx = {"request": req}
@@ -171,10 +162,7 @@ def test_render_preload_headers_formats_rfc8288_links() -> None:
             "css": ["assets/main-def67890.css"],
             "imports": ["_vendor.js"],
         },
-        "_vendor.js": {
-            "file": "assets/vendor-99887766.js",
-            "css": ["assets/vendor-11223344.css"],
-        },
+        "_vendor.js": {"file": "assets/vendor-99887766.js", "css": ["assets/vendor-11223344.css"]},
     }
 
     links = loader.render_preload_headers("src/main.ts")
@@ -192,6 +180,3 @@ def test_render_preload_headers_returns_empty_in_dev_mode() -> None:
     config = ViteConfig(paths=PathConfig(asset_url="/static/"), runtime=RuntimeConfig(dev_mode=True))
     loader = ViteAssetLoader(config)
     assert loader.render_preload_headers("src/main.ts") == []
-
-
-

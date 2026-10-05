@@ -12,7 +12,7 @@ from litestar.serialization import decode_json
 
 from litestar_vite.config._constants import TRUE_VALUES
 
-__all__ = ("ExternalDevServer", "RuntimeConfig", "detect_runtime", "resolve_trusted_proxies")
+__all__ = ("ExternalDevServer", "RuntimeConfig", "detect_runtime", "detect_runtime_marker", "resolve_trusted_proxies")
 
 ExecutorType = Literal["node", "bun", "deno", "yarn", "pnpm"]
 
@@ -199,9 +199,30 @@ class RuntimeConfig:
         is_react: Enable React Fast Refresh support.
         health_check: Enable health check for dev server startup.
         detect_nodeenv: Detect and use nodeenv in virtualenv (opt-in).
+        provisioning_mode: How runtime binaries are located:
+            - "auto" (default): active virtual environment / PEP 425 wheel first, then ``PATH``
+            - "wheel": only the virtual environment (fails fast if the runtime wheel is missing)
+            - "nodeenv": like "auto" and additionally enables ``detect_nodeenv``
+            - "system": only ``PATH`` (ignores virtual-environment binaries)
+        ssr_transport: Production SSR IPC transport selection:
+            - "auto" (default): explicit SSR command, then a bundled ``litestar-ssr-worker``
+              binary, then the configured JS runtime, then in-process WASM when
+              ``litestar-vite[wasm]`` is installed
+            - "stdio": always spawn the JS runtime over NDJSON stdio
+            - "wasm": always run the self-contained SSR bundle in-process via QuickJS
         set_environment: Set Vite environment variables from config.
         set_static_folders: Automatically configure static file serving.
-        csp_nonce: Content Security Policy nonce for inline scripts.
+        csp_nonce: Static Content Security Policy nonce for inline scripts. Inertia and
+            template responses additionally honor a per-request ``scope["state"]["csp_nonce"]``;
+            the cached SPA/hybrid HTML shell only supports this static value.
+        link_preload_headers: Emit RFC 8288 ``Link`` ``modulepreload``/``preload`` headers for the
+            served entry graph on production HTML responses.
+        early_hints: Also emit a ``103 Early Hints`` frame when the ASGI server advertises the
+            ``http.response.early_hint`` extension (opt-in).
+        immutable_cache_headers: Attach ``Cache-Control: public, max-age=31536000, immutable`` to
+            content-hashed files under the Vite ``assets`` directory served by Litestar's static
+            router. Not applied when a server serves assets natively (for example Granian
+            ``StaticPlacement.NATIVE``).
         spa_handler: Auto-register catch-all SPA route when mode="spa".
         http2: Enable HTTP/2 for proxy HTTP requests (better multiplexing).
             WebSocket traffic (HMR) uses a separate connection and is unaffected.
@@ -362,8 +383,8 @@ _PACKAGE_MANAGER_EXECUTORS: dict[str, ExecutorType] = {
 }
 
 
-def detect_runtime(root_dir: Path) -> ExecutorType:
-    """Detect the JavaScript runtime/package manager from project lockfiles and manifests.
+def detect_runtime_marker(root_dir: Path) -> "tuple[ExecutorType, str] | None":
+    """Return the executor implied by project lockfiles or manifests together with its source.
 
     Precedence:
         1. ``bun.lockb`` or ``bun.lock`` -> ``"bun"``
@@ -372,17 +393,18 @@ def detect_runtime(root_dir: Path) -> ExecutorType:
         4. ``yarn.lock`` -> ``"yarn"``
         5. ``package-lock.json`` -> ``"node"``
         6. ``package.json`` ``"packageManager"`` field (``pnpm@...``, ``yarn@...``, ``bun@...``, ``deno@...``)
-        7. Fallback -> ``"node"``
 
     Args:
         root_dir: Project root directory to inspect.
 
     Returns:
-        The detected executor identifier.
+        ``(executor, marker)`` where ``marker`` is the file name (or
+        ``"package.json#packageManager"``) that produced the match, or ``None``
+        when no marker is present.
     """
     for filename, executor in _LOCKFILE_EXECUTORS:
         if (root_dir / filename).exists():
-            return executor
+            return executor, filename
 
     package_json = root_dir / "package.json"
     if package_json.exists():
@@ -395,6 +417,21 @@ def detect_runtime(root_dir: Path) -> ExecutorType:
             if isinstance(pkg_manager, str):
                 normalized = pkg_manager.strip().lower().split("@", 1)[0]
                 if normalized in _PACKAGE_MANAGER_EXECUTORS:
-                    return _PACKAGE_MANAGER_EXECUTORS[normalized]
+                    return _PACKAGE_MANAGER_EXECUTORS[normalized], "package.json#packageManager"
 
-    return "node"
+    return None
+
+
+def detect_runtime(root_dir: Path) -> ExecutorType:
+    """Detect the JavaScript runtime/package manager from project lockfiles and manifests.
+
+    Delegates to :func:`detect_runtime_marker` and falls back to ``"node"``.
+
+    Args:
+        root_dir: Project root directory to inspect.
+
+    Returns:
+        The detected executor identifier.
+    """
+    marker = detect_runtime_marker(root_dir)
+    return marker[0] if marker is not None else "node"

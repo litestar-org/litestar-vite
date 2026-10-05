@@ -55,12 +55,10 @@ class _FakeClientSocket:
 
 async def test_run_websocket_proxy_forwards_text_frames_to_upstream() -> None:
     """Verify text WebSocket frames from the client are forwarded to upstream as str."""
-    socket = _FakeClientSocket(
-        [
-            {"type": "websocket.receive", "text": "ping"},
-            {"type": "websocket.disconnect", "code": 1000},
-        ]
-    )
+    socket = _FakeClientSocket([
+        {"type": "websocket.receive", "text": "ping"},
+        {"type": "websocket.disconnect", "code": 1000},
+    ])
     upstream = _FakeUpstream()
 
     await _run_websocket_proxy(socket, upstream)
@@ -73,12 +71,10 @@ async def test_run_websocket_proxy_forwards_text_frames_to_upstream() -> None:
 async def test_run_websocket_proxy_forwards_binary_frames_to_upstream() -> None:
     """Verify binary WebSocket frames from the client are forwarded to upstream as bytes."""
     payload = b"\x00\x01\x02\xff"
-    socket = _FakeClientSocket(
-        [
-            {"type": "websocket.receive", "bytes": payload},
-            {"type": "websocket.disconnect", "code": 1000},
-        ]
-    )
+    socket = _FakeClientSocket([
+        {"type": "websocket.receive", "bytes": payload},
+        {"type": "websocket.disconnect", "code": 1000},
+    ])
     upstream = _FakeUpstream()
 
     await _run_websocket_proxy(socket, upstream)
@@ -91,14 +87,12 @@ async def test_run_websocket_proxy_forwards_binary_frames_to_upstream() -> None:
 
 async def test_run_websocket_proxy_forwards_mixed_text_and_binary_bidirectional() -> None:
     """Verify mixed text and binary frames are forwarded in both directions."""
-    socket = _FakeClientSocket(
-        [
-            {"type": "websocket.receive", "text": "hello"},
-            {"type": "websocket.receive", "bytes": b"\xde\xad\xbe\xef"},
-            {"type": "websocket.receive", "text": "world"},
-            {"type": "websocket.disconnect", "code": 1000},
-        ]
-    )
+    socket = _FakeClientSocket([
+        {"type": "websocket.receive", "text": "hello"},
+        {"type": "websocket.receive", "bytes": b"\xde\xad\xbe\xef"},
+        {"type": "websocket.receive", "text": "world"},
+        {"type": "websocket.disconnect", "code": 1000},
+    ])
     upstream = _FakeUpstream(incoming=["server-text", b"\xca\xfe"])
 
     await _run_websocket_proxy(socket, upstream)

@@ -1163,7 +1163,6 @@ def _resolve_inertia_preload_headers(vite_plugin: "VitePlugin") -> list[str]:
     return preload_headers
 
 
-
 class _AsyncInertiaSSRResponse:
     """ASGI response placeholder for SSR HTTP pre-fetch.
 

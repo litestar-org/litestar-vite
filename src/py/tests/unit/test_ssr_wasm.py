@@ -252,3 +252,42 @@ def test_resolve_ssr_transport_priority(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setattr("litestar_vite.executor.JSExecutor._which", staticmethod(lambda _bin: None))
     fallback_transport = resolve_ssr_transport(auto_config)
     assert isinstance(fallback_transport, WasmIPCTransport)
+
+
+_REAL_ESM_BUNDLE = """\
+export const marker = "esm";
+const encoded = new TextEncoder().encode("héllo");
+const roundtrip = new TextDecoder().decode(encoded);
+globalThis.__litestar_ssr_dispatch__ = (line) => {
+  const req = JSON.parse(line);
+  if (req.method === "spin") {
+    for (;;) {}
+  }
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      queueMicrotask(() => {
+        resolve(JSON.stringify({ id: req.id, result: { html: `<p>${roundtrip}</p>`, head: [] } }));
+      });
+    }, 0);
+  });
+};
+"""
+
+
+async def test_wasm_ipc_transport_runs_real_quickjs_esm_bundle_and_recovers_from_timeout(tmp_path: Path) -> None:
+    """Real QuickJS engine: ESM bundle loads via Context.module, timers/microtasks drain, and timeouts reset the context."""
+    pytest.importorskip("quickjs")
+    bundle = tmp_path / "ssr.js"
+    bundle.write_text(_REAL_ESM_BUNDLE, encoding="utf-8")
+
+    transport = WasmIPCTransport(bundle_path=bundle, cwd=tmp_path)
+    first = await transport.send_request({"method": "render", "params": {"component": "Home"}}, timeout=5.0)
+    assert first["result"] == {"html": "<p>héllo</p>", "head": []}
+
+    with pytest.raises(IPCTimeoutError):
+        await transport.send_request({"method": "spin"}, timeout=0.2)
+    assert transport.is_running is False
+
+    second = await transport.send_request({"method": "render"}, timeout=5.0)
+    assert second["result"]["html"] == "<p>héllo</p>"
+    await transport.close()

@@ -10,43 +10,68 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from litestar_vite.config._bundle import BundleConfig
+from litestar_vite.config._bundle import DEFAULT_PBS_FULL_VERSIONS, BundleConfig
 from litestar_vite.config._paths import resolve_ssr_bundle_path
 from litestar_vite.config._vite import ViteConfig
 from litestar_vite.exceptions import LitestarViteError, ViteExecutionError
 
 __all__ = (
     "DEFAULT_PLATFORMS",
+    "DEFAULT_TARGET_TRIPLES",
     "DEFAULT_URLS",
+    "PBS_URL_TEMPLATE",
+    "PYAPP_REPOSITORY_URL",
     "BundleConfigurationError",
     "PyAppBundler",
+    "default_pbs_url",
     "detect_host_target_triple",
     "patch_pyapp_install_dir",
     "patch_pyapp_static_bzip2",
 )
 
+PYAPP_REPOSITORY_URL = "https://github.com/ofek/pyapp.git"
+
+PBS_URL_TEMPLATE = (
+    "https://github.com/astral-sh/python-build-standalone/releases/download/"
+    "{release}/cpython-{full_version}%2B{release}-{triple}-install_only_stripped.tar.gz"
+)
+
+DEFAULT_TARGET_TRIPLES: tuple[str, ...] = (
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+)
+
+
+def default_pbs_url(target_triple: str, python_version: str, pbs_release: str) -> str | None:
+    """Derive the default ``python-build-standalone`` archive URL for a target.
+
+    Args:
+        target_triple: Rust target triple (e.g. ``x86_64-unknown-linux-gnu``).
+        python_version: ``major.minor`` CPython version (e.g. ``"3.12"``).
+        pbs_release: ``python-build-standalone`` release tag (e.g. ``"20241016"``).
+
+    Returns:
+        The archive URL, or ``None`` when the release/version pair is not in
+        :data:`~litestar_vite.config._bundle.DEFAULT_PBS_FULL_VERSIONS`.
+    """
+    full_version = DEFAULT_PBS_FULL_VERSIONS.get(pbs_release, {}).get(python_version)
+    if full_version is None:
+        return None
+    return PBS_URL_TEMPLATE.format(release=pbs_release, full_version=full_version, triple=target_triple)
+
+
+_DEFAULT_BUNDLE_CONFIG = BundleConfig()
+
 DEFAULT_URLS: dict[str, str] = {
-    "x86_64-unknown-linux-gnu": (
-        "https://github.com/indygreg/python-build-standalone/releases/download/"
-        "20241016/cpython-3.12.7%2B20241016-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
-    ),
-    "aarch64-unknown-linux-gnu": (
-        "https://github.com/indygreg/python-build-standalone/releases/download/"
-        "20241016/cpython-3.12.7%2B20241016-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz"
-    ),
-    "x86_64-apple-darwin": (
-        "https://github.com/indygreg/python-build-standalone/releases/download/"
-        "20241016/cpython-3.12.7%2B20241016-x86_64-apple-darwin-install_only_stripped.tar.gz"
-    ),
-    "aarch64-apple-darwin": (
-        "https://github.com/indygreg/python-build-standalone/releases/download/"
-        "20241016/cpython-3.12.7%2B20241016-aarch64-apple-darwin-install_only_stripped.tar.gz"
-    ),
-    "x86_64-pc-windows-msvc": (
-        "https://github.com/indygreg/python-build-standalone/releases/download/"
-        "20241016/cpython-3.12.7%2B20241016-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
-    ),
+    triple: url
+    for triple in DEFAULT_TARGET_TRIPLES
+    if (url := default_pbs_url(triple, _DEFAULT_BUNDLE_CONFIG.python_version, _DEFAULT_BUNDLE_CONFIG.pbs_release))
+    is not None
 }
+"""Default archive URLs for the default ``python_version`` / ``pbs_release`` pair."""
 
 DEFAULT_PLATFORMS: dict[str, str] = {
     "x86_64-unknown-linux-gnu": "manylinux_2_28_x86_64",
@@ -159,15 +184,44 @@ def _inject_static_feature(match: re.Match[str]) -> str:
     return f'bzip2 = {{{inner.rstrip()}, features = ["static"] }}'
 
 
-def _safe_extract_tar(tar: tarfile.TarFile, dest: Path) -> None:
-    """Safely extract a tar archive into ``dest`` after validating member paths against traversal."""
-    resolved_dest = dest.resolve()
-    for member in tar.getmembers():
-        member_path = (dest / member.name).resolve()
-        if not member_path.is_relative_to(resolved_dest):
-            msg = f"Unsafe tar member path detected: {member.name!r}"
+def _validate_tar_member(member: tarfile.TarInfo, dest: Path, resolved_dest: Path) -> None:
+    """Reject tar members that could write outside ``dest`` or create special files.
+
+    Raises:
+        BundleConfigurationError: If the member path, link target, or type is unsafe.
+    """
+    member_path = (dest / member.name).resolve()
+    if not member_path.is_relative_to(resolved_dest):
+        msg = f"Unsafe tar member path detected: {member.name!r}"
+        raise BundleConfigurationError(msg)
+    if member.issym() or member.islnk():
+        link_base = member_path.parent if member.issym() else dest
+        link_target = (link_base / member.linkname).resolve()
+        if not link_target.is_relative_to(resolved_dest):
+            msg = f"Unsafe tar link detected: {member.name!r} -> {member.linkname!r}"
             raise BundleConfigurationError(msg)
-        tar.extract(member, path=dest)
+        return
+    if not (member.isfile() or member.isdir()):
+        msg = f"Unsupported tar member type for {member.name!r}"
+        raise BundleConfigurationError(msg)
+
+
+def _safe_extract_tar(tar: tarfile.TarFile, dest: Path) -> None:
+    """Safely extract a tar archive into ``dest``.
+
+    Every member is validated against path traversal, escaping symlink and
+    hardlink targets, and device/FIFO entries before extraction. When the
+    interpreter provides :func:`tarfile.data_filter` (PEP 706) it is applied
+    as an additional defense layer.
+    """
+    resolved_dest = dest.resolve()
+    use_data_filter = hasattr(tarfile, "data_filter")
+    for member in tar.getmembers():
+        _validate_tar_member(member, dest, resolved_dest)
+        if use_data_filter:
+            tar.extract(member, path=dest, filter="data")
+        else:
+            tar.extract(member, path=dest)
 
 
 def _default_subprocess_runner(cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
@@ -217,14 +271,29 @@ class PyAppBundler:
         return self._bundle_config.target_arch or detect_host_target_triple()
 
     def resolve_pbs_url(self, target_triple: str | None = None) -> str:
-        """Resolve the ``python-build-standalone`` archive URL for ``target_triple``."""
+        """Resolve the ``python-build-standalone`` archive URL for ``target_triple``.
+
+        Explicit ``pbs_urls`` overrides win; otherwise the URL is derived from
+        ``python_version`` and ``pbs_release`` via :data:`PBS_URL_TEMPLATE`.
+
+        Raises:
+            BundleConfigurationError: If the triple is unsupported or the
+                ``python_version``/``pbs_release`` pair has no known full version.
+        """
         triple = target_triple or self.target_triple
         if triple in self._bundle_config.pbs_urls:
             return self._bundle_config.pbs_urls[triple]
-        if triple in DEFAULT_URLS:
-            return DEFAULT_URLS[triple]
-        msg = f"Unsupported target triple {triple!r}. Configure pbs_urls[{triple!r}] in BundleConfig."
-        raise BundleConfigurationError(msg)
+        if triple not in DEFAULT_TARGET_TRIPLES:
+            msg = f"Unsupported target triple {triple!r}. Configure pbs_urls[{triple!r}] in BundleConfig."
+            raise BundleConfigurationError(msg)
+        url = default_pbs_url(triple, self._bundle_config.python_version, self._bundle_config.pbs_release)
+        if url is None:
+            msg = (
+                f"No known python-build-standalone artifact for Python {self._bundle_config.python_version} "
+                f"in release {self._bundle_config.pbs_release!r}. Configure pbs_urls[{triple!r}] in BundleConfig."
+            )
+            raise BundleConfigurationError(msg)
+        return url
 
     def resolve_pip_platform(self, target_triple: str | None = None) -> str:
         """Resolve the ``uv pip install --python-platform`` tag for ``target_triple``."""
@@ -274,21 +343,43 @@ class PyAppBundler:
         raise BundleConfigurationError(msg)
 
     def strip_staged_distribution(self, python_root: Path) -> None:
-        """Remove ``__pycache__``, ``.pyc``, test suites, and C headers from a staged distribution."""
+        """Remove bytecode caches, stdlib test suites, static libs, and C headers from a staged distribution.
+
+        Only the standard library's own ``test`` and ``idle_test`` packages are
+        removed; ``site-packages`` content is left intact apart from
+        ``__pycache__`` directories so that installed projects shipping a
+        ``tests`` package keep working.
+        """
         include_dir = python_root / "include"
         if include_dir.is_dir():
             shutil.rmtree(include_dir)
 
-        removable_dirs = {"__pycache__", "tests", "test", "idle_test"}
+        for stdlib_dir in self._iter_stdlib_dirs(python_root):
+            for name in ("test", "idlelib/idle_test", "lib2to3/tests", "tkinter/test", "unittest/test"):
+                candidate = stdlib_dir / name
+                if candidate.is_dir():
+                    shutil.rmtree(candidate, ignore_errors=True)
+
         for root_str, dirnames, filenames in os.walk(python_root, topdown=True):
             current_dir = Path(root_str)
-            for dname in list(dirnames):
-                if dname in removable_dirs:
-                    shutil.rmtree(current_dir / dname, ignore_errors=True)
-                    dirnames.remove(dname)
+            if "__pycache__" in dirnames:
+                shutil.rmtree(current_dir / "__pycache__", ignore_errors=True)
+                dirnames.remove("__pycache__")
             for fname in filenames:
                 if fname.endswith((".pyc", ".pyo", ".a")):
                     (current_dir / fname).unlink(missing_ok=True)
+
+    @staticmethod
+    def _iter_stdlib_dirs(python_root: Path) -> list[Path]:
+        """Return stdlib root directories for POSIX (``lib/pythonX.Y``) and Windows (``Lib``) layouts."""
+        candidates: list[Path] = []
+        lib_dir = python_root / "lib"
+        if lib_dir.is_dir():
+            candidates.extend(p for p in lib_dir.glob("python3*") if p.is_dir())
+        win_lib = python_root / "Lib"
+        if win_lib.is_dir():
+            candidates.append(win_lib)
+        return candidates
 
     def _resolve_site_packages_dir(self, python_root: Path, target_triple: str) -> Path:
         """Locate or construct the ``site-packages`` directory inside ``python_root``."""
@@ -300,9 +391,15 @@ class PyAppBundler:
         return site_pkgs
 
     def _resolve_ssr_worker_binary_path(self, python_root: Path, target_triple: str) -> Path:
-        """Return the destination path for ``litestar-ssr-worker`` inside ``python_root``."""
+        """Return the destination path for ``litestar-ssr-worker`` inside ``python_root``.
+
+        The worker is placed next to the interpreter so that
+        :func:`litestar_vite.executor.find_bundled_ssr_worker` can locate it via
+        ``Path(sys.executable).parent``: ``python/bin/`` on POSIX and the
+        ``python/`` root on Windows (where ``python.exe`` lives at the top level).
+        """
         if "windows" in target_triple:
-            return python_root / "Scripts" / "litestar-ssr-worker.exe"
+            return python_root / "litestar-ssr-worker.exe"
         return python_root / "bin" / "litestar-ssr-worker"
 
     def build_project_wheel(self, work_dir: Path) -> list[Path]:
@@ -318,11 +415,20 @@ class PyAppBundler:
         if dest.exists():
             shutil.rmtree(dest)
         if pyapp_source is not None:
-            shutil.copytree(pyapp_source, dest)
+            shutil.copytree(pyapp_source, dest, ignore=shutil.ignore_patterns("target", ".git"))
             return dest
         work_dir.mkdir(parents=True, exist_ok=True)
         self._runner(
-            ["git", "clone", "--depth", "1", "https://github.com/ofek/pyapp.git", str(dest)],
+            [
+                "git",
+                "clone",
+                "--depth",
+                "1",
+                "--branch",
+                self._bundle_config.pyapp_version,
+                PYAPP_REPOSITORY_URL,
+                str(dest),
+            ],
             cwd=work_dir,
         )
         return dest
@@ -343,8 +449,8 @@ class PyAppBundler:
         pbs_archive = archive_path or (work_dir / "pbs-install-only-stripped.tar.gz")
         if not pbs_archive.is_file():
             url = self.resolve_pbs_url(triple)
-            if not url.startswith(("https://", "http://")):
-                msg = f"Unsupported PBS URL scheme for {url!r}; expected http:// or https://"
+            if not url.startswith("https://"):
+                msg = f"Unsupported PBS URL scheme for {url!r}; expected https://"
                 raise BundleConfigurationError(msg)
             self._runner(["curl", "-fSL", "--retry", "3", "-o", str(pbs_archive), url], cwd=work_dir)
 
@@ -395,7 +501,7 @@ class PyAppBundler:
         env: dict[str, str] = {
             **os.environ,
             "PYAPP_PROJECT_NAME": project_name,
-            "PYAPP_PROJECT_VERSION": "0.1.0",
+            "PYAPP_PROJECT_VERSION": self._bundle_config.project_version or "0.0.0",
             "PYAPP_DISTRIBUTION_PATH": str(dist_archive.resolve()),
             "PYAPP_DISTRIBUTION_EMBED": "true",
             "PYAPP_DISTRIBUTION_PYTHON_PATH": python_rel,

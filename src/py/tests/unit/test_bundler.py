@@ -8,8 +8,11 @@ import pytest
 from litestar_vite.bundler import (
     DEFAULT_PLATFORMS,
     DEFAULT_URLS,
+    PBS_URL_TEMPLATE,
+    PYAPP_REPOSITORY_URL,
     BundleConfigurationError,
     PyAppBundler,
+    default_pbs_url,
     detect_host_target_triple,
     patch_pyapp_install_dir,
     patch_pyapp_static_bzip2,
@@ -247,3 +250,156 @@ def test_pyapp_bundler_build_project_wheel_and_prepare_source(tmp_path: Path) ->
     assert (staged_cloned / "Cargo.toml").read_text(encoding="utf-8") == '[package]\nname = "pyapp"\n'
     assert any(cmd[:2] == ["git", "clone"] for cmd in recorded_cmds)
 
+
+def test_resolve_pbs_url_derives_from_python_version_and_release(tmp_path: Path) -> None:
+    """Default PBS URLs follow python_version/pbs_release and fail fast for unknown pairs."""
+    cfg_311 = BundleConfig(enabled=True, python_version="3.11", target_arch="aarch64-apple-darwin")
+    bundler_311 = PyAppBundler(config=ViteConfig(mode="template", paths=PathConfig(root=tmp_path), bundle=cfg_311))
+    url = bundler_311.resolve_pbs_url()
+    assert url == default_pbs_url("aarch64-apple-darwin", "3.11", "20241016")
+    assert "cpython-3.11.10%2B20241016-aarch64-apple-darwin-install_only_stripped.tar.gz" in url
+    assert url.startswith(PBS_URL_TEMPLATE.split("{release}", 1)[0])
+
+    cfg_unknown = BundleConfig(enabled=True, python_version="3.14", target_arch="x86_64-unknown-linux-gnu")
+    bundler_unknown = PyAppBundler(
+        config=ViteConfig(mode="template", paths=PathConfig(root=tmp_path), bundle=cfg_unknown)
+    )
+    with pytest.raises(BundleConfigurationError, match="No known python-build-standalone artifact"):
+        bundler_unknown.resolve_pbs_url()
+
+    cfg_bad_triple = BundleConfig(enabled=True, target_arch="riscv64gc-unknown-linux-gnu")
+    bundler_bad = PyAppBundler(
+        config=ViteConfig(mode="template", paths=PathConfig(root=tmp_path), bundle=cfg_bad_triple)
+    )
+    with pytest.raises(BundleConfigurationError, match="Unsupported target triple"):
+        bundler_bad.resolve_pbs_url()
+
+
+def test_build_pyapp_env_uses_project_version_and_pins_pyapp_clone(tmp_path: Path) -> None:
+    """PYAPP_PROJECT_VERSION comes from BundleConfig.project_version and git clone targets pyapp_version."""
+    recorded_cmds: list[list[str]] = []
+
+    def fake_runner(cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
+        del cwd, env
+        recorded_cmds.append(list(cmd))
+        if cmd[:2] == ["git", "clone"]:
+            Path(cmd[-1]).mkdir(parents=True, exist_ok=True)
+
+    cfg = BundleConfig(enabled=True, binary_name="svc", project_version="4.5.6", pyapp_version="v0.27.0")
+    bundler = PyAppBundler(
+        config=ViteConfig(mode="template", paths=PathConfig(root=tmp_path), bundle=cfg), runner=fake_runner
+    )
+    env = bundler.build_pyapp_env(tmp_path / "python-dist.tar.gz", "x86_64-unknown-linux-gnu")
+    assert env["PYAPP_PROJECT_VERSION"] == "4.5.6"
+    assert env["PYAPP_PROJECT_NAME"] == "svc"
+
+    default_env = PyAppBundler(
+        config=ViteConfig(mode="template", paths=PathConfig(root=tmp_path), bundle=BundleConfig(enabled=True)),
+        runner=fake_runner,
+    ).build_pyapp_env(tmp_path / "python-dist.tar.gz", "x86_64-unknown-linux-gnu")
+    assert default_env["PYAPP_PROJECT_VERSION"] == "0.0.0"
+
+    bundler.prepare_pyapp_source(tmp_path / "work")
+    clone_cmd = next(cmd for cmd in recorded_cmds if cmd[:2] == ["git", "clone"])
+    assert clone_cmd[clone_cmd.index("--branch") + 1] == "v0.27.0"
+    assert PYAPP_REPOSITORY_URL in clone_cmd
+
+
+def test_prepare_pyapp_source_copy_ignores_target_and_git(tmp_path: Path) -> None:
+    """Local PyApp checkouts are copied without build artifacts or VCS metadata."""
+    source = tmp_path / "pyapp-local"
+    (source / "src").mkdir(parents=True)
+    (source / "target" / "release").mkdir(parents=True)
+    (source / ".git").mkdir()
+    (source / "Cargo.toml").write_text('[package]\nname = "pyapp"\n', encoding="utf-8")
+    (source / "target" / "release" / "pyapp").write_bytes(b"stale")
+    (source / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+
+    bundler = PyAppBundler(config=ViteConfig(mode="template", paths=PathConfig(root=tmp_path), bundle=True))
+    staged = bundler.prepare_pyapp_source(tmp_path / "work", pyapp_source=source)
+    assert (staged / "Cargo.toml").is_file()
+    assert not (staged / "target").exists()
+    assert not (staged / ".git").exists()
+
+
+@pytest.mark.parametrize(
+    ("member_name", "kind", "linkname"),
+    [
+        ("../escape.txt", tarfile.REGTYPE, ""),
+        ("python/bin/evil", tarfile.SYMTYPE, "../../../etc/passwd"),
+        ("python/bin/hard", tarfile.LNKTYPE, "../../outside"),
+        ("python/dev/null", tarfile.CHRTYPE, ""),
+    ],
+)
+def test_stage_distribution_rejects_unsafe_tar_members(
+    tmp_path: Path, member_name: str, kind: bytes, linkname: str
+) -> None:
+    """Archives containing traversal paths, escaping links, or device nodes are rejected before extraction."""
+    archive = tmp_path / "evil.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        root = tarfile.TarInfo("python")
+        root.type = tarfile.DIRTYPE
+        tar.addfile(root)
+        info = tarfile.TarInfo(member_name)
+        info.type = kind
+        info.linkname = linkname
+        tar.addfile(info)
+
+    bundler = PyAppBundler(
+        config=ViteConfig(mode="template", paths=PathConfig(root=tmp_path), bundle=True), runner=lambda *_a, **_k: None
+    )
+    with pytest.raises(BundleConfigurationError, match=r"Unsafe tar|Unsupported tar"):
+        bundler.stage_distribution(tmp_path / "work", archive_path=archive, target_triple="x86_64-unknown-linux-gnu")
+    assert not (tmp_path / "escape.txt").exists()
+
+
+def test_stage_distribution_rejects_non_https_pbs_url(tmp_path: Path) -> None:
+    """Only https:// distribution URLs are downloaded."""
+    cfg = BundleConfig(
+        enabled=True,
+        target_arch="x86_64-unknown-linux-gnu",
+        pbs_urls={"x86_64-unknown-linux-gnu": "http://mirror.internal/python.tar.gz"},
+    )
+    bundler = PyAppBundler(
+        config=ViteConfig(mode="template", paths=PathConfig(root=tmp_path), bundle=cfg), runner=lambda *_a, **_k: None
+    )
+    with pytest.raises(BundleConfigurationError, match="expected https://"):
+        bundler.stage_distribution(tmp_path / "work")
+
+
+def test_strip_staged_distribution_keeps_site_packages_tests(tmp_path: Path) -> None:
+    """Stripping removes stdlib test suites and caches but leaves installed packages' tests directories."""
+    python_root = tmp_path / "python"
+    stdlib = python_root / "lib" / "python3.12"
+    (stdlib / "test").mkdir(parents=True)
+    (stdlib / "idlelib" / "idle_test").mkdir(parents=True)
+    (stdlib / "json").mkdir(parents=True)
+    (stdlib / "json" / "__pycache__").mkdir()
+    (stdlib / "json" / "__pycache__" / "x.pyc").write_bytes(b"pyc")
+    site = stdlib / "site-packages" / "pkg"
+    (site / "tests").mkdir(parents=True)
+    (site / "tests" / "test_pkg.py").write_text("assert True\n", encoding="utf-8")
+    (python_root / "include").mkdir()
+    (python_root / "lib" / "libpython3.12.a").write_bytes(b"ar")
+
+    bundler = PyAppBundler(config=ViteConfig(mode="template", paths=PathConfig(root=tmp_path), bundle=True))
+    bundler.strip_staged_distribution(python_root)
+
+    assert not (stdlib / "test").exists()
+    assert not (stdlib / "idlelib" / "idle_test").exists()
+    assert not (stdlib / "json" / "__pycache__").exists()
+    assert not (python_root / "include").exists()
+    assert not (python_root / "lib" / "libpython3.12.a").exists()
+    assert (site / "tests" / "test_pkg.py").is_file()
+
+
+def test_ssr_worker_binary_placed_next_to_interpreter_per_platform(tmp_path: Path) -> None:
+    """The compiled SSR worker lands in python/bin on POSIX and the python/ root on Windows."""
+    bundler = PyAppBundler(config=ViteConfig(mode="template", paths=PathConfig(root=tmp_path), bundle=True))
+    python_root = tmp_path / "python"
+    assert bundler._resolve_ssr_worker_binary_path(python_root, "x86_64-unknown-linux-gnu") == (
+        python_root / "bin" / "litestar-ssr-worker"
+    )
+    assert bundler._resolve_ssr_worker_binary_path(python_root, "x86_64-pc-windows-msvc") == (
+        python_root / "litestar-ssr-worker.exe"
+    )

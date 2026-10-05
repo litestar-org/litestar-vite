@@ -6,10 +6,22 @@ from typing import Any, Literal, cast
 
 import msgspec
 
-__all__ = ("BundleConfig", "SSRWorkerCompileTarget")
+__all__ = ("DEFAULT_PBS_FULL_VERSIONS", "DEFAULT_PYAPP_VERSION", "BundleConfig", "SSRWorkerCompileTarget")
 
-SSRWorkerCompileTarget = Literal["none", "bun", "deno", "node", "wasm"]
-_VALID_SSR_COMPILE_TARGETS: frozenset[str] = frozenset({"none", "bun", "deno", "node", "wasm"})
+SSRWorkerCompileTarget = Literal["none", "bun", "deno"]
+_VALID_SSR_COMPILE_TARGETS: frozenset[str] = frozenset({"none", "bun", "deno"})
+
+DEFAULT_PYAPP_VERSION = "v0.29.0"
+"""PyApp release tag cloned when no ``pyapp_version`` override is provided."""
+
+DEFAULT_PBS_FULL_VERSIONS: dict[str, dict[str, str]] = {
+    "20241016": {"3.10": "3.10.15", "3.11": "3.11.10", "3.12": "3.12.7", "3.13": "3.13.0"}
+}
+"""Known ``python-build-standalone`` release -> ``major.minor`` -> full patch version table.
+
+Used to derive default distribution download URLs. Releases or Python versions
+outside this table require an explicit ``pbs_urls`` override.
+"""
 
 
 def _empty_str_dict() -> dict[str, str]:
@@ -34,10 +46,40 @@ def _default_output_dir() -> Path:
 
 @dataclass(slots=True)
 class BundleConfig:
-    """Configuration for staging and compiling PyApp single-file executables."""
+    """Configuration for staging and compiling PyApp single-file executables.
+
+    Attributes:
+        enabled: Whether bundling is enabled for this project.
+        binary_name: Output executable name. Defaults to ``[project].name``.
+        project_version: Version reported to PyApp via ``PYAPP_PROJECT_VERSION``.
+            Defaults to ``[project].version`` when loaded from ``pyproject.toml``.
+        exec_module: Module executed via ``python -m`` at startup (mutually exclusive with ``exec_spec``).
+        exec_spec: ``module:callable`` object reference executed at startup.
+        python_version: ``major.minor`` CPython version to embed (e.g. ``"3.12"``).
+        pbs_release: ``python-build-standalone`` release tag used to derive download URLs.
+        pbs_urls: Explicit target-triple -> distribution URL overrides.
+        platform_map: Target-triple -> pip platform tag overrides.
+        target_arch: Default Rust target triple when not passed on the CLI.
+        install_root: ``PYAPP_INSTALL_DIR`` override for extracted runtime.
+        full_isolation: Set ``PYAPP_FULL_ISOLATION=1`` (required for bundled SSR worker discovery).
+        pass_location: Set ``PYAPP_PASS_LOCATION=1``.
+        skip_install: Set ``PYAPP_SKIP_INSTALL=1`` (project is pre-installed in the staged distribution).
+        compile_ssr_worker: Compile ``ssr.js`` into a native worker binary with ``bun`` or ``deno``.
+        ssr_bytecode: Pass ``--bytecode`` to ``bun build --compile``.
+        strip_dist: Remove stdlib test suites and ``__pycache__`` from the staged distribution.
+        strip_symbols: Strip debug symbols from the compiled PyApp binary.
+        static_compression_libs: Link compression libraries statically into the PyApp binary.
+        use_zigbuild: Use ``cargo zigbuild`` for cross-compilation.
+        glibc_version: glibc floor appended to Linux targets when ``use_zigbuild`` is enabled.
+        pyapp_version: PyApp git tag to clone when building from source.
+        extra_wheels: Additional wheel files installed into the staged distribution.
+        extra_pip_args: Additional arguments appended to the ``pip install`` command.
+        output_dir: Directory receiving the compiled binary.
+    """
 
     enabled: bool = False
     binary_name: str | None = None
+    project_version: str | None = None
     exec_module: str | None = None
     exec_spec: str | None = None
     python_version: str = "3.12"
@@ -56,6 +98,7 @@ class BundleConfig:
     static_compression_libs: bool = True
     use_zigbuild: bool = False
     glibc_version: str = "2.17"
+    pyapp_version: str = DEFAULT_PYAPP_VERSION
     extra_wheels: list[Path] = field(default_factory=_empty_path_list)
     extra_pip_args: list[str] = field(default_factory=_empty_str_list)
     output_dir: Path = field(default_factory=_default_output_dir)
@@ -76,6 +119,8 @@ class BundleConfig:
         if isinstance(self.output_dir, str):
             self.output_dir = Path(self.output_dir)
 
+        self.binary_name = _normalize_binary_name(self.binary_name)
+        self.project_version = _normalize_binary_name(self.project_version)
         self.extra_wheels = [Path(w) if isinstance(w, str) else w for w in self.extra_wheels]
         self.extra_pip_args = [str(arg) for arg in self.extra_pip_args]
 
@@ -83,8 +128,12 @@ class BundleConfig:
     def from_pyproject(cls, pyproject_path: Path) -> "BundleConfig":
         """Load ``BundleConfig`` from ``[tool.litestar.bundle]`` in ``pyproject.toml``.
 
-        Defaults ``binary_name`` to ``[project].name`` when not explicitly set in
-        ``[tool.litestar.bundle]``.
+        Defaults ``binary_name`` to ``[project].name`` and ``project_version`` to
+        ``[project].version`` when not explicitly set in ``[tool.litestar.bundle]``.
+
+        Parsing failures (unreadable file, malformed TOML, or a missing TOML
+        backend on Python < 3.11) yield a disabled configuration instead of
+        raising so that ``ViteConfig`` construction never depends on this file.
 
         Args:
             pyproject_path: Path to the ``pyproject.toml`` file.
@@ -95,7 +144,10 @@ class BundleConfig:
         if not pyproject_path.is_file():
             return cls(enabled=False)
 
-        raw_data = msgspec.toml.decode(pyproject_path.read_bytes())
+        try:
+            raw_data = msgspec.toml.decode(pyproject_path.read_bytes())
+        except (ImportError, OSError, msgspec.DecodeError):
+            return cls(enabled=False)
         if not isinstance(raw_data, dict):
             return cls(enabled=False)
 
@@ -104,6 +156,8 @@ class BundleConfig:
         project_table = cast("dict[str, Any]", project_any) if isinstance(project_any, dict) else {}
         default_binary_name = project_table.get("name")
         binary_name_default = str(default_binary_name) if isinstance(default_binary_name, str) else None
+        default_version = project_table.get("version")
+        version_default = str(default_version) if isinstance(default_version, str) else None
 
         tool_any = data.get("tool")
         tool_table = cast("dict[str, Any]", tool_any) if isinstance(tool_any, dict) else {}
@@ -111,12 +165,13 @@ class BundleConfig:
         litestar_table = cast("dict[str, Any]", litestar_any) if isinstance(litestar_any, dict) else {}
         bundle_any = litestar_table.get("bundle")
         if not isinstance(bundle_any, dict):
-            return cls(enabled=False, binary_name=binary_name_name_or_none(binary_name_default))
+            return cls(enabled=False, binary_name=binary_name_default, project_version=version_default)
 
         bundle_table = cast("dict[str, Any]", bundle_any)
         kwargs: dict[str, Any] = {
             "enabled": bool(bundle_table.get("enabled", True)),
             "binary_name": bundle_table.get("binary_name", binary_name_default),
+            "project_version": bundle_table.get("project_version", version_default),
         }
         allowed_keys = {
             "exec_module",
@@ -137,6 +192,7 @@ class BundleConfig:
             "static_compression_libs",
             "use_zigbuild",
             "glibc_version",
+            "pyapp_version",
             "extra_wheels",
             "extra_pip_args",
             "output_dir",
@@ -175,9 +231,9 @@ class BundleConfig:
         )
 
 
-def binary_name_name_or_none(value: str | None) -> str | None:
-    """Return a trimmed binary name or None."""
+def _normalize_binary_name(value: str | None) -> str | None:
+    """Return a trimmed non-empty string or None."""
     if value is None:
         return None
-    stripped = value.strip()
+    stripped = str(value).strip()
     return stripped or None

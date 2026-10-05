@@ -1205,9 +1205,58 @@ def test_bundle_config_from_pyproject_and_vite_config_normalization(tmp_path: Pa
     assert loaded.glibc_version == "2.28"
     assert loaded.output_dir == Path("dist/out")
 
-    cfg_auto = ViteConfig(mode="template", paths=PathConfig(root=tmp_path))
-    assert cfg_auto.bundle_config is not None
-    assert cfg_auto.bundle_config.binary_name == "sample-service"
+    cfg_default = ViteConfig(mode="template", paths=PathConfig(root=tmp_path))
+    assert cfg_default.bundle_config is None
+    assert isinstance(cfg_default.bundle, BundleConfig)
+    assert cfg_default.bundle.enabled is False
+    assert cfg_default.bundle.binary_name is None
+
+    cfg_opt_in = ViteConfig(mode="template", paths=PathConfig(root=tmp_path), bundle=True)
+    assert cfg_opt_in.bundle_config is not None
+    assert cfg_opt_in.bundle_config.binary_name == "sample-service"
+    assert cfg_opt_in.bundle_config.compile_ssr_worker == "bun"
 
     with pytest.raises(ValueError, match="Cannot specify both exec_module and exec_spec"):
         BundleConfig(exec_module="a.b", exec_spec="a.b:main")
+
+    with pytest.raises(ValueError, match="Invalid compile_ssr_worker"):
+        BundleConfig(compile_ssr_worker="wasm")  # type: ignore[arg-type]
+
+
+def test_bundle_config_from_pyproject_defaults_project_version_and_tolerates_bad_toml(tmp_path: Path) -> None:
+    """from_pyproject defaults project_version from [project].version and never raises on unreadable TOML."""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "sample-service"\nversion = "2.3.4"\n\n[tool.litestar.bundle]\npyapp_version = "v0.28.0"\n',
+        encoding="utf-8",
+    )
+    loaded = BundleConfig.from_pyproject(pyproject)
+    assert loaded.project_version == "2.3.4"
+    assert loaded.pyapp_version == "v0.28.0"
+
+    without_table = tmp_path / "plain.toml"
+    without_table.write_text('[project]\nname = "plain"\nversion = "0.1.0"\n', encoding="utf-8")
+    plain = BundleConfig.from_pyproject(without_table)
+    assert plain.enabled is False
+    assert plain.binary_name == "plain"
+    assert plain.project_version == "0.1.0"
+
+    pyproject.write_text("[project\nname = broken", encoding="utf-8")
+    broken = BundleConfig.from_pyproject(pyproject)
+    assert broken.enabled is False
+
+
+def test_vite_config_bundle_true_survives_missing_toml_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """ViteConfig(bundle=True) degrades to a disabled-by-file BundleConfig when msgspec.toml cannot import a TOML parser."""
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "svc"\n[tool.litestar.bundle]\n', encoding="utf-8")
+
+    def _raise_import_error(_data: bytes) -> dict[str, Any]:
+        msg = "`toml` is not installed"
+        raise ImportError(msg)
+
+    monkeypatch.setattr("litestar_vite.config._bundle.msgspec.toml.decode", _raise_import_error)
+
+    cfg = ViteConfig(mode="template", paths=PathConfig(root=tmp_path), bundle=True)
+    assert isinstance(cfg.bundle, BundleConfig)
+    assert cfg.bundle.enabled is True
+    assert cfg.bundle.binary_name is None

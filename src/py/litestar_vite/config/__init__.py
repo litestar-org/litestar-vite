@@ -23,7 +23,7 @@ Example usage::
     VitePlugin(config=ViteConfig(mode="template", dev_mode=True))
 """
 
-from litestar_vite.config._bundle import BundleConfig  # pyright: ignore[reportPrivateUsage]
+from litestar_vite.config._bundle import BundleConfig, SSRWorkerCompileTarget  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._constants import (  # pyright: ignore[reportPrivateUsage]
     FSSPEC_INSTALLED,
     JINJA_INSTALLED,
@@ -40,6 +40,7 @@ from litestar_vite.config._runtime import (  # pyright: ignore[reportPrivateUsag
     ExternalDevServer,
     RuntimeConfig,
     detect_runtime,
+    detect_runtime_marker,
 )
 from litestar_vite.config._spa import LoggingConfig, SPAConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._types import TypeGenConfig  # pyright: ignore[reportPrivateUsage]
@@ -60,7 +61,9 @@ __all__ = (
     "PathConfig",
     "RuntimeConfig",
     "SPAConfig",
+    "SSRWorkerCompileTarget",
     "TypeGenConfig",
     "ViteConfig",
     "detect_runtime",
+    "detect_runtime_marker",
 )

@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from litestar_vite.config import RuntimeConfig, ViteConfig
+from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
 from litestar_vite.exceptions import ViteExecutableNotFoundError, ViteExecutionError
 from litestar_vite.executor import BunExecutor, DenoExecutor, NodeenvExecutor, NodeExecutor, PnpmExecutor, YarnExecutor
 
@@ -669,3 +669,55 @@ def test_pyproject_declares_wheel_provisioning_extras() -> None:
     assert 'node = ["nodejs-wheel>=22.0.0"]' in content
     assert 'deno = ["deno>=2.0.0"]' in content
     assert 'bun = ["bun-wheel>=1.2.0"]' in content
+
+
+def test_find_bundled_ssr_worker_probes_interpreter_dir_and_siblings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bundled worker is found next to sys.executable or in a Scripts/bin sibling directory."""
+    from litestar_vite.executor import find_bundled_ssr_worker
+
+    python_root = tmp_path / "python"
+    python_root.mkdir()
+    fake_python = python_root / "python.exe"
+    fake_python.write_text("", encoding="utf-8")
+    monkeypatch.setattr(sys, "executable", str(fake_python))
+
+    assert find_bundled_ssr_worker() is None
+
+    scripts_worker = python_root / "Scripts" / "litestar-ssr-worker"
+    scripts_worker.parent.mkdir()
+    scripts_worker.write_text("#!/bin/sh\n", encoding="utf-8")
+    scripts_worker.chmod(0o755)
+    assert find_bundled_ssr_worker() == scripts_worker
+
+    root_worker = python_root / "litestar-ssr-worker"
+    root_worker.write_text("#!/bin/sh\n", encoding="utf-8")
+    root_worker.chmod(0o755)
+    assert find_bundled_ssr_worker() == root_worker
+
+
+def test_executor_provisioning_mode_controls_binary_discovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """provisioning_mode selects between virtual-environment-only, PATH-only, and layered discovery."""
+    venv_bin = tmp_path / "venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    fake_python = venv_bin / "python3"
+    fake_python.write_text("", encoding="utf-8")
+    venv_bun = venv_bin / "bun"
+    venv_bun.write_text("#!/bin/sh\n", encoding="utf-8")
+    venv_bun.chmod(0o755)
+    monkeypatch.setattr(sys, "executable", str(fake_python))
+    monkeypatch.setattr("litestar_vite.executor.shutil.which", lambda name: f"/usr/local/bin/{name}")
+
+    assert BunExecutor(provisioning_mode="auto")._resolve_executable() == str(venv_bun)
+    assert BunExecutor(provisioning_mode="wheel")._resolve_executable() == str(venv_bun)
+    assert BunExecutor(provisioning_mode="system")._resolve_executable() == "/usr/local/bin/bun"
+
+    with pytest.raises(ViteExecutableNotFoundError):
+        NodeExecutor(provisioning_mode="wheel")._resolve_executable()
+    assert NodeExecutor(provisioning_mode="auto")._resolve_executable() == "/usr/local/bin/npm"
+
+    config = ViteConfig(
+        paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(executor="bun", provisioning_mode="system")
+    )
+    assert config.executor.provisioning_mode == "system"

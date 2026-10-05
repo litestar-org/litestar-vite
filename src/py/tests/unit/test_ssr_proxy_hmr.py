@@ -46,7 +46,7 @@ async def test_ssr_proxy_uses_hmr_target_when_available(hotfile: Path, hmr_hotfi
     socket.accept = AsyncMock()
     socket.close = AsyncMock()
     # Raise WebSocketDisconnect(code=1000) to simulate client disconnect and stop the loop
-    socket.receive_text = AsyncMock(side_effect=WebSocketDisconnect(code=1000, detail="Client disconnected"))
+    socket.receive = AsyncMock(side_effect=WebSocketDisconnect(code=1000, detail="Client disconnected"))
 
     # Mock websockets.connect
     with patch("litestar_vite.plugin._proxy.websockets.connect") as mock_connect:
@@ -76,7 +76,7 @@ async def test_ssr_proxy_falls_back_to_main_target_when_hmr_missing(hotfile: Pat
     socket.scope = {"type": "websocket", "path": "/_nuxt/", "query_string": b"", "headers": []}
     socket.accept = AsyncMock()
     socket.close = AsyncMock()
-    socket.receive_text = AsyncMock(side_effect=WebSocketDisconnect(code=1000, detail="Client disconnected"))
+    socket.receive = AsyncMock(side_effect=WebSocketDisconnect(code=1000, detail="Client disconnected"))
 
     # Mock websockets.connect
     with patch("litestar_vite.plugin._proxy.websockets.connect") as mock_connect:

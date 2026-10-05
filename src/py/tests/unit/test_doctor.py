@@ -675,15 +675,9 @@ demo-app = "demo_app.cli:main"
     )
     monkeypatch.setattr("litestar_vite.doctor.shutil.which", lambda cmd: f"/usr/bin/{cmd}")
     monkeypatch.setattr("litestar_vite.doctor.is_wasm_available", lambda: False)
-    config = ViteConfig(
-        mode="spa",
-        paths=PathConfig(root=tmp_path),
-        inertia=InertiaConfig(ssr=True),
-        bundle=True,
-    )
+    config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path), inertia=InertiaConfig(ssr=True), bundle=True)
     doctor = ViteDoctor(config=config)
     doctor._check_bundle_config()
 
     checks = [i.check for i in doctor.issues]
     assert checks == ["Bundle Wasm SSR Missing"]
-

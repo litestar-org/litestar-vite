@@ -243,6 +243,15 @@ class ViteConfig:
     base_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
     deploy: "DeployConfig | bool" = False
     bundle: "BundleConfig | bool" = False
+    """PyApp single-file executable bundling configuration.
+
+    - ``False`` (default): bundling disabled; ``pyproject.toml`` is not read.
+    - ``True``: load ``[tool.litestar.bundle]`` from ``root_dir/pyproject.toml``.
+    - ``BundleConfig``: explicit configuration.
+
+    The ``litestar assets bundle`` command and ``ViteDoctor`` also consult
+    ``pyproject.toml`` directly, so most projects can leave this ``False``.
+    """
     enabled: "bool | None" = None
     """Whether the plugin actively serves assets/routes.
 
@@ -555,17 +564,18 @@ class ViteConfig:
             self.deploy = DeployConfig(enabled=False)
 
     def _normalize_bundle(self) -> None:
-        pyproject_path = self.root_dir / "pyproject.toml"
+        """Normalize ``bundle`` to a ``BundleConfig`` instance.
+
+        ``bundle=False`` (the default) never touches ``pyproject.toml``: the
+        ``litestar assets bundle`` CLI and ``ViteDoctor`` resolve the project
+        table themselves when needed. ``bundle=True`` loads
+        ``[tool.litestar.bundle]`` from ``root_dir/pyproject.toml`` and forces
+        ``enabled=True``.
+        """
         if self.bundle is True:
-            if pyproject_path.is_file():
-                self.bundle = BundleConfig.from_pyproject(pyproject_path).with_overrides(enabled=True)
-            else:
-                self.bundle = BundleConfig(enabled=True)
+            self.bundle = BundleConfig.from_pyproject(self.root_dir / "pyproject.toml").with_overrides(enabled=True)
         elif self.bundle is False:
-            if pyproject_path.is_file():
-                self.bundle = BundleConfig.from_pyproject(pyproject_path)
-            else:
-                self.bundle = BundleConfig(enabled=False)
+            self.bundle = BundleConfig(enabled=False)
 
     def _resolve_type_paths(self, types: TypeGenConfig) -> None:
         """Resolve type generation paths relative to the configured root.
@@ -752,18 +762,19 @@ class ViteConfig:
 
         executor_type = self.runtime.executor or "node"
         silent = self.logging_config.suppress_npm_output
+        mode = self.runtime.provisioning_mode
 
         if executor_type == "bun":
-            return BunExecutor(silent=silent)
+            return BunExecutor(silent=silent, provisioning_mode=mode)
         if executor_type == "deno":
-            return DenoExecutor(silent=silent)
+            return DenoExecutor(silent=silent, provisioning_mode=mode)
         if executor_type == "yarn":
-            return YarnExecutor(silent=silent)
+            return YarnExecutor(silent=silent, provisioning_mode=mode)
         if executor_type == "pnpm":
-            return PnpmExecutor(silent=silent)
+            return PnpmExecutor(silent=silent, provisioning_mode=mode)
         if self.runtime.detect_nodeenv:
             return NodeenvExecutor(self, silent=silent)
-        return NodeExecutor(silent=silent)
+        return NodeExecutor(silent=silent, provisioning_mode=mode)
 
     @property
     def bundle_dir(self) -> Path:

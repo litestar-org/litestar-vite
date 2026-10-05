@@ -64,20 +64,53 @@ export function startSsrWorker(options: SsrWorkerOptions = {}): void {
     if (typeof process.stdin.setEncoding === "function") {
       process.stdin.setEncoding("utf8")
     }
+    const decoder = new TextDecoder("utf-8")
     let buffer = ""
+    let inflight = 0
+    let ended = false
+
+    const exitIfDrained = (): void => {
+      if (ended && inflight === 0 && typeof process.exit === "function") {
+        process.exit(0)
+      }
+    }
+
+    const handleLine = (line: string): void => {
+      inflight += 1
+      void dispatchLine(line)
+        .then((out) => {
+          if (out) {
+            process.stdout.write(`${out}\n`)
+          }
+        })
+        .finally(() => {
+          inflight -= 1
+          exitIfDrained()
+        })
+    }
+
     process.stdin.on("data", (chunk: string | Uint8Array) => {
-      buffer += typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)
+      buffer += typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true })
       let newlineIdx = buffer.indexOf("\n")
       while (newlineIdx !== -1) {
         const line = buffer.slice(0, newlineIdx).replace(/\r$/, "")
         buffer = buffer.slice(newlineIdx + 1)
         newlineIdx = buffer.indexOf("\n")
-        void dispatchLine(line).then((out) => {
-          if (out) {
-            process.stdout.write(`${out}\n`)
-          }
-        })
+        handleLine(line)
       }
     })
+
+    const onEnd = (): void => {
+      if (ended) return
+      ended = true
+      buffer += decoder.decode()
+      if (buffer.trim()) {
+        handleLine(buffer)
+        buffer = ""
+      }
+      exitIfDrained()
+    }
+    process.stdin.on("end", onEnd)
+    process.stdin.on("close", onEnd)
   }
 }

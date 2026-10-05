@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib
+import re
 import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -21,10 +22,88 @@ from litestar_vite.ipc._stdio import StdioIPCTransport
 
 __all__ = ("WasmIPCTransport", "is_wasm_available", "resolve_ssr_transport")
 
-_QUICKJS_GLOBALS_SHIM = (
-    "globalThis.process = globalThis.process || { env: { NODE_ENV: 'production' } };\n"
-    "globalThis.console = globalThis.console || { log(){}, warn(){}, error(){} };\n"
+_ESM_SYNTAX_RE = re.compile(
+    r"^\s*(?:import\s*[\w{*'\"]|export\s+(?:default|const|let|var|function|class|async|\{|\*))", re.MULTILINE
 )
+
+_QUICKJS_GLOBALS_SHIM = """\
+globalThis.process = globalThis.process || { env: { NODE_ENV: 'production' } };
+globalThis.console = globalThis.console || { log(){}, warn(){}, error(){}, info(){}, debug(){} };
+globalThis.queueMicrotask = globalThis.queueMicrotask || function(cb) { Promise.resolve().then(cb); };
+globalThis.__litestar_wasm_timers__ = [];
+globalThis.__litestar_wasm_timer_seq__ = 0;
+globalThis.setTimeout = globalThis.setTimeout || function(cb, delay) {
+    const id = ++globalThis.__litestar_wasm_timer_seq__;
+    const args = Array.prototype.slice.call(arguments, 2);
+    globalThis.__litestar_wasm_timers__.push({ id: id, cb: cb, delay: Number(delay) || 0, args: args });
+    return id;
+};
+globalThis.clearTimeout = globalThis.clearTimeout || function(id) {
+    const timers = globalThis.__litestar_wasm_timers__;
+    for (let i = 0; i < timers.length; i++) {
+        if (timers[i].id === id) { timers.splice(i, 1); return; }
+    }
+};
+globalThis.setInterval = globalThis.setInterval || globalThis.setTimeout;
+globalThis.clearInterval = globalThis.clearInterval || globalThis.clearTimeout;
+globalThis.setImmediate = globalThis.setImmediate || function(cb) {
+    return globalThis.setTimeout.apply(null, [cb, 0].concat(Array.prototype.slice.call(arguments, 1)));
+};
+globalThis.clearImmediate = globalThis.clearImmediate || globalThis.clearTimeout;
+globalThis.__litestar_wasm_run_timer__ = function() {
+    const timers = globalThis.__litestar_wasm_timers__;
+    if (timers.length === 0) { return false; }
+    let idx = 0;
+    for (let i = 1; i < timers.length; i++) { if (timers[i].delay < timers[idx].delay) { idx = i; } }
+    const next = timers.splice(idx, 1)[0];
+    try {
+        next.cb.apply(null, next.args);
+    } catch (err) {
+        globalThis.__litestar_wasm_settled__ = true;
+        globalThis.__litestar_wasm_error__ = err && err.message ? String(err.message) : String(err);
+    }
+    return true;
+};
+if (typeof globalThis.TextEncoder === 'undefined') {
+    globalThis.TextEncoder = class TextEncoder {
+        get encoding() { return 'utf-8'; }
+        encode(input) {
+            const str = String(input === undefined ? '' : input);
+            const out = [];
+            for (let i = 0; i < str.length; i++) {
+                let cp = str.codePointAt(i);
+                if (cp > 0xffff) { i++; }
+                if (cp < 0x80) { out.push(cp); }
+                else if (cp < 0x800) { out.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f)); }
+                else if (cp < 0x10000) { out.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f)); }
+                else { out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f)); }
+            }
+            return new Uint8Array(out);
+        }
+    };
+}
+if (typeof globalThis.TextDecoder === 'undefined') {
+    globalThis.TextDecoder = class TextDecoder {
+        constructor(label) { this._label = (label || 'utf-8').toLowerCase(); }
+        get encoding() { return this._label; }
+        decode(input) {
+            if (input === undefined) { return ''; }
+            const bytes = input instanceof Uint8Array ? input : new Uint8Array(input.buffer || input);
+            let out = '';
+            for (let i = 0; i < bytes.length;) {
+                const b0 = bytes[i++];
+                let cp;
+                if (b0 < 0x80) { cp = b0; }
+                else if (b0 < 0xe0) { cp = ((b0 & 0x1f) << 6) | (bytes[i++] & 0x3f); }
+                else if (b0 < 0xf0) { cp = ((b0 & 0x0f) << 12) | ((bytes[i++] & 0x3f) << 6) | (bytes[i++] & 0x3f); }
+                else { cp = ((b0 & 0x07) << 18) | ((bytes[i++] & 0x3f) << 12) | ((bytes[i++] & 0x3f) << 6) | (bytes[i++] & 0x3f); }
+                out += String.fromCodePoint(cp);
+            }
+            return out;
+        }
+    };
+}
+"""
 
 _QUICKJS_DISPATCH_WRAPPER = (
     "globalThis.__litestar_wasm_call__ = function(line) {\n"
@@ -123,7 +202,7 @@ class WasmIPCTransport(BaseIPCTransport):
         ctx: Any = context_cls()
         try:
             ctx.eval(_QUICKJS_GLOBALS_SHIM)
-            ctx.eval(bundle_source)
+            self._evaluate_bundle(ctx, bundle_source)
             has_dispatch = bool(ctx.eval("typeof globalThis.__litestar_ssr_dispatch__ === 'function'"))
         except Exception as exc:
             msg = f"Failed to evaluate SSR bundle at {self._bundle_path}: {exc}"
@@ -136,8 +215,52 @@ class WasmIPCTransport(BaseIPCTransport):
         ctx.eval(_QUICKJS_DISPATCH_WRAPPER)
         self._context = ctx
 
-    def _dispatch_sync(self, request_line: str) -> str:
-        """Dispatch a single NDJSON request line on the worker thread and drain Promise jobs."""
+    @staticmethod
+    def _evaluate_bundle(ctx: Any, source: str) -> None:
+        """Evaluate the SSR bundle as an ES module when it uses ESM syntax, otherwise as a classic script.
+
+        Vite emits ``ssr.js`` in ESM format by default; QuickJS rejects
+        top-level ``import``/``export`` in script mode, so such bundles are
+        loaded through ``Context.module`` when the engine exposes it.
+        """
+        module_eval = getattr(ctx, "module", None)
+        if callable(module_eval) and _ESM_SYNTAX_RE.search(source) is not None:
+            module_eval(source)
+            return
+        ctx.eval(source)
+
+    @staticmethod
+    def _is_interrupt_error(exc: BaseException) -> bool:
+        """Return True when a QuickJS exception denotes the engine's time-limit interrupt."""
+        return "interrupted" in str(exc).lower()
+
+    def _drain_jobs(self, ctx: Any) -> None:
+        """Run pending Promise jobs and shimmed timers until the dispatch settles or no work remains."""
+        execute_job = getattr(ctx, "execute_pending_job", None)
+        run_timer = ctx.get("__litestar_wasm_run_timer__")
+        while True:
+            if callable(execute_job):
+                while execute_job():
+                    pass
+            if ctx.get("__litestar_wasm_settled__"):
+                return
+            if not callable(run_timer) or not run_timer():
+                return
+
+    def _dispatch_sync(self, request_line: str, time_limit: float | None = None) -> str:
+        """Dispatch a single NDJSON request line on the worker thread and drain Promise jobs.
+
+        Args:
+            request_line: Encoded NDJSON request.
+            time_limit: CPU time budget in seconds enforced by the engine
+                (``Context.set_time_limit``) so runaway JavaScript is interrupted
+                instead of wedging the single worker thread.
+
+        Raises:
+            IPCTimeoutError: If the engine interrupted execution.
+            IPCError: If the bundle reported an error or never settled.
+            IPCWorkerCrashError: If the context or bridge is not initialized.
+        """
         if self._engine is not None:
             return self._engine(request_line)
 
@@ -151,14 +274,20 @@ class WasmIPCTransport(BaseIPCTransport):
             msg = "WASM SSR dispatch bridge is not initialized."
             raise IPCWorkerCrashError(msg)
 
-        direct = wasm_call(request_line)
-        if isinstance(direct, str):
-            return direct
+        set_time_limit = getattr(ctx, "set_time_limit", None)
+        if time_limit is not None and callable(set_time_limit):
+            set_time_limit(time_limit)
 
-        execute_job = getattr(ctx, "execute_pending_job", None)
-        if callable(execute_job):
-            while execute_job():
-                pass
+        try:
+            direct = wasm_call(request_line)
+            if isinstance(direct, str):
+                return direct
+            self._drain_jobs(ctx)
+        except Exception as exc:
+            if self._is_interrupt_error(exc):
+                msg = f"WASM SSR execution exceeded the {time_limit}s time limit"
+                raise IPCTimeoutError(msg) from exc
+            raise
 
         error_val = ctx.get("__litestar_wasm_error__")
         if error_val:
@@ -205,6 +334,19 @@ class WasmIPCTransport(BaseIPCTransport):
             self._executor.shutdown(wait=False, cancel_futures=True)
             self._executor = None
 
+    def _reset_after_timeout(self) -> None:
+        """Discard the wedged context and executor so the next request rebuilds a fresh engine.
+
+        A timed-out dispatch may still be executing on the worker thread until
+        the engine's interrupt fires; abandoning the executor guarantees that
+        subsequent requests never queue behind it.
+        """
+        self._is_running = False
+        self._context = None
+        if self._executor is not None:
+            self._executor.shutdown(wait=False, cancel_futures=True)
+            self._executor = None
+
     async def send_request(self, payload: dict[str, Any], timeout: float = 10.0) -> dict[str, Any]:
         """Serialize a request, dispatch it to the in-process SSR worker, and decode the response.
 
@@ -229,13 +371,17 @@ class WasmIPCTransport(BaseIPCTransport):
                     msg = "WASM SSR executor is not running."
                     raise IPCWorkerCrashError(msg)
                 loop = asyncio.get_running_loop()
-                return await loop.run_in_executor(self._executor, self._dispatch_sync, request_line)
+                return await loop.run_in_executor(self._executor, self._dispatch_sync, request_line, timeout)
 
         try:
             raw_response = await asyncio.wait_for(_execute_locked(), timeout=timeout)
         except asyncio.TimeoutError as exc:
+            self._reset_after_timeout()
             msg = f"WASM SSR request {req_id} timed out after {timeout}s"
             raise IPCTimeoutError(msg) from exc
+        except IPCTimeoutError:
+            self._reset_after_timeout()
+            raise
         except IPCError:
             raise
         except Exception as exc:

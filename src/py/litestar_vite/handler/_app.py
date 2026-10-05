@@ -86,6 +86,7 @@ class AppHandler:
         "_csrf_header_name",
         "_initialized",
         "_manifest",
+        "_preload_headers",
         "_spa_config",
         "_vite_url",
     )
@@ -107,6 +108,7 @@ class AppHandler:
         self._initialized = False
         self._vite_url: "str | None" = None
         self._manifest: "dict[str, Any]" = {}
+        self._preload_headers: "list[str] | None" = None
 
     @property
     def is_initialized(self) -> bool:
@@ -323,11 +325,7 @@ class AppHandler:
             return html
         if self._config.csp_nonce is not None:
             return transform_asset_urls(
-                html,
-                self._manifest,
-                asset_url=self._config.asset_url,
-                base_url=None,
-                csp_nonce=self._config.csp_nonce,
+                html, self._manifest, asset_url=self._config.asset_url, base_url=None, csp_nonce=self._config.csp_nonce
             )
         return transform_asset_urls(html, self._manifest, asset_url=self._config.asset_url, base_url=None)
 
@@ -337,15 +335,40 @@ class AppHandler:
         return self._config
 
     def get_preload_headers(self) -> list[str]:
-        """Return RFC 8288 Link preload header values for the loaded manifest."""
-        if self._config.is_dev_mode:
-            return []
+        """Return RFC 8288 Link preload header values for the served HTML entry.
+
+        The list is computed once from the manifest and cached for the lifetime
+        of the handler. When the manifest contains an entry for the served
+        ``index.html`` only that entry's graph is preloaded; otherwise every
+        ``isEntry`` chunk is used. Returns an empty list in development mode or
+        when both ``link_preload_headers`` and ``early_hints`` are disabled.
+        """
+        if self._preload_headers is not None:
+            return self._preload_headers
+        if self._config.is_dev_mode or not (self._config.link_preload_headers or self._config.early_hints):
+            self._preload_headers = []
+            return self._preload_headers
         if not self._manifest and not self._initialized:
             self._load_manifest_sync()
         if not self._manifest:
             return []
         loader = ViteAssetLoader(self._config)
-        return loader.render_preload_headers(manifest=self._manifest)
+        entry_key = self._served_entry_key()
+        self._preload_headers = loader.render_preload_headers(entry_key, manifest=self._manifest)
+        return self._preload_headers
+
+    def _served_entry_key(self) -> "str | None":
+        """Return the manifest key of the HTML entry this handler serves, if present.
+
+        Vite keys HTML entries relative to its root (``index.html``), so SPA
+        builds expose a single entry whose import graph is what the browser
+        actually needs; multi-page builds without that key fall back to every
+        ``isEntry`` chunk.
+        """
+        for candidate in ("index.html", "./index.html"):
+            if candidate in self._manifest:
+                return candidate
+        return None
 
     def _inject_dev_scripts(self, html: str) -> str:
         """Inject Vite dev scripts for hybrid mode HTML served by Litestar.

@@ -80,6 +80,55 @@ continues to the retained Litestar route and normal error handling.
    ASGI hooks, guards, middleware, custom cache control, or exception handlers
    automatically stay on the Litestar path.
 
+   The built-in asset hardening described under :ref:`asset-headers` (immutable
+   ``Cache-Control`` on hashed assets and ``404`` for ``manifest.json`` /
+   ``.vite/manifest.json`` / ``hot``) is implemented as router-level hooks that
+   keep the bundle eligible for native serving. Consequently it is **not
+   applied to Granian-native hits**: configure equivalent cache headers and
+   metadata blocking at the server or CDN layer when relying on
+   ``StaticPlacement.NATIVE``.
+
+.. _asset-headers:
+
+Asset Headers, Preloading, and CSP
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Production HTML and asset responses served by Litestar apply several
+browser-facing optimizations controlled by :class:`~litestar_vite.config.RuntimeConfig`:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Setting
+     - Behavior
+   * - ``immutable_cache_headers=True``
+     - Files under the Vite ``assets`` directory whose names carry a Rollup
+       content hash (``index-D8x9kL2p.js``) receive
+       ``Cache-Control: public, max-age=31536000, immutable``. Unhashed files
+       (``favicon.ico``, ``icon-192x192.png``) are untouched.
+   * - ``link_preload_headers=True``
+     - HTML responses include an RFC 8288 ``Link`` header with
+       ``rel=modulepreload`` for the served entry and its transitive chunks and
+       ``rel=preload; as=style`` for their stylesheets. The header set is computed
+       once per process from ``manifest.json``.
+   * - ``early_hints=True`` (opt-in)
+     - The same links are additionally sent as a ``103 Early Hints`` frame when
+       the ASGI server advertises the ``http.response.early_hint`` extension
+       (Hypercorn, Granian). Servers without the extension receive only the
+       ``Link`` header.
+   * - ``csp_nonce="..."``
+     - Inline scripts injected by the plugin carry ``nonce="..."``. Inertia and
+       template responses also honor a per-request
+       ``request.scope["state"]["csp_nonce"]`` set by middleware. The cached
+       SPA/hybrid ``index.html`` shell supports only the static value; use
+       hash-based or ``'strict-dynamic'`` CSP policies for per-request nonces in
+       those modes.
+
+Internal build metadata (``manifest.json``, ``.vite/manifest.json``,
+``ssr-manifest.json``, ``.litestar.json``, and the ``hot`` file) returns ``404``
+from the Litestar static route regardless of these settings.
+
 Server Matrix
 ~~~~~~~~~~~~~
 

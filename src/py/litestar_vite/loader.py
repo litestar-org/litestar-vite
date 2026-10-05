@@ -644,11 +644,7 @@ class ViteAssetLoader:
         )
 
     def render_asset_tag(
-        self,
-        path: "str | list[str]",
-        scripts_attrs: "dict[str, str] | None" = None,
-        *,
-        csp_nonce: "str | None" = None,
+        self, path: "str | list[str]", scripts_attrs: "dict[str, str] | None" = None, *, csp_nonce: "str | None" = None
     ) -> "markupsafe.Markup":
         """Render asset tags for the specified path(s).
 
@@ -661,9 +657,7 @@ class ViteAssetLoader:
             HTML markup for script and link tags.
         """
         paths = [str(p) for p in path] if isinstance(path, list) else [str(path)]
-        return markupsafe.Markup(
-            self.generate_asset_tags(paths, scripts_attrs=scripts_attrs, csp_nonce=csp_nonce)
-        )
+        return markupsafe.Markup(self.generate_asset_tags(paths, scripts_attrs=scripts_attrs, csp_nonce=csp_nonce))
 
     def get_static_asset(self, path: str) -> str:
         """Get the URL for a static asset.
@@ -732,7 +726,7 @@ class ViteAssetLoader:
         return ""
 
     def _collect_manifest_graph(
-        self, paths: list[str], visited_entries: "set[str] | None" = None
+        self, paths: list[str], visited_entries: "set[str] | None" = None, *, manifest: "dict[str, Any] | None" = None
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
         """Collect entry chunks, transitive imported chunks, and CSS files in deterministic order.
 
@@ -742,10 +736,12 @@ class ViteAssetLoader:
         Args:
             paths: Normalized manifest entry keys.
             visited_entries: Optional shared set of visited manifest keys.
+            manifest: Optional manifest override; defaults to the loaded manifest.
 
         Returns:
             A tuple of ``(entry_items, import_items, css_files)``.
         """
+        active_manifest = self._manifest if manifest is None else manifest
         visited: set[str] = set() if visited_entries is None else visited_entries
         entry_keys = set(paths)
         entry_items: list[dict[str, Any]] = []
@@ -762,10 +758,10 @@ class ViteAssetLoader:
 
         def _walk_imports(import_keys: list[str]) -> None:
             for imp_key in import_keys:
-                if imp_key in visited or imp_key not in self._manifest:
+                if imp_key in visited or imp_key not in active_manifest:
                     continue
                 visited.add(imp_key)
-                raw_imp = self._manifest[imp_key]
+                raw_imp = active_manifest[imp_key]
                 if not isinstance(raw_imp, dict):
                     continue
                 imp_entry = cast("dict[str, Any]", raw_imp)
@@ -782,7 +778,7 @@ class ViteAssetLoader:
             if not entry_key or entry_key in visited:
                 continue
             visited.add(entry_key)
-            raw_entry = self._manifest[entry_key]
+            raw_entry = active_manifest.get(entry_key)
             if not isinstance(raw_entry, dict):
                 continue
             entry = cast("dict[str, Any]", raw_entry)
@@ -977,9 +973,7 @@ class ViteAssetLoader:
         Returns:
             HTML link tag string.
         """
-        extra_attrs = " ".join(
-            f'{key}="{html.escape(str(value), quote=True)}"' for key, value in (attrs or {}).items()
-        )
+        extra_attrs = " ".join(f'{key}="{html.escape(str(value), quote=True)}"' for key, value in (attrs or {}).items())
         extra_suffix = f" {extra_attrs}" if extra_attrs else ""
         return f'<link rel="stylesheet"{extra_suffix} href="{html.escape(href, quote=True)}" />'
 
@@ -1006,10 +1000,7 @@ class ViteAssetLoader:
         return f'<link rel="modulepreload" {crossorigin_str}{extra_suffix} href="{html.escape(href, quote=True)}" />'
 
     def render_preload_headers(
-        self,
-        path: "str | list[str] | None" = None,
-        *,
-        manifest: "dict[str, Any] | None" = None,
+        self, path: "str | list[str] | None" = None, *, manifest: "dict[str, Any] | None" = None
     ) -> list[str]:
         """Generate RFC 8288 HTTP Link header values for preloading entry scripts, chunks, and stylesheets.
 
@@ -1025,32 +1016,27 @@ class ViteAssetLoader:
         if self._is_hot_dev or not active_manifest:
             return []
 
-        previous_manifest = self._manifest
-        self._manifest = active_manifest
-        try:
-            if path is not None:
-                raw_paths = [path] if isinstance(path, str) else list(path)
-                paths = [p.replace("\\", "/") for p in raw_paths if p.replace("\\", "/") in active_manifest]
-            else:
+        if path is not None:
+            raw_paths = [path] if isinstance(path, str) else list(path)
+            paths = [p.replace("\\", "/") for p in raw_paths if p.replace("\\", "/") in active_manifest]
+        else:
+            entry_keys = [
+                key
+                for key, raw_val in active_manifest.items()
+                if isinstance(raw_val, dict) and cast("dict[str, Any]", raw_val).get("isEntry") is True
+            ]
+            if not entry_keys:
                 entry_keys = [
                     key
                     for key, raw_val in active_manifest.items()
-                    if isinstance(raw_val, dict) and cast("dict[str, Any]", raw_val).get("isEntry") is True
+                    if isinstance(raw_val, dict) and not key.startswith("_")
                 ]
-                if not entry_keys:
-                    entry_keys = [
-                        key
-                        for key, raw_val in active_manifest.items()
-                        if isinstance(raw_val, dict) and not key.startswith("_")
-                    ]
-                paths = entry_keys
+            paths = entry_keys
 
-            if not paths:
-                return []
+        if not paths:
+            return []
 
-            entry_items, import_items, css_files = self._collect_manifest_graph(paths)
-        finally:
-            self._manifest = previous_manifest
+        entry_items, import_items, css_files = self._collect_manifest_graph(paths, manifest=active_manifest)
         asset_url_base = self._config.asset_url
         links: list[str] = []
         seen_links: set[str] = set()
@@ -1104,16 +1090,9 @@ async def send_early_hints(scope: Any, send: Any, preload_headers: list[str]) ->
     if not isinstance(extensions, dict):
         return
     ext_dict = cast("dict[str, Any]", extensions)
-    raw_headers = [(b"link", header.encode("latin-1")) for header in preload_headers]
-    if "http.response.informational" in ext_dict:
-        await send({"type": "http.response.informational", "status": 103, "headers": raw_headers})
-    elif "http.response.early_hint" in ext_dict:
-        await send({
-            "type": "http.response.early_hint",
-            "status": 103,
-            "headers": raw_headers,
-            "links": [header.encode("latin-1") for header in preload_headers],
-        })
+    if "http.response.early_hint" not in ext_dict:
+        return
+    await send({"type": "http.response.early_hint", "links": [header.encode("latin-1") for header in preload_headers]})
 
 
 class EarlyHintsASGIResponse:
@@ -1131,4 +1110,3 @@ class EarlyHintsASGIResponse:
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
         await send_early_hints(scope, send, self._preload_headers)
         await self._inner(scope, receive, send)
-

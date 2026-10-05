@@ -8,6 +8,7 @@ from litestar.testing import create_test_client
 
 from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
 from litestar_vite.plugin import StaticFilesConfig, StaticPlacement, VitePlugin
+from litestar_vite.plugin._static import is_blocked_static_metadata_path, is_hashed_asset_path
 
 
 def test_static_serving_immutable_cache_headers_and_unhashed_passthrough(tmp_path: Path) -> None:
@@ -17,8 +18,7 @@ def test_static_serving_immutable_cache_headers_and_unhashed_passthrough(tmp_pat
     assets_dir.mkdir(parents=True)
 
     (bundle_dir / "manifest.json").write_text(
-        '{"src/main.ts": {"file": "assets/index-D8x9kL2p.js", "isEntry": true}}',
-        encoding="utf-8",
+        '{"src/main.ts": {"file": "assets/index-D8x9kL2p.js", "isEntry": true}}', encoding="utf-8"
     )
     (assets_dir / "index-D8x9kL2p.js").write_text("console.log('hashed');", encoding="utf-8")
     (bundle_dir / "favicon.ico").write_text("icon-bytes", encoding="utf-8")
@@ -120,3 +120,32 @@ def test_static_placement_native_preserved_without_user_asgi_overrides(tmp_path:
     assert static_cfg.has_asgi_overrides() is False
     server_cfg = plugin.get_static_server_config()
     assert server_cfg.placement is StaticPlacement.NATIVE
+
+
+@pytest.mark.parametrize(
+    ("file_path", "expected"),
+    [
+        ("/srv/public/assets/index-D8x9kL2p.js", True),
+        ("/srv/public/assets/index-D8x9kL2p.js.map", True),
+        ("/srv/public/assets/vendor.Bq1X9zKf.css", True),
+        ("/srv/public/assets/chunk-a1b2c3d4e5f6a7b8.js", True),
+        ("/srv/public/assets/nested/logo-CkXp9Q2z.svg", True),
+        ("/srv/public/icon-192x192.png", False),
+        ("/srv/public/assets/icon-192x192.png", False),
+        ("/srv/public/vendor.ReactDOM.js", False),
+        ("/srv/public/favicon.ico", False),
+        ("/srv/public/assets/index.js", False),
+        ("/srv/public/robots.txt", False),
+    ],
+)
+def test_is_hashed_asset_path_requires_assets_dir_and_hash_segment(file_path: str, expected: bool) -> None:
+    """Only Rollup-hashed files under the Vite assets directory are treated as immutable."""
+    assert is_hashed_asset_path(file_path) is expected
+
+
+def test_is_blocked_static_metadata_path_is_case_insensitive() -> None:
+    """Metadata blocking matches regardless of path casing or separators."""
+    assert is_blocked_static_metadata_path("Manifest.JSON") is True
+    assert is_blocked_static_metadata_path(".VITE\\manifest.json") is True
+    assert is_blocked_static_metadata_path("nested/.Vite/manifest.json") is True
+    assert is_blocked_static_metadata_path("assets/app-D8x9kL2p.js") is False

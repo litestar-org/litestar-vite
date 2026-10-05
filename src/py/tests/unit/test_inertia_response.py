@@ -74,7 +74,7 @@ def test_inertia_response_attaches_link_preload_headers_on_html_bootstrap_only(t
 
 
 async def test_early_hints_sent_when_enabled_and_supported_by_scope(tmp_path: Path) -> None:
-    """Verify 103 Early Hints (http.response.informational) are sent before 200 OK when early_hints=True."""
+    """Verify 103 Early Hints (http.response.early_hint) are sent before 200 OK when early_hints=True."""
     bundle_dir = tmp_path / "public"
     _write_production_bundle(bundle_dir)
 
@@ -115,20 +115,71 @@ async def test_early_hints_sent_when_enabled_and_supported_by_scope(tmp_path: Pa
         "client": ("127.0.0.1", 12345),
         "server": ("testserver.local", 443),
         "state": {},
+        "extensions": {"http.response.early_hint": {}},
+    }
+
+    await app(scope, receive, send)  # type: ignore[arg-type]
+
+    early_hints = [m for m in sent_messages if m.get("type") == "http.response.early_hint"]
+    assert len(early_hints) == 1
+    assert "status" not in early_hints[0]
+    early_links = [val.decode("latin-1") for val in early_hints[0]["links"]]
+    assert "</static/assets/main-abc12345.js>; rel=modulepreload; as=script; crossorigin" in early_links
+    assert "</static/assets/main-def67890.css>; rel=preload; as=style" in early_links
+
+    start_idx = next(i for i, m in enumerate(sent_messages) if m.get("type") == "http.response.start")
+    info_idx = next(i for i, m in enumerate(sent_messages) if m.get("type") == "http.response.early_hint")
+    assert info_idx < start_idx
+
+
+async def test_early_hints_skipped_when_scope_lacks_extension(tmp_path: Path) -> None:
+    """Verify no 103 frame is emitted when the server scope does not advertise http.response.early_hint."""
+    bundle_dir = tmp_path / "public"
+    _write_production_bundle(bundle_dir)
+
+    @get("/dashboard", component="Dashboard")
+    async def dashboard() -> dict[str, Any]:
+        return {"user": "Ada"}
+
+    config = ViteConfig(
+        mode="hybrid",
+        paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir, resource_dir=tmp_path, asset_url="/static/"),
+        runtime=RuntimeConfig(dev_mode=False, link_preload_headers=True, early_hints=True),
+        inertia=InertiaConfig(root_template="index.html"),
+    )
+    plugin = VitePlugin(config=config)
+    app = Litestar(route_handlers=[dashboard], plugins=[plugin])
+    if plugin.spa_handler is not None:
+        await plugin.spa_handler.initialize_async()
+
+    sent_messages: list[dict[str, Any]] = []
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: dict[str, Any]) -> None:
+        sent_messages.append(message)
+
+    scope: dict[str, Any] = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.4"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/dashboard",
+        "raw_path": b"/dashboard",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [],
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver.local", 80),
+        "state": {},
         "extensions": {"http.response.informational": {}},
     }
 
     await app(scope, receive, send)  # type: ignore[arg-type]
 
-    informational = [m for m in sent_messages if m.get("type") == "http.response.informational"]
-    assert len(informational) == 1
-    assert informational[0]["status"] == 103
-    early_links = [
-        val.decode("latin-1") for key, val in informational[0].get("headers", []) if key.lower() == b"link"
+    assert not [
+        m for m in sent_messages if m.get("type") in {"http.response.early_hint", "http.response.informational"}
     ]
-    assert "</static/assets/main-abc12345.js>; rel=modulepreload; as=script; crossorigin" in early_links
-    assert "</static/assets/main-def67890.css>; rel=preload; as=style" in early_links
-
-    start_idx = next(i for i, m in enumerate(sent_messages) if m.get("type") == "http.response.start")
-    info_idx = next(i for i, m in enumerate(sent_messages) if m.get("type") == "http.response.informational")
-    assert info_idx < start_idx
+    assert sent_messages[0]["type"] == "http.response.start"
