@@ -1334,13 +1334,22 @@ describe("litestar-vite-plugin", () => {
     expect(config.server?.strictPort).toBe(false)
   })
 
-  it("prevents the Inertia helpers from being externalized", () => {
+  it("prevents the Inertia helpers from being externalized and defaults ssr.noExternal to true on build", () => {
     /* eslint-disable @typescript-eslint/ban-ts-comment */
     const plugin = litestar("resources/js/app.js")[0]
 
-    const noSsrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
+    const serveSsrConfig = plugin.config({ build: { ssr: true } }, { command: "serve", mode: "development" })
     /* @ts-ignore */
-    expect(noSsrConfig.ssr.noExternal).toEqual(["litestar-vite-plugin"])
+    expect(serveSsrConfig.ssr.noExternal).toEqual(["litestar-vite-plugin"])
+
+    const buildSsrConfig = plugin.config({ build: { ssr: true } }, { command: "build", mode: "production" })
+    /* @ts-ignore */
+    expect(buildSsrConfig.ssr.noExternal).toBe(true)
+
+    /* @ts-ignore */
+    const optOutBuildConfig = plugin.config({ ssr: { noExternal: false }, build: { ssr: true } }, { command: "build", mode: "production" })
+    /* @ts-ignore */
+    expect(optOutBuildConfig.ssr.noExternal).toEqual(["litestar-vite-plugin"])
 
     /* @ts-ignore */
     const nothingExternalConfig = plugin.config({ ssr: { noExternal: true }, build: { ssr: true } }, { command: "build", mode: "production" })

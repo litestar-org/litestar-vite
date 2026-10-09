@@ -4,18 +4,20 @@ import contextlib
 import re
 from collections.abc import Generator
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from litestar import Litestar
 from litestar._openapi.datastructures import OpenAPIContext  # pyright: ignore[reportPrivateUsage]
 from litestar._openapi.parameters import (  # pyright: ignore[reportPrivateUsage,reportPrivateImportUsage]
     create_parameters_for_handler,
 )
-from litestar.handlers import HTTPRouteHandler
-from litestar.routes import HTTPRoute
+from litestar.handlers import HTTPRouteHandler, WebsocketRouteHandler
+from litestar.routes import HTTPRoute, WebSocketRoute
 
+from litestar_vite.codegen._asyncapi import ChannelKeyAllocator, extract_ws_server_url, resolve_asyncapi_document
 from litestar_vite.codegen._refs import extract_schema_ref_name, resolve_component_schema_name
 from litestar_vite.codegen._ts import normalize_path, ts_type_from_openapi
+from litestar_vite.typing import ASYNCAPI_INSTALLED
 
 _PATH_PARAM_EXTRACT_PATTERN = re.compile(r"\{([^:}]+)(?::([^}]+))?\}")
 
@@ -112,7 +114,7 @@ def _route_param_type_from_schema(schema_dict: dict[str, Any], components_schema
     return ts_type
 
 
-@dataclass
+@dataclass(slots=True)
 class RouteMetadata:
     """Metadata for a single route."""
 
@@ -123,6 +125,8 @@ class RouteMetadata:
     params: dict[str, str] = field(default_factory=str_dict_factory)
     query_params: dict[str, str] = field(default_factory=str_dict_factory)
     component: "str | None" = None
+    protocol: Literal["http", "websocket"] = "http"
+    channel_key: "str | None" = None
 
 
 def extract_path_params(path: str) -> dict[str, str]:
@@ -137,8 +141,47 @@ def extract_path_params(path: str) -> dict[str, str]:
     return {match.group(1): "string" for match in _PATH_PARAM_EXTRACT_PATTERN.finditer(path)}
 
 
-def iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRouteHandler], None, None]:
-    """Iterate over HTTP route handlers in an app.
+def _resolve_handler_name(route_handler: HTTPRouteHandler | WebsocketRouteHandler) -> str:
+    """Resolve the route name for an HTTP or WebSocket route handler.
+
+    Unwraps ``WebsocketListenerRouteHandler`` ``ListenerHandler`` callables so
+    ``@websocket_listener`` routes use the user function's ``__name__`` rather
+    than ``"ListenerHandler"`` when no explicit ``name=`` was passed.
+    """
+    if route_handler.name:
+        return route_handler.name
+    fn: Any = getattr(route_handler, "fn", None)
+    inner: Any = getattr(fn, "_fn", None)
+    if hasattr(inner, "func"):
+        inner = inner.func
+    inner_name = getattr(inner, "__name__", None)
+    if isinstance(inner_name, str) and inner_name:
+        return inner_name
+    return route_handler.handler_name or str(route_handler)
+
+
+_INTERNAL_WS_HANDLER_NAMES: frozenset[str] = frozenset({
+    "vite_hmr_proxy",
+    "disabled_vite_hmr",
+    "ssr_proxy_ws",
+    "ws_proxy",
+})
+
+
+def _is_channels_plugin_ws_handler(route_handler: WebsocketRouteHandler, app: Litestar) -> bool:
+    """Return True when a WebSocketRoute handler is an internal ChannelsPlugin handler."""
+    if ASYNCAPI_INSTALLED:
+        with contextlib.suppress(ImportError):
+            from litestar_asyncapi._compat import generated_channels_mode
+
+            return generated_channels_mode(route_handler, app) is not None
+    return getattr(route_handler, "handler_name", None) == "ws_handler_func"
+
+
+def iter_route_handlers(
+    app: Litestar,
+) -> Generator[tuple["HTTPRoute | WebSocketRoute", HTTPRouteHandler | WebsocketRouteHandler], None, None]:
+    """Iterate over HTTP and WebSocket route handlers in an app.
 
     Returns handlers in deterministic order, sorted by (route_path, handler_name)
     to ensure consistent output across multiple runs.
@@ -147,19 +190,29 @@ def iter_route_handlers(app: Litestar) -> Generator[tuple["HTTPRoute", HTTPRoute
         app: The Litestar application.
 
     Yields:
-        Tuples of (HTTPRoute, HTTPRouteHandler), sorted for determinism.
+        Tuples of (HTTPRoute | WebSocketRoute, HTTPRouteHandler | WebsocketRouteHandler), sorted for determinism.
     """
-    handlers: list[tuple[HTTPRoute, HTTPRouteHandler]] = []
+    handlers: list[tuple[HTTPRoute | WebSocketRoute, HTTPRouteHandler | WebsocketRouteHandler]] = []
     for route in app.routes:
         if isinstance(route, HTTPRoute):
             handlers.extend((route, route_handler) for route_handler in route.route_handlers)
-    handlers.sort(key=lambda x: (str(x[0].path), x[1].handler_name or x[1].name or ""))
+        elif isinstance(route, WebSocketRoute):
+            route_handler = route.route_handler
+            if _is_channels_plugin_ws_handler(route_handler, app):
+                continue
+            if _resolve_handler_name(route_handler) in _INTERNAL_WS_HANDLER_NAMES:
+                continue
+            opt = getattr(route_handler, "opt", None)
+            if isinstance(opt, dict) and cast("dict[str, Any]", opt).get("include_in_schema") is False:
+                continue
+            handlers.append((route, route_handler))
+    handlers.sort(key=lambda x: (str(x[0].path), _resolve_handler_name(x[1])))
     yield from handlers
 
 
 def extract_params_from_litestar(
-    handler: HTTPRouteHandler,
-    http_route: "HTTPRoute",
+    handler: HTTPRouteHandler | WebsocketRouteHandler,
+    http_route: "HTTPRoute | WebSocketRoute",
     openapi_context: OpenAPIContext | None,
     components_schemas: dict[str, Any] | None = None,
 ) -> tuple[dict[str, str], dict[str, str]]:
@@ -275,12 +328,51 @@ def make_unique_name(base_name: str, used_names: set[str], path: str, methods: l
     return f"{candidate}_{counter}"
 
 
+def _resolve_ws_channel_key(
+    normalized_path: str, allocator: ChannelKeyAllocator, asyncapi_schema: dict[str, Any] | None
+) -> str:
+    """Resolve the AsyncAPI channel key for a WebSocket route path."""
+    if isinstance(asyncapi_schema, dict):
+        channels = asyncapi_schema.get("channels")
+        if isinstance(channels, dict):
+            for key, ch in cast("dict[str, Any]", channels).items():
+                if not isinstance(ch, dict):
+                    continue
+                ch_dict = cast("dict[str, Any]", ch)
+                bindings = ch_dict.get("bindings")
+                is_ws = isinstance(bindings, dict) and "ws" in bindings
+                if ch_dict.get("address") == normalized_path and is_ws:
+                    return str(key)
+    return allocator.allocate(normalized_path, "websocket")
+
+
+def _extract_openapi_components_schemas(openapi_schema: dict[str, Any] | None) -> dict[str, Any]:
+    """Extract components.schemas map from an OpenAPI schema dictionary."""
+    if not isinstance(openapi_schema, dict):
+        return {}
+    components = openapi_schema.get("components")
+    if not isinstance(components, dict):
+        return {}
+    schemas = cast("dict[str, Any]", components).get("schemas")
+    return cast("dict[str, Any]", schemas) if isinstance(schemas, dict) else {}
+
+
+def _resolve_schema_route_name(full_path: str, base_name: str, used_names: set[str]) -> str | None:
+    """Resolve canonical OpenAPI schema route names or None when a schema UI route should be skipped."""
+    if "openapi.json" in full_path:
+        return None if "openapi.json" in used_names else "openapi.json"
+    if "openapi.yaml" in full_path or "openapi.yml" in full_path:
+        return None if "openapi.yaml" in used_names else "openapi.yaml"
+    return None
+
+
 def extract_route_metadata(
     app: Litestar,
     *,
     only: "list[str] | None" = None,
     exclude: "list[str] | None" = None,
     openapi_schema: dict[str, Any] | None = None,
+    asyncapi_schema: dict[str, Any] | None = None,
 ) -> list[RouteMetadata]:
     """Extract route metadata from a Litestar application.
 
@@ -293,45 +385,42 @@ def extract_route_metadata(
     """
     routes_metadata: list[RouteMetadata] = []
     used_names: set[str] = set()
+    channel_allocator = ChannelKeyAllocator()
 
     if openapi_schema is None and app.openapi_config is not None:
         with contextlib.suppress(Exception):
             openapi_schema = app.openapi_schema.to_schema()
 
-    components_schemas: dict[str, Any] = {}
-    if isinstance(openapi_schema, dict):
-        components = openapi_schema.get("components")
-        if isinstance(components, dict):
-            components_t = cast("dict[str, Any]", components)
-            schemas = components_t.get("schemas")
-            if isinstance(schemas, dict):
-                components_schemas = cast("dict[str, Any]", schemas)
+    if asyncapi_schema is None:
+        with contextlib.suppress(Exception):
+            asyncapi_schema = resolve_asyncapi_document(app)
+
+    components_schemas = _extract_openapi_components_schemas(openapi_schema)
 
     openapi_context: OpenAPIContext | None = None
     if app.openapi_config is not None:
         with contextlib.suppress(AttributeError, TypeError, ValueError):
             openapi_context = OpenAPIContext(openapi_config=app.openapi_config, plugins=app.plugins.openapi)
 
-    for http_route, route_handler in iter_route_handlers(app):
-        base_name = route_handler.name or route_handler.handler_name or str(route_handler)
-        methods = [method.upper() for method in route_handler.http_methods]
+    for route, route_handler in iter_route_handlers(app):
+        is_websocket = isinstance(route, WebSocketRoute) or isinstance(route_handler, WebsocketRouteHandler)
+        base_name = _resolve_handler_name(route_handler)
 
-        if methods in (["OPTIONS"], ["HEAD"]):
-            continue
-
-        full_path = str(http_route.path)
-
-        if full_path.startswith("/schema"):
-            if "openapi.json" in full_path:
-                if "openapi.json" in used_names:
-                    continue
-                base_name = "openapi.json"
-            elif "openapi.yaml" in full_path or "openapi.yml" in full_path:
-                if "openapi.yaml" in used_names:
-                    continue
-                base_name = "openapi.yaml"
-            else:
+        if is_websocket:
+            methods = ["WS"]
+        else:
+            http_handler = cast("HTTPRouteHandler", route_handler)
+            methods = [method.upper() for method in http_handler.http_methods]
+            if methods in (["OPTIONS"], ["HEAD"]):
                 continue
+
+        full_path = str(route.path)
+
+        if not is_websocket and full_path.startswith("/schema"):
+            resolved_schema_name = _resolve_schema_route_name(full_path, base_name, used_names)
+            if resolved_schema_name is None:
+                continue
+            base_name = resolved_schema_name
 
         route_name = make_unique_name(base_name, used_names, full_path, methods)
         used_names.add(route_name)
@@ -342,7 +431,7 @@ def extract_route_metadata(
             continue
 
         params, query_params = extract_params_from_litestar(
-            route_handler, http_route, openapi_context, components_schemas=components_schemas
+            route_handler, route, openapi_context, components_schemas=components_schemas
         )
 
         if not params:
@@ -350,23 +439,28 @@ def extract_route_metadata(
 
         normalized_path = normalize_path(full_path)
 
-        if openapi_schema:
+        if openapi_schema and not is_websocket:
             _update_params_from_openapi(
                 params, query_params, openapi_schema, normalized_path, methods, components_schemas=components_schemas
             )
 
         opt: dict[str, Any] = route_handler.opt or {}
         component = opt.get("component")
+        channel_key = (
+            _resolve_ws_channel_key(normalized_path, channel_allocator, asyncapi_schema) if is_websocket else None
+        )
 
         routes_metadata.append(
             RouteMetadata(
                 name=route_name,
                 path=normalized_path,
                 methods=methods,
-                method=pick_primary_method(methods),
+                method="ws" if is_websocket else pick_primary_method(methods),
                 params=params,
                 query_params=query_params,
                 component=cast("str | None", component),
+                protocol="websocket" if is_websocket else "http",
+                channel_key=channel_key,
             )
         )
 
@@ -380,6 +474,7 @@ def generate_routes_json(
     exclude: "list[str] | None" = None,
     include_components: bool = False,
     openapi_schema: dict[str, Any] | None = None,
+    asyncapi_schema: dict[str, Any] | None = None,
     routes_metadata: "list[RouteMetadata] | None" = None,
 ) -> dict[str, Any]:
     """Generate Ziggy-compatible routes JSON.
@@ -390,10 +485,16 @@ def generate_routes_json(
     Returns:
         A Ziggy-compatible routes payload as a dictionary with sorted keys.
     """
+    if asyncapi_schema is None:
+        with contextlib.suppress(Exception):
+            asyncapi_schema = resolve_asyncapi_document(app)
+
     routes_metadata = (
         routes_metadata
         if routes_metadata is not None
-        else extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
+        else extract_route_metadata(
+            app, only=only, exclude=exclude, openapi_schema=openapi_schema, asyncapi_schema=asyncapi_schema
+        )
     )
 
     sorted_routes = sorted(routes_metadata, key=lambda r: r.name)
@@ -402,6 +503,10 @@ def generate_routes_json(
 
     for route in sorted_routes:
         route_data: dict[str, Any] = {"uri": route.path, "methods": route.methods, "method": route.method}
+        if route.protocol == "websocket":
+            route_data["protocol"] = "websocket"
+            if route.channel_key:
+                route_data["channel_key"] = route.channel_key
 
         if route.params:
             sorted_params = dict(sorted(route.params.items()))
@@ -416,7 +521,12 @@ def generate_routes_json(
 
         routes_dict[route.name] = route_data
 
-    return {"routes": routes_dict}
+    payload: dict[str, Any] = {"routes": routes_dict}
+    if isinstance(asyncapi_schema, dict):
+        servers = asyncapi_schema.get("servers")
+        if isinstance(servers, dict) and servers:
+            payload["servers"] = servers
+    return payload
 
 
 _TS_TYPE_MAP: dict[str, str] = {
@@ -510,6 +620,10 @@ def _format_route_entry(
         f"    methods: [{methods_str}] as const,",
         f"    method: '{route.method}',",
     ]
+    if route.protocol == "websocket":
+        route_entry_lines.append("    protocol: 'websocket' as const,")
+        if route.channel_key:
+            route_entry_lines.append(f"    channelKey: '{escape_ts_string(route.channel_key)}',")
     param_names_str = ", ".join(f"'{p}'" for p in sorted_params) if sorted_params else ""
     route_entry_lines.append(f"    pathParams: [{param_names_str}] as const,")
 
@@ -527,6 +641,7 @@ def generate_routes_ts(
     only: "list[str] | None" = None,
     exclude: "list[str] | None" = None,
     openapi_schema: dict[str, Any] | None = None,
+    asyncapi_schema: dict[str, Any] | None = None,
     global_route: bool = False,
     routes_metadata: "list[RouteMetadata] | None" = None,
 ) -> str:
@@ -538,15 +653,22 @@ def generate_routes_ts(
     Returns:
         The generated TypeScript source.
     """
+    if asyncapi_schema is None:
+        with contextlib.suppress(Exception):
+            asyncapi_schema = resolve_asyncapi_document(app)
+
     routes_metadata = (
         routes_metadata
         if routes_metadata is not None
-        else extract_route_metadata(app, only=only, exclude=exclude, openapi_schema=openapi_schema)
+        else extract_route_metadata(
+            app, only=only, exclude=exclude, openapi_schema=openapi_schema, asyncapi_schema=asyncapi_schema
+        )
     )
 
     sorted_routes = sorted(routes_metadata, key=lambda r: r.name)
 
     route_names: list[str] = []
+    ws_route_names: list[str] = []
     path_params_entries: list[str] = []
     query_params_entries: list[str] = []
     routes_entries: list[str] = []
@@ -555,6 +677,8 @@ def generate_routes_ts(
     for route in sorted_routes:
         route_name = route.name
         route_names.append(route_name)
+        if route.protocol == "websocket":
+            ws_route_names.append(route_name)
 
         sorted_params = dict(sorted(route.params.items())) if route.params else {}
         sorted_query_params = dict(sorted(route.query_params.items())) if route.query_params else {}
@@ -588,11 +712,13 @@ def generate_routes_ts(
         routes_entries.append(_format_route_entry(route, sorted_params, sorted_query_params))
 
     route_names_union = "\n  | ".join(f"'{name}'" for name in route_names) if route_names else "never"
+    ws_route_names_union = "\n  | ".join(f"'{name}'" for name in ws_route_names) if ws_route_names else "never"
 
     alias_block = render_semantic_aliases(used_aliases)
     alias_preamble = f"{alias_block}\n\n" if alias_block else ""
 
     csrf_cookie_name, csrf_header_name = _extract_csrf_names(app)
+    ws_server_url = escape_ts_string(extract_ws_server_url(asyncapi_schema))
 
     global_route_snippet = ""
     if global_route:
@@ -609,6 +735,7 @@ def generate_routes_ts(
 // API base URL - only needed for separate dev servers
 // Set VITE_API_URL=http://localhost:8000 when running Vite separately
 const API_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) ?? '';
+export const WS_SERVER_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_URL) || API_URL || '{ws_server_url}';
 
 /** Configured CSRF cookie name (static fallback) */
 export const CSRF_COOKIE_NAME = '{csrf_cookie_name}';
@@ -620,6 +747,10 @@ export const CSRF_HEADER_NAME = '{csrf_header_name}';
 /** All available route names */
 export type RouteName =
   | {route_names_union};
+
+/** WebSocket route names */
+export type WebSocketRouteName =
+  | {ws_route_names_union};
 
 /** Path parameter definitions per route */
 export interface RoutePathParams {{
@@ -667,6 +798,89 @@ type RoutesWithRequiredParams = {{
 /** Routes without any required parameters */
 type RoutesWithoutRequiredParams = Exclude<RouteName, RoutesWithRequiredParams>;
 
+/** WebSocket routes that require parameters (path or query) */
+type WebSocketRoutesWithRequiredParams = Extract<WebSocketRouteName, RoutesWithRequiredParams>;
+
+/** WebSocket routes without any required parameters */
+type WebSocketRoutesWithoutRequiredParams = Exclude<WebSocketRouteName, WebSocketRoutesWithRequiredParams>;
+
+function formatRoutePath<T extends RouteName>(name: T, params?: RouteParams<T>): string {{
+  const def = routeDefinitions[name];
+  let url: string = def.path;
+
+  if (params) {{
+    for (const param of def.pathParams) {{
+      const value = (params as Record<string, unknown>)[param];
+      if (value !== undefined) {{
+        url = url.replaceAll("{{" + param + "}}", String(value));
+      }}
+    }}
+  }}
+
+  if (params) {{
+    const queryParts: string[] = [];
+    for (const param of def.queryParams) {{
+      const value = (params as Record<string, unknown>)[param];
+      if (value !== undefined) {{
+        queryParts.push(encodeURIComponent(param) + "=" + encodeURIComponent(String(value)));
+      }}
+    }}
+    if (queryParts.length > 0) {{
+      url += "?" + queryParts.join("&");
+    }}
+  }}
+
+  return url;
+}}
+
+function resolveWsUrl(path: string, serverUrl: string = WS_SERVER_URL): string {{
+  if (/^wss?:\\/\\//i.test(path)) return path;
+  if (/^https?:\\/\\//i.test(path)) return path.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:');
+  const normalizedPath = path.startsWith('/') ? path : '/' + path;
+  if (serverUrl && serverUrl.trim()) {{
+    const cleanServer = serverUrl.trim().replace(/\\/$/, '');
+    if (/^wss?:\\/\\//i.test(cleanServer)) return cleanServer + normalizedPath;
+    if (/^https?:\\/\\//i.test(cleanServer)) {{
+      return cleanServer.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:') + normalizedPath;
+    }}
+    return 'ws://' + cleanServer + normalizedPath;
+  }}
+  if (typeof window !== 'undefined' && window.location && window.location.host) {{
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return proto + '//' + window.location.host + normalizedPath;
+  }}
+  return normalizedPath;
+}}
+
+/**
+ * Generate a WebSocket URL (`ws://` or `wss://`) for a named WebSocket route.
+ */
+export function wsRoute<T extends WebSocketRoutesWithoutRequiredParams>(name: T): string;
+export function wsRoute<T extends WebSocketRoutesWithoutRequiredParams>(
+  name: T,
+  params?: RouteParams<T>,
+): string;
+export function wsRoute<T extends WebSocketRoutesWithRequiredParams>(
+  name: T,
+  params: RouteParams<T>,
+): string;
+export function wsRoute<T extends WebSocketRouteName>(
+  name: T,
+  params?: RouteParams<T>,
+): string {{
+  const def = routeDefinitions[name] as {{ protocol?: string; methods?: readonly string[] }} | undefined;
+  if (!def) {{
+    throw new Error(`Route "${{String(name)}}" not found`);
+  }}
+  const isWsRoute =
+    def.protocol === 'websocket' ||
+    (!def.protocol && Array.isArray(def.methods) && def.methods.some((m) => String(m).toUpperCase() === 'WS'));
+  if (!isWsRoute) {{
+    throw new Error(`Route "${{String(name)}}" is not a WebSocket route`);
+  }}
+  return resolveWsUrl(formatRoutePath(name, params));
+}}
+
 /**
  * Generate a URL for a named route.
  *
@@ -691,36 +905,12 @@ export function route<T extends RouteName>(
   name: T,
   params?: RouteParams<T>,
 ): string {{
-  const def = routeDefinitions[name];
-  let url: string = def.path;
-
-  // Replace path parameters (use replaceAll to handle multiple occurrences)
-  if (params) {{
-    for (const param of def.pathParams) {{
-      const value = (params as Record<string, unknown>)[param];
-      if (value !== undefined) {{
-        url = url.replaceAll("{{" + param + "}}", String(value));
-      }}
-    }}
-  }}
-
-  // Add query parameters
-  if (params) {{
-    const queryParts: string[] = [];
-    for (const param of def.queryParams) {{
-      const value = (params as Record<string, unknown>)[param];
-      if (value !== undefined) {{
-        queryParts.push(encodeURIComponent(param) + "=" + encodeURIComponent(String(value)));
-      }}
-    }}
-    if (queryParts.length > 0) {{
-      url += "?" + queryParts.join("&");
-    }}
-  }}
+  const url = formatRoutePath(name, params);
 
   // Apply API URL if set (for separate dev servers)
   return API_URL ? API_URL.replace(/\\/$/, '') + url : url;
 }}
+route.ws = wsRoute;
 
 /** Check if a route exists */
 export function hasRoute(name: string): name is RouteName {{

@@ -15,7 +15,7 @@ import { resolveHotFilePath } from "./shared/network.js"
 import type { DevSsrOptions, SsrRenderRequest, SsrRenderResponse } from "./shared/ssr-types.js"
 import { resolveDefaultSdkClientPlugin } from "./shared/typegen-core.js"
 import { createLitestarTypeGenPlugin, type RequiredTypeGenConfig, resolveTypesConfig, type TypesConfigShape } from "./shared/typegen-plugin.js"
-import { buildInputOptions, hmrServerConfig, isVite7Plus, mergeDefinedHmrOptions, resolveUserBuildInput, viteMajor } from "./shared/vite-compat.js"
+import { assertVite7Plus, buildInputOptions, hmrServerConfig, mergeDefinedHmrOptions, resolveUserBuildInput } from "./shared/vite-compat.js"
 
 export { litestarViteSsrPlugin }
 export type { DevSsrOptions, SsrRenderRequest, SsrRenderResponse }
@@ -234,9 +234,7 @@ const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((p) => fs.ex
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function litestar(config: string | string[] | PluginConfig): any[] {
-  if (!isVite7Plus) {
-    throw new Error(`litestar-vite-plugin requires Vite >= 7.0.0, but running Vite is ${viteMajor}.x. Please upgrade Vite.`)
-  }
+  assertVite7Plus()
   const pluginConfig = resolvePluginConfig(config)
 
   const plugins: Plugin[] = [resolveLitestarPlugin(pluginConfig, config), ...(resolveFullReloadConfig(pluginConfig) as Plugin[])]
@@ -474,7 +472,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig, rawConfig?: s
               },
         },
         ssr: {
-          noExternal: noExternalInertiaHelpers(userConfig),
+          noExternal: noExternalInertiaHelpers(userConfig, command),
         },
         // Explicitly set appType if you know you're serving an SPA index.html
         // appType: 'spa', // Try adding this - might simplify things if appropriate
@@ -1336,7 +1334,7 @@ function isIpv6(address: AddressInfo): boolean {
  *
  * @see https://vite.dev/guide/ssr.html#ssr-externals
  */
-function noExternalInertiaHelpers(config: UserConfig): true | Array<string | RegExp> {
+function noExternalInertiaHelpers(config: UserConfig, command: "build" | "serve" = "serve"): true | Array<string | RegExp> {
   const ssrConfig = typeof config.ssr === "object" && config.ssr !== null ? (config.ssr as SSROptions) : undefined
   const userNoExternal = ssrConfig?.noExternal
   const pluginNoExternal = ["litestar-vite-plugin"]
@@ -1345,8 +1343,12 @@ function noExternalInertiaHelpers(config: UserConfig): true | Array<string | Reg
     return true
   }
 
-  if (typeof userNoExternal === "undefined") {
+  if ((userNoExternal as unknown) === false) {
     return pluginNoExternal
+  }
+
+  if (typeof userNoExternal === "undefined") {
+    return command === "build" ? true : pluginNoExternal
   }
 
   return [...(Array.isArray(userNoExternal) ? userNoExternal : [userNoExternal]), ...pluginNoExternal]

@@ -134,4 +134,5 @@ Developer Resources
 
    contribution-guide
    changelog
+   migration/0.33
    migration/0.32

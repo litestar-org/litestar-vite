@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
@@ -23,7 +24,11 @@ from litestar_vite.config._inertia import (  # pyright: ignore[reportPrivateUsag
     InertiaTypeGenConfig,
 )
 from litestar_vite.config._paths import PathConfig  # pyright: ignore[reportPrivateUsage]
-from litestar_vite.config._runtime import ExternalDevServer, RuntimeConfig  # pyright: ignore[reportPrivateUsage]
+from litestar_vite.config._runtime import (  # pyright: ignore[reportPrivateUsage]
+    ExternalDevServer,
+    RuntimeConfig,
+    detect_runtime,
+)
 from litestar_vite.config._spa import LoggingConfig, SPAConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._types import TypeGenConfig  # pyright: ignore[reportPrivateUsage]
 
@@ -52,7 +57,31 @@ __all__ = (
     "SPAConfig",
     "TypeGenConfig",
     "ViteConfig",
+    "detect_runtime",
 )
+
+_JSONC_COMMENT_RE = re.compile(r'("(?:\\.|[^"\\])*")|//[^\r\n]*|/\*[\s\S]*?\*/')
+_JSONC_TRAILING_COMMA_RE = re.compile(r",(\s*[}\]])")
+_REACT_MARKERS = frozenset({"@vitejs/plugin-react", "@vitejs/plugin-react-swc", "react", "react-dom"})
+
+
+def _strip_jsonc(raw: str) -> str:
+    """Strip line/block comments and trailing commas from a JSONC document."""
+    without_comments = _JSONC_COMMENT_RE.sub(lambda m: m.group(1) or "", raw)
+    return _JSONC_TRAILING_COMMA_RE.sub(r"\1", without_comments)
+
+
+def _mapping_contains_react(mapping: dict[str, Any]) -> bool:
+    """Check whether an import map dictionary references React or the Vite React plugin."""
+    for key, value in mapping.items():
+        if key in _REACT_MARKERS or key.startswith("react/"):
+            return True
+        if isinstance(value, str) and (
+            value.startswith(("npm:react@", "npm:react/", "npm:@vitejs/plugin-react"))
+            or value in {"npm:react", "npm:react-dom"}
+        ):
+            return True
+    return False
 
 
 @lru_cache(maxsize=128)
@@ -69,6 +98,33 @@ def _package_json_has_react_plugin(package_json_path: str, stat_mtime_ns: int, s
     if isinstance(deps_any, dict) and "@vitejs/plugin-react" in cast("dict[str, Any]", deps_any):
         return True
     return bool(isinstance(dev_deps_any, dict) and "@vitejs/plugin-react" in cast("dict[str, Any]", dev_deps_any))
+
+
+@lru_cache(maxsize=128)
+def _deno_config_has_react(deno_config_path: str, stat_mtime_ns: int, stat_size: int) -> bool:
+    """Cache React detection for a concrete deno.json or deno.jsonc snapshot."""
+    del stat_mtime_ns, stat_size
+    try:
+        raw = Path(deno_config_path).read_text(encoding="utf-8")
+        payload = decode_json(_strip_jsonc(raw))
+    except (OSError, UnicodeDecodeError, SerializationException):
+        return False
+
+    if not isinstance(payload, dict):
+        return False
+
+    typed_payload = cast("dict[str, Any]", payload)
+    imports_any = typed_payload.get("imports")
+    if isinstance(imports_any, dict) and _mapping_contains_react(cast("dict[str, Any]", imports_any)):
+        return True
+
+    scopes_any = typed_payload.get("scopes")
+    if isinstance(scopes_any, dict):
+        for scope_map in cast("dict[str, Any]", scopes_any).values():
+            if isinstance(scope_map, dict) and _mapping_contains_react(cast("dict[str, Any]", scope_map)):
+                return True
+
+    return False
 
 
 @runtime_checkable
@@ -271,6 +327,7 @@ class ViteConfig:
         self._normalize_spa_flag()
         self._normalize_logging()
         self._apply_dev_mode_shortcut()
+        self._auto_detect_executor()
         self._auto_detect_mode()
         self._auto_configure_inertia()
         self._auto_detect_react()
@@ -279,6 +336,15 @@ class ViteConfig:
         self._normalize_deploy()
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
+
+    def _auto_detect_executor(self) -> None:
+        """Auto-detect the JS runtime executor from project lockfiles when not explicitly set."""
+        if self.runtime.has_explicit_executor:
+            return
+        detected = detect_runtime(self.root_dir)
+        if detected != self.runtime.executor:
+            self.runtime.apply_detected_executor(detected)
+            self._executor_instance = None
 
     def _resolve_enabled(self) -> None:
         """Resolve VITE_ENABLED only when enabled was not set explicitly."""
@@ -294,26 +360,35 @@ class ViteConfig:
         @vitejs/plugin-react requires the React preamble to be injected into the HTML.
         The asset loader handles this when `runtime.is_react` is enabled.
 
-        We auto-enable it when `@vitejs/plugin-react` is present in the project's package.json.
+        We auto-enable it when `@vitejs/plugin-react` is present in the project's package.json
+        or when React imports are present in `deno.json` / `deno.jsonc`.
         """
         if self.runtime.is_react:
             return
 
         package_json = self.root_dir / "package.json"
-        if not package_json.exists():
-            return
+        if package_json.exists():
+            try:
+                package_json_stat = package_json.stat()
+            except OSError:
+                package_json_stat = None
+            if package_json_stat is not None and _package_json_has_react_plugin(
+                str(package_json), package_json_stat.st_mtime_ns, package_json_stat.st_size
+            ):
+                self.runtime.is_react = True
+                return
 
-        try:
-            package_json_stat = package_json.stat()
-        except OSError:
-            return
-
-        has_react_plugin = _package_json_has_react_plugin(
-            str(package_json), package_json_stat.st_mtime_ns, package_json_stat.st_size
-        )
-
-        if has_react_plugin:
-            self.runtime.is_react = True
+        for deno_filename in ("deno.json", "deno.jsonc"):
+            deno_config = self.root_dir / deno_filename
+            if not deno_config.exists():
+                continue
+            try:
+                deno_stat = deno_config.stat()
+            except OSError:
+                continue
+            if _deno_config_has_react(str(deno_config), deno_stat.st_mtime_ns, deno_stat.st_size):
+                self.runtime.is_react = True
+                return
 
     def _normalize_mode(self) -> None:
         """Normalize mode aliases to canonical values.
@@ -660,18 +735,19 @@ class ViteConfig:
 
         executor_type = self.runtime.executor or "node"
         silent = self.logging_config.suppress_npm_output
+        mode = self.runtime.provisioning_mode
 
         if executor_type == "bun":
-            return BunExecutor(silent=silent)
+            return BunExecutor(silent=silent, provisioning_mode=mode)
         if executor_type == "deno":
-            return DenoExecutor(silent=silent)
+            return DenoExecutor(silent=silent, provisioning_mode=mode)
         if executor_type == "yarn":
-            return YarnExecutor(silent=silent)
+            return YarnExecutor(silent=silent, provisioning_mode=mode)
         if executor_type == "pnpm":
-            return PnpmExecutor(silent=silent)
+            return PnpmExecutor(silent=silent, provisioning_mode=mode)
         if self.runtime.detect_nodeenv:
             return NodeenvExecutor(self, silent=silent)
-        return NodeExecutor(silent=silent)
+        return NodeExecutor(silent=silent, provisioning_mode=mode)
 
     @property
     def bundle_dir(self) -> Path:
@@ -1095,6 +1171,33 @@ class ViteConfig:
             CSP nonce string when configured, otherwise None.
         """
         return self.runtime.csp_nonce
+
+    @property
+    def link_preload_headers(self) -> bool:
+        """Return whether RFC 8288 Link preload headers are emitted in production."""
+        return self.runtime.link_preload_headers
+
+    @property
+    def early_hints(self) -> bool:
+        """Return whether ASGI 103 Early Hints frames are emitted in production."""
+        return self.runtime.early_hints
+
+    @property
+    def immutable_cache_headers(self) -> bool:
+        """Return whether content-hashed static assets receive immutable Cache-Control headers."""
+        return self.runtime.immutable_cache_headers
+
+    @property
+    def ssr_transport(self) -> Literal["stdio", "wasm", "auto"]:
+        """Return the configured production SSR transport mode."""
+        return self.runtime.ssr_transport
+
+    @property
+    def ssr_enabled(self) -> bool:
+        """Return whether Server-Side Rendering (Inertia SSR or custom SSR output) is enabled."""
+        return (
+            isinstance(self.inertia, InertiaConfig) and self.inertia.ssr_config is not None
+        ) or self.paths.ssr_output_dir is not None
 
     @property
     def trusted_proxies(self) -> "list[str] | str | None":

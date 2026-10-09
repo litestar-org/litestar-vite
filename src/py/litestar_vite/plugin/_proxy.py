@@ -244,7 +244,10 @@ async def _proxy_http_request(
     """Forward HTTP with pooled connections and per-operation inactivity timeouts.
 
     HTTPX2 handles HTTP framing and informational responses. Raw response bytes
-    retain their Content-Encoding so browsers can decode compressed assets.
+    retain their Content-Encoding so browsers can decode compressed assets. If an
+    upstream HTTP error occurs after ``http.response.start`` has been sent, the
+    exception is re-raised to abort the downstream response instead of reporting
+    truncated data as complete.
     """
     response_started = False
     async with AsyncExitStack() as stack:
@@ -266,7 +269,6 @@ async def _proxy_http_request(
                 await send({"type": "http.response.body", "body": b"", "more_body": False})
         except httpx2.HTTPError as exc:
             if response_started:
-                # Abort the downstream response instead of reporting truncated data as complete.
                 raise
             status = error_status if isinstance(exc, httpx2.ConnectError) else 502
             message = error_message if isinstance(exc, httpx2.ConnectError) else None
@@ -656,6 +658,10 @@ def extract_subprotocols(scope: dict[str, Any]) -> list[str]:
 async def _run_websocket_proxy(socket: Any, upstream: Any) -> None:
     """Run bidirectional WebSocket proxy between client and upstream.
 
+    Forwards both text (``str``) and binary (``bytes``) frames in both
+    directions using raw ASGI ``socket.receive()`` messages so that frame
+    type is preserved exactly as the browser sent it.
+
     Args:
         socket: The client WebSocket connection (Litestar WebSocket).
         upstream: The upstream WebSocket connection (websockets client).
@@ -665,8 +671,16 @@ async def _run_websocket_proxy(socket: Any, upstream: Any) -> None:
         """Forward messages from browser to Vite."""
         try:
             while True:
-                data = await socket.receive_text()
-                await upstream.send(data)
+                message = await socket.receive()
+                if message.get("type") == "websocket.disconnect":
+                    break
+                text_data = message.get("text")
+                if text_data is not None:
+                    await upstream.send(text_data)
+                    continue
+                bytes_data = message.get("bytes")
+                if bytes_data is not None:
+                    await upstream.send(bytes_data)
         except (WebSocketDisconnect, anyio.ClosedResourceError, websockets.ConnectionClosed):
             pass
         finally:

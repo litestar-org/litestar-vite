@@ -1,0 +1,57 @@
+=================
+Migrating to 0.33
+=================
+
+Version 0.33 makes production SSR bundles self-contained. Review these points
+before upgrading applications that use Inertia SSR or server-side fragments.
+
+Self-contained SSR bundles (``ssr.noExternal``)
+-----------------------------------------------
+
+The npm plugin now sets ``ssr.noExternal: true`` when building the production
+SSR bundle (``ssrOutputDir``). Every dependency imported by the SSR entry is
+inlined into ``ssr.js`` so the worker can run under Node, Bun, Deno, or the
+in-process QuickJS transport without a ``node_modules`` directory present on the
+production host.
+
+Projects that intentionally kept packages external, for example to share a
+native-module dependency or to keep ``ssr.js`` small, can restore the previous
+behavior in ``vite.config.ts``:
+
+.. code-block:: typescript
+
+    import { defineConfig } from "vite"
+
+    export default defineConfig({
+      ssr: {
+        noExternal: [],                 // externalize everything except litestar-vite-plugin
+        // or an allow-list: noExternal: ["@inertiajs/react"],
+      },
+    })
+
+Explicit user ``ssr.noExternal`` values always win over the plugin default.
+
+Packages that cannot be bundled (native Node addons, packages that rely on
+``__dirname``-relative file access) must stay external and therefore require a
+host JavaScript runtime; they are incompatible with ``WasmIPCTransport``.
+
+SSR worker lifecycle
+--------------------
+
+``startSsrWorker`` from ``litestar-vite-plugin/ssr-worker`` no longer imports
+``node:readline``. It reads ``process.stdin`` with a streaming UTF-8 decoder and
+exits with status ``0`` after ``stdin`` reaches EOF and in-flight renders have
+completed. Custom SSR entrypoints that previously attached their own
+``readline`` interface should migrate to ``startSsrWorker`` so the same entry
+runs on every runtime.
+
+Static asset behavior
+---------------------
+
+Litestar's production static route now returns ``404`` for build metadata
+(``manifest.json``, ``.vite/manifest.json``, ``ssr-manifest.json``,
+``.litestar.json``, ``hot``) and sets ``Cache-Control: public, max-age=31536000,
+immutable`` on content-hashed files under the Vite ``assets`` directory. Set
+``RuntimeConfig(immutable_cache_headers=False)`` to keep the previous headers.
+These hooks are not applied when Granian serves assets natively; configure
+equivalent rules at the server or CDN layer in that deployment.

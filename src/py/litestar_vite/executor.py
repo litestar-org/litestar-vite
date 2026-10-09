@@ -4,6 +4,7 @@ This module provides executor classes for different JavaScript runtimes
 (Node.js/npm, Bun, Deno, Yarn, pnpm) to run Vite commands.
 """
 
+import importlib
 import os
 import platform
 import shutil
@@ -12,11 +13,46 @@ import sys
 from abc import ABC, abstractmethod
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any, ClassVar, Protocol, runtime_checkable
+from typing import Any, ClassVar, Literal, Protocol, runtime_checkable
 
 from litestar.cli._utils import console
 
+from litestar_vite.config import InertiaConfig, InertiaSSRConfig, PathConfig, ViteConfig
+from litestar_vite.config._paths import resolve_ssr_bundle_path
 from litestar_vite.exceptions import ViteExecutableNotFoundError, ViteExecutionError
+
+ProvisioningMode = Literal["auto", "wheel", "nodeenv", "system"]
+
+_DENO_SUBCOMMANDS: frozenset[str] = frozenset({
+    "add",
+    "bench",
+    "cache",
+    "check",
+    "clean",
+    "compile",
+    "completions",
+    "coverage",
+    "doc",
+    "eval",
+    "fmt",
+    "info",
+    "init",
+    "install",
+    "jupyter",
+    "lint",
+    "outdated",
+    "publish",
+    "remove",
+    "repl",
+    "run",
+    "serve",
+    "task",
+    "test",
+    "types",
+    "uninstall",
+    "upgrade",
+    "vendor",
+})
 
 
 def _windows_create_new_process_group_flag() -> int:
@@ -79,6 +115,41 @@ def _normalize_command(resolved_executable: str, args: list[str], *, binary_name
     return [resolved_executable, *args]
 
 
+def _resolve_venv_executable(bin_name: str) -> "str | None":
+    """Locate an executable inside the current Python virtual environment or wheel package.
+
+    Checks ``Path(sys.executable).parent`` first (supporting ``nodejs-wheel``, ``bun-wheel``,
+    and ``deno``), and falls back to ``deno.find_deno_bin()`` when
+    ``bin_name == "deno"`` and the ``deno`` Python package is installed.
+
+    Args:
+        bin_name: Bare binary name (e.g., ``"npm"``, ``"node"``, ``"bun"``, ``"deno"``).
+
+    Returns:
+        Absolute path string to the executable if found in the virtualenv/wheel, otherwise ``None``.
+    """
+    venv_bin_dir = Path(sys.executable).parent
+    is_windows = platform.system() == "Windows"
+    suffixes = (".exe", ".cmd", ".bat", "") if is_windows else ("",)
+    for suffix in suffixes:
+        candidate = venv_bin_dir / f"{bin_name}{suffix}"
+        if candidate.is_file() and (is_windows or os.access(candidate, os.X_OK)):
+            return str(candidate)
+
+    if bin_name == "deno" and find_spec("deno") is not None:
+        try:
+            deno_mod = importlib.import_module("deno")
+            find_deno_bin = getattr(deno_mod, "find_deno_bin", None)
+            if callable(find_deno_bin):
+                deno_bin = str(find_deno_bin())
+                if Path(deno_bin).is_file():
+                    return deno_bin
+        except (ImportError, OSError, TypeError, ValueError, AttributeError):
+            return None
+
+    return None
+
+
 class JSExecutor(ABC):
     """Abstract base class for Javascript executors.
 
@@ -88,11 +159,29 @@ class JSExecutor(ABC):
 
     bin_name: ClassVar[str]
     silent_flag: ClassVar[str] = "--silent"
-    __slots__ = ("_resolved_executable", "executable_path", "silent")
+    __slots__ = ("_resolved_executable", "executable_path", "provisioning_mode", "silent")
 
-    def __init__(self, executable_path: "Path | str | None" = None, *, silent: bool = False) -> None:
+    def __init__(
+        self,
+        executable_path: "Path | str | None" = None,
+        *,
+        silent: bool = False,
+        provisioning_mode: ProvisioningMode = "auto",
+    ) -> None:
+        """Initialize the executor.
+
+        Args:
+            executable_path: Explicit path to the runtime binary; bypasses discovery.
+            silent: Apply the executor's silent flag to package-manager commands.
+            provisioning_mode: Binary discovery policy. ``"auto"``/``"nodeenv"``
+                prefer the active virtual environment then ``PATH``; ``"wheel"``
+                requires the binary to come from the virtual environment (PEP 425
+                runtime wheels); ``"system"`` skips the virtual environment and
+                only consults ``PATH``.
+        """
         self.executable_path = executable_path
         self.silent = silent
+        self.provisioning_mode: ProvisioningMode = provisioning_mode
         self._resolved_executable: "str | None" = None
 
     @abstractmethod
@@ -120,8 +209,58 @@ class JSExecutor(ABC):
     def execute(self, args: list[str], cwd: Path) -> None:
         """Execute a command and wait for it to finish."""
 
+    @staticmethod
+    def which(bin_name: str, provisioning_mode: ProvisioningMode = "auto") -> "str | None":
+        """Locate an executable according to ``provisioning_mode``.
+
+        Args:
+            bin_name: Bare binary name to resolve.
+            provisioning_mode: Discovery policy (see :class:`JSExecutor`).
+
+        Returns:
+            Resolved executable path string if found, otherwise ``None``.
+        """
+        if provisioning_mode == "system":
+            return shutil.which(bin_name)
+        venv_path = _resolve_venv_executable(bin_name)
+        if venv_path is not None or provisioning_mode == "wheel":
+            return venv_path
+        return shutil.which(bin_name)
+
+    def _resolve_ssr_runtime_binary(self, bin_name: str) -> str:
+        """Resolve the JS runtime binary used to execute a production SSR bundle.
+
+        Unlike :meth:`_resolve_executable`, this ignores ``executable_path`` because the
+        package-manager binary (``npm``/``pnpm``/``yarn``) is not the SSR runtime. The lookup
+        honours ``provisioning_mode``: ``"system"`` returns the bare name for PATH lookup by
+        the OS, ``"wheel"`` requires the virtual-environment binary, and ``"auto"``/``"nodeenv"``
+        prefer the virtual-environment binary and otherwise fall back to the bare name.
+
+        Args:
+            bin_name: Bare runtime binary name (``node``, ``bun`` or ``deno``).
+
+        Returns:
+            Executable path or bare binary name suitable for ``subprocess``.
+
+        Raises:
+            ViteExecutableNotFoundError: If ``provisioning_mode`` is ``"wheel"`` and the
+                virtual-environment binary is missing.
+        """
+        if self.provisioning_mode == "system":
+            return bin_name
+        venv_path = _resolve_venv_executable(bin_name)
+        if venv_path is not None:
+            return venv_path
+        if self.provisioning_mode == "wheel":
+            raise ViteExecutableNotFoundError(bin_name)
+        return bin_name
+
     def _resolve_executable(self) -> str:
         """Return the executable path or raise if not found.
+
+        Checks explicit ``executable_path`` first, then the active Python virtual
+        environment / PEP 425 wheel binary directory (``Path(sys.executable).parent``
+        and ``deno.find_deno_bin()``), and finally falls back to ``shutil.which``.
 
         Returns:
             Path to the resolved executable.
@@ -134,7 +273,7 @@ class JSExecutor(ABC):
         if self.executable_path:
             self._resolved_executable = str(self.executable_path)
             return self._resolved_executable
-        path = shutil.which(self.bin_name)
+        path = self.which(self.bin_name, self.provisioning_mode)
         if path is None:
             raise ViteExecutableNotFoundError(self.bin_name)
         self._resolved_executable = path
@@ -181,6 +320,17 @@ class JSExecutor(ABC):
             The argv list used to build production assets.
         """
         return [self.bin_name, "run", "build"]
+
+    def ssr_command(self, entry_point: Path) -> list[str]:
+        """Return the command list to run a production SSR bundle.
+
+        Args:
+            entry_point: Path to the built SSR bundle file.
+
+        Returns:
+            Command list suitable for ``StdioIPCTransport``.
+        """
+        return [self._resolve_ssr_runtime_binary("node"), str(entry_point)]
 
 
 class CommandExecutor(JSExecutor):
@@ -238,6 +388,13 @@ class BunExecutor(CommandExecutor):
     __slots__ = ()
     bin_name = "bun"
 
+    def ssr_command(self, entry_point: Path) -> list[str]:
+        """Return the Bun command list to run a production SSR bundle."""
+        executable = (
+            str(self.executable_path) if self.executable_path else self._resolve_ssr_runtime_binary(self.bin_name)
+        )
+        return [executable, "run", str(entry_point)]
+
 
 class DenoExecutor(CommandExecutor):
     """Deno executor."""
@@ -245,14 +402,60 @@ class DenoExecutor(CommandExecutor):
     __slots__ = ()
     bin_name = "deno"
     silent_flag: ClassVar[str] = ""
-    update_latest_flag: ClassVar[str] = ""
+    update_latest_flag: ClassVar[str] = "--latest"
 
-    def install(self, cwd: Path) -> None:
-        pass
+    @property
+    def start_command(self) -> list[str]:
+        """Get the default command to start the dev server using Deno tasks.
+
+        Returns:
+            The argv list used to start the dev server.
+        """
+        return [self.bin_name, "task", "start"]
+
+    @property
+    def build_command(self) -> list[str]:
+        """Get the default command to build for production using Deno tasks.
+
+        Returns:
+            The argv list used to build production assets.
+        """
+        return [self.bin_name, "task", "build"]
+
+    def ssr_command(self, entry_point: Path) -> list[str]:
+        """Return the Deno command list to run a production SSR bundle."""
+        executable = (
+            str(self.executable_path) if self.executable_path else self._resolve_ssr_runtime_binary(self.bin_name)
+        )
+        return [executable, "run", "--allow-read", "--allow-env", str(entry_point)]
 
     def update(self, cwd: Path, *, latest: bool = False) -> None:
-        """Deno doesn't have traditional package management."""
-        del cwd, latest
+        """Update dependencies via ``deno outdated --update [--latest]``."""
+        executable = self._resolve_executable()
+        command = [executable, "outdated", "--update"]
+        if latest and self.update_latest_flag:
+            command.append(self.update_latest_flag)
+        process = subprocess.run(command, cwd=cwd, shell=False, check=False)
+        if process.returncode != 0:
+            raise ViteExecutionError(command, process.returncode, "package update failed")
+
+    def execute(self, args: list[str], cwd: Path) -> None:
+        """Execute a Deno command or script and wait for completion.
+
+        When ``args`` does not begin with a native Deno subcommand (such as
+        ``task`` or ``run``), ``["run", "-A"]`` is prepended before the script
+        or module arguments.
+        """
+        executable = self._resolve_executable()
+        normalized = _normalize_command(executable, args, binary_name=self.bin_name)
+        rest = normalized[1:]
+        command = [executable, "run", "-A", *rest] if rest and rest[0] not in _DENO_SUBCOMMANDS else normalized
+        process = subprocess.run(
+            command, cwd=cwd, shell=False, check=False, stdin=subprocess.PIPE, stdout=None, stderr=subprocess.PIPE
+        )
+        if process.returncode != 0:
+            stderr = process.stderr.decode() if process.stderr else ""
+            raise ViteExecutionError(command, process.returncode, stderr)
 
 
 class YarnExecutor(CommandExecutor):
@@ -395,3 +598,31 @@ class NodeenvExecutor(JSExecutor):
             The argv list used to build production assets.
         """
         return [self._find_npm_in_venv(), "run", "build"]
+
+
+def resolve_ssr_command(config: "ViteConfig | None" = None, ssr_config: "InertiaSSRConfig | None" = None) -> list[str]:
+    """Resolve the production SSR worker command for the active JS runtime.
+
+    Honors an explicit ``ssr_config.command`` override first. Otherwise resolves the
+    built SSR bundle path and returns the runtime-appropriate invocation via the
+    configured executor (``bun run <path>``, ``deno run --allow-read --allow-env <path>``,
+    or ``node <path>``).
+
+    Args:
+        config: Optional active ``ViteConfig`` instance.
+        ssr_config: Optional resolved ``InertiaSSRConfig`` instance.
+
+    Returns:
+        Command list suitable for ``StdioIPCTransport``.
+    """
+    if ssr_config is None and config is not None and isinstance(config.inertia, InertiaConfig):
+        ssr_config = config.inertia.ssr_config
+    if ssr_config is not None and ssr_config.command:
+        return list(ssr_config.command)
+    if config is not None:
+        bundle_path = resolve_ssr_bundle_path(config.paths)
+        return config.executor.ssr_command(bundle_path)
+    cwd = (ssr_config.cwd if ssr_config is not None else None) or Path.cwd()
+    fallback_config = ViteConfig(paths=PathConfig(root=cwd))
+    bundle_path = resolve_ssr_bundle_path(fallback_config.paths)
+    return fallback_config.executor.ssr_command(bundle_path)

@@ -6,15 +6,34 @@ from typing import TYPE_CHECKING, Any, cast
 from litestar import Response
 from litestar.exceptions import ImproperlyConfiguredException, NotFoundException
 
+from litestar_vite.loader import EarlyHintsASGIResponse
 from litestar_vite.plugin import is_litestar_route
 
 if TYPE_CHECKING:
     from litestar.connection import Request
+    from litestar.response.base import ASGIResponse
 
     from litestar_vite.handler._app import AppHandler
 
 
 _HTML_MEDIA_TYPE = "text/html; charset=utf-8"
+
+
+class _PreloadHTMLResponse(Response[bytes]):
+    """HTML response that optionally emits ASGI 103 Early Hints before 200 OK."""
+
+    __slots__ = ("_early_hints", "_preload_headers")
+
+    def __init__(self, content: bytes, *, preload_headers: list[str], early_hints: bool, **kwargs: Any) -> None:
+        super().__init__(content=content, **kwargs)
+        self._preload_headers = preload_headers
+        self._early_hints = early_hints
+
+    def to_asgi_response(self, app: Any, request: "Request[Any, Any, Any]", **kwargs: Any) -> "ASGIResponse":
+        asgi_response = super().to_asgi_response(app, request, **kwargs)  # pyright: ignore[reportUnknownMemberType]
+        if self._early_hints and self._preload_headers:
+            return cast("ASGIResponse", EarlyHintsASGIResponse(asgi_response, self._preload_headers))
+        return asgi_response
 
 
 def is_static_asset_path(request_path: str, asset_prefix: str | None) -> bool:
@@ -134,4 +153,17 @@ async def spa_handler_prod(request: "Request[Any, Any, Any]") -> Response[bytes]
     """
     spa_handler = _resolve_spa_route(request)
     body = await spa_handler.get_bytes(request)
-    return Response(content=body, status_code=200, media_type=_HTML_MEDIA_TYPE)
+    preload_headers = spa_handler.get_preload_headers()
+    headers: dict[str, str] | None = None
+    if preload_headers and spa_handler.config.link_preload_headers:
+        headers = {"Link": ", ".join(preload_headers)}
+    if preload_headers and spa_handler.config.early_hints:
+        return _PreloadHTMLResponse(
+            content=body,
+            status_code=200,
+            media_type=_HTML_MEDIA_TYPE,
+            headers=headers,
+            preload_headers=preload_headers,
+            early_hints=True,
+        )
+    return Response(content=body, status_code=200, media_type=_HTML_MEDIA_TYPE, headers=headers)

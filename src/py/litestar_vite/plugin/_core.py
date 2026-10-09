@@ -28,7 +28,13 @@ from litestar_vite.plugin._proxy import (
     create_ssr_ws_proxy_handler,
     create_vite_hmr_handler,
 )
-from litestar_vite.plugin._static import StaticPlacement, StaticServerConfig, StaticServerMount
+from litestar_vite.plugin._static import (
+    StaticPlacement,
+    StaticServerConfig,
+    StaticServerMount,
+    build_static_after_request_hook,
+    build_static_before_request_hook,
+)
 from litestar_vite.plugin._utils import (
     build_litestar_route_prefixes,
     create_proxy_client,
@@ -193,7 +199,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
         Returns:
             Configured BaseIPCTransport instance.
         """
-        from litestar_vite.ipc import StdioIPCTransport, TCPStreamIPCTransport
+        from litestar_vite.ipc import TCPStreamIPCTransport, resolve_ssr_transport
 
         if self._config.is_dev_mode:
             host = self._config.host
@@ -219,16 +225,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
             return self._ipc_dev_transports[target]
 
         if self._ipc_transport is None:
-            from litestar_vite.config._inertia import InertiaConfig
-            from litestar_vite.config._paths import resolve_ssr_bundle_path
-
-            inertia = self._config.inertia
-            ssr_config = ssr_config or (inertia.ssr_config if isinstance(inertia, InertiaConfig) else None)
-            command = ssr_config.command if ssr_config is not None else None
-            cwd = (ssr_config.cwd if ssr_config is not None else None) or self._config.root_dir
-            self._ipc_transport = StdioIPCTransport(
-                command=command or ["node", str(resolve_ssr_bundle_path(self._config.paths))], cwd=cwd
-            )
+            self._ipc_transport = resolve_ssr_transport(self._config, ssr_config)
         return self._ipc_transport
 
     @property
@@ -536,6 +533,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
             engine = template_config.engine_instance  # pyright: ignore[reportUnknownMemberType]
             engine.register_template_callable(key="vite_hmr", template_callable=render_hmr_client)
             engine.register_template_callable(key="vite", template_callable=render_asset_tag)
+            engine.register_template_callable(key="vite_asset", template_callable=render_asset_tag)
             engine.register_template_callable(key="vite_static", template_callable=render_static_asset)
             engine.register_template_callable(key="vite_routes", template_callable=render_routes)
             engine.register_template_callable(key="vite_fragment", template_callable=vite_fragment)
@@ -606,7 +604,21 @@ class VitePlugin(InitPlugin, CLIPlugin):
             "exception_handlers": {NotFoundException: static_not_found_handler},
         }
         user_config = self._static_files_config.as_router_kwargs() if self._static_files_config else {}
-        static_files_config: dict[str, Any] = {**base_config, **user_config}
+        user_before_request = user_config.get("before_request")
+        user_after_request = user_config.get("after_request")
+        static_files_config: dict[str, Any] = {
+            **base_config,
+            **user_config,
+            "before_request": build_static_before_request_hook(
+                asset_url=self._config.asset_url,
+                manifest_name=self._config.manifest_name,
+                hot_file=self._config.hot_file,
+                user_hook=user_before_request,
+            ),
+            "after_request": build_static_after_request_hook(
+                immutable_cache_headers=self._config.immutable_cache_headers, user_hook=user_after_request
+            ),
+        }
         router = create_static_files_router(**static_files_config)
         for route in router.routes:
             for handler in getattr(route, "route_handlers", []):

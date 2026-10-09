@@ -82,33 +82,66 @@ export function createChannelsStream<TFrame = unknown, TParams extends Record<st
   })
 }
 
-export interface TypedChannelOptions<TChannel extends RealtimeChannelShape> extends Omit<
-  EventStreamConfig<TChannel["receive"], TChannel["send"]>,
-  "EventSourceCtor" | "sseEvents" | "transport"
-> {
+export interface ChannelMetadataEntry {
+  address: string
+  protocol: "websocket" | "sse" | "channels"
+}
+
+export interface TypedChannelOptions<TChannel extends RealtimeChannelShape> extends EventStreamConfig<TChannel["receive"], TChannel["send"]> {
   params?: TChannel["params"]
   basePath?: string
+  address?: string
   transformUrl?: (url: URL) => string | URL
+}
+
+function interpolateAddress(address: string, params?: Record<string, unknown>): string {
+  if (!params || typeof params !== "object") {
+    return address
+  }
+  return address.replace(/\{([^{}]+)\}/g, (_, key: string) => {
+    const val = params[key]
+    return val !== undefined ? encodeURIComponent(String(val)) : `{${key}}`
+  })
 }
 
 /**
  * Create a typed channel factory bound to a generated ChannelMap.
  *
- * @param defaults - Default connection options such as basePath.
- * @returns A client factory with a typed `stream` method.
+ * @param defaults - Default connection options such as basePath and optional CHANNEL_METADATA.
+ * @returns A client factory with a typed `stream` method supporting WebSocket, ChannelsPlugin, and SSE.
  */
 export function createTypedChannels<TChannels extends { [K in keyof TChannels]: RealtimeChannelShape } = ChannelMap>(defaults?: {
   basePath?: string
+  metadata?: Partial<Record<keyof TChannels & string, ChannelMetadataEntry>>
 }): {
   stream<K extends keyof TChannels & string>(channel: K, options: TypedChannelOptions<TChannels[K]>): EventStream<TChannels[K]["send"]>
 } {
   return {
     stream<K extends keyof TChannels & string>(channel: K, options: TypedChannelOptions<TChannels[K]>): EventStream<TChannels[K]["send"]> {
+      const meta = defaults?.metadata?.[channel]
+      const resolvedProtocol = options.transport ?? (meta?.protocol === "sse" ? "sse" : "websocket")
       const basePath = options.basePath ?? defaults?.basePath
+      const targetAddress = options.address ?? meta?.address
+
+      if (resolvedProtocol === "sse" || (targetAddress !== undefined && meta?.protocol !== "channels")) {
+        const { params, transformUrl, basePath: _bp, address: _addr, ...streamOptions } = options
+        const transport = resolvedProtocol === "sse" ? "sse" : "websocket"
+        return createEventStream<TChannels[K]["receive"], TChannels[K]["send"]>({
+          ...streamOptions,
+          transport,
+          buildUrl: () => {
+            const rawPath = interpolateAddress(targetAddress ?? String(channel), params as Record<string, unknown> | undefined)
+            const endpoint = rawPath.startsWith("/") ? rawPath : `${(basePath ?? "/").replace(/\/$/, "")}/${rawPath}`
+            const url = new URL(resolveStreamUrl(endpoint, transport))
+            return transformUrl?.(url) ?? url
+          },
+        })
+      }
+
       return createChannelsStream({
         ...options,
         basePath,
-        channel,
+        channel: targetAddress ?? channel,
       }) as unknown as EventStream<TChannels[K]["send"]>
     },
   }

@@ -83,18 +83,12 @@ class InertiaPlugin(InitPlugin):
                 vite_plugin = None
             is_dev_mode = vite_plugin.config.is_dev_mode if vite_plugin is not None else False
             if not is_dev_mode:
-                from litestar_vite.ipc import StdioIPCTransport
-
                 if vite_plugin is not None:
                     self._ipc_transport = vite_plugin.get_ipc_transport(ssr_config=ssr_config)
                 else:
-                    from litestar_vite.config import PathConfig
-                    from litestar_vite.config._paths import resolve_ssr_bundle_path
+                    from litestar_vite.ipc import resolve_ssr_transport
 
-                    self._ipc_transport = StdioIPCTransport(
-                        command=ssr_config.command or ["node", str(resolve_ssr_bundle_path(PathConfig()))],
-                        cwd=ssr_config.cwd,
-                    )
+                    self._ipc_transport = resolve_ssr_transport(None, ssr_config)
                     owns_transport = True
         try:
             yield

@@ -23,7 +23,7 @@ dependencies = [
   "httpx2>=2.13.1",
   "markupsafe>=2.0",
   "websockets>=12.0",
-  "typing_extensions"
+  "typing_extensions",
 ]
 description = "Vite plugin for Litestar"
 keywords = ["litestar", "vite"]
@@ -44,6 +44,10 @@ Source = "https://github.com/litestar-org/litestar-vite"
 [project.optional-dependencies]
 jinja = [ "jinja2"]
 nodeenv = ["nodeenv"]
+node = ["nodejs-wheel>=22.0.0"]
+deno = ["deno>=2.0.0"]
+bun = ["bun-wheel>=1.2.0"]
+wasm = ["quickjs>=1.19.4"]
 http2 = ["h2>=4.0.0"]
 asyncapi = ["litestar-asyncapi>=0.2.0"]
 
@@ -99,6 +103,7 @@ test = [
   "pytest-timeout>=2.0.0",
   "httpx>=0.24.1",
   "litestar-asyncapi>=0.2.0",
+  "quickjs>=1.19.4",
 ]
 
 [tool.bumpversion]

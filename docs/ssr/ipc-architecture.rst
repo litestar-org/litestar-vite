@@ -2,7 +2,7 @@
 Server-Side Rendering & IPC Transports
 ==========================================
 
-``litestar-vite`` executes server-side rendering (SSR) and component fragments using Vite 7+'s ``RunnableDevEnvironment`` in development and a managed ``stdio`` child process in production, through a dedicated IPC layer. Development SSR uses a managed ``httpx2`` connection pool inside ``TCPStreamIPCTransport`` to call the existing Vite server. Asset and framework HTTP proxying use their own managed clients. Production SSR communicates over stdio.
+``litestar-vite`` executes server-side rendering (SSR) and component fragments using Vite 7+'s ``RunnableDevEnvironment`` in development and either a managed ``stdio`` child process or an in-process QuickJS engine in production, through a dedicated IPC layer. Development SSR uses a managed ``httpx2`` connection pool inside ``TCPStreamIPCTransport`` to call the existing Vite server. Asset and framework HTTP proxying use their own managed clients. Production SSR communicates over stdio by default; ``RuntimeConfig.ssr_transport`` selects the in-process ``WasmIPCTransport`` when no JavaScript runtime is available on the host.
 
 ---------------------------------
 Development vs. Production Model
@@ -22,7 +22,10 @@ Development vs. Production Model
      - Evaluates ``resources/ssr.ts`` or individual components in-memory inside the running Vite dev server via ``server.environments.ssr.runner`` (``RunnableDevEnvironment``). No separate SSR daemon process or build step is needed during development.
    * - **Production** (``dev_mode=False``)
      - :class:`~litestar_vite.ipc.StdioIPCTransport` (``stdin`` / ``stdout`` pipes)
-     - Spawns the compiled SSR bundle (for example ``node resources/bootstrap/ssr/ssr.js``) as a managed child process communicating over newline-delimited JSON pipes.
+     - Spawns the compiled SSR bundle (for example ``node resources/bootstrap/ssr/ssr.js``, ``bun run ssr.js``, or ``deno run ssr.js``) as a managed child process communicating over newline-delimited JSON pipes.
+   * - **Production, no JS runtime** (``ssr_transport="wasm"`` or auto-detected)
+     - :class:`~litestar_vite.ipc.WasmIPCTransport` (in-process QuickJS)
+     - Evaluates the self-contained ``ssr.js`` bundle inside an embedded QuickJS context on a dedicated thread. Requires the ``litestar-vite[wasm]`` extra and a bundle built with ``ssr.noExternal: true`` (the default since 0.33). Experimental; see :doc:`/reference/ipc`.
 
 ``TCPStreamIPCTransport`` establishes its client pool lazily and releases connections
 on close. It supports HTTP and HTTPS endpoints, with HTTP framing and response
@@ -65,7 +68,7 @@ In production, :class:`~litestar_vite.ipc.StdioIPCTransport` spawns the SSR bund
 
        App->>Transport: send_request({"method": "render", "params": page})
        Transport->>Pipe: stdin.send({"id": 1, "method": "render", "params": page}\n)
-       Pipe->>Worker: readline "line" event
+       Pipe->>Worker: stdin "data" chunk (newline split)
        Worker->>Worker: await render(page)
        Worker->>Pipe: stdout.write({"id": 1, "result": {"head": [...], "body": "..."}}\n)
        Pipe->>Transport: stdout reader correlates response id=1
@@ -73,8 +76,8 @@ In production, :class:`~litestar_vite.ipc.StdioIPCTransport` spawns the SSR bund
 
        App->>Transport: close()
        Transport->>Pipe: stdin.aclose() (EOF)
-       Pipe->>Worker: readline "close" event
-       Worker->>Worker: process.exit(0)
+       Pipe->>Worker: stdin "end" (EOF)
+       Worker->>Worker: exit 0 once in-flight renders drain
 
 ``StdioIPCTransport`` resolves platform executable shims (``.cmd`` / ``.exe`` on Windows) via ``shutil.which`` and continuously drains the child ``stderr`` stream in a background task so pipe buffers never block.
 
@@ -85,7 +88,7 @@ Dual-Mode SSR Entrypoint
 Generated ``resources/ssr.ts`` / ``resources/ssr.tsx`` entrypoints support both modes in a single file:
 
 1. They export ``default async function render(page)`` so Vite's ``RunnableDevEnvironment.runner`` can import and invoke ``render(page)`` directly in development.
-2. When executed outside Vite dev mode (``if (!import.meta.env?.DEV)``), they start a ``node:readline`` loop over ``process.stdin`` and write JSON responses to ``process.stdout``.
+2. When executed outside Vite dev mode (``if (!import.meta.env?.DEV)``), they call ``startSsrWorker`` from ``litestar-vite-plugin/ssr-worker``, which buffers ``process.stdin`` with a streaming ``TextDecoder`` (no ``node:readline`` import, so the bundle also runs under Bun, Deno, and QuickJS), writes JSON responses to ``process.stdout``, registers ``globalThis.__litestar_ssr_dispatch__`` for in-process engines, and exits with status ``0`` once ``stdin`` reaches EOF and in-flight requests have drained.
 
 ---------------------------------
 Python Configuration

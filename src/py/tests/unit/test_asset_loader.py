@@ -79,7 +79,7 @@ def test_generate_asset_tags_prod_mode() -> None:
 
     tags = loader.generate_asset_tags("main.js")
     assert '<link rel="stylesheet" href="/static/assets/main.css" />' in tags
-    assert '<script type="module" async="" defer="" src="/static/assets/main.js"></script>' in tags
+    assert '<script type="module" src="/static/assets/main.js"></script>' in tags
 
 
 def test_generate_asset_tags_dev_mode(tmp_path: Path) -> None:

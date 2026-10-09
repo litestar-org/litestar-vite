@@ -24,10 +24,10 @@ _VITE_ENV_VARS = [
     "VITE_HEALTH_CHECK",
     "LITESTAR_PORT",
     "LITESTAR_DEBUG",
+    "LITESTAR_VITE_RUNTIME",
+    "LITESTAR_VITE_INSTALL_CMD",
+    "VITE_EXECUTOR",
     "ASSET_URL",
-    # litestar-vite-c1t: bridge config path leaks across tests; force a
-    # guaranteed-missing default so consumers fall back to legacy hotfile
-    # semantics unless a test explicitly opts in.
     "LITESTAR_VITE_CONFIG_PATH",
 ]
 

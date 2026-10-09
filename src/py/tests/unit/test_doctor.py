@@ -596,3 +596,28 @@ def test_typegen_and_realtime_checks_resolve_relative_paths_identically(tmp_path
     doctor._check_realtime_config()
 
     assert len(doctor.issues) == 0
+
+
+def test_doctor_warns_when_explicit_executor_conflicts_with_lockfile(tmp_path: Path) -> None:
+    """Doctor warns when an explicitly configured executor conflicts with the repository lockfile."""
+    (tmp_path / "deno.lock").write_text("{}")
+    config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(executor="node"))
+    doctor = ViteDoctor(config=config)
+    doctor._check_runtime_lockfile_alignment()
+
+    issues = [i for i in doctor.issues if i.check == "Runtime / Lockfile Mismatch"]
+    assert len(issues) == 1
+    assert issues[0].severity == "warning"
+    assert "deno.lock" in issues[0].message
+    assert "node" in issues[0].message
+
+
+def test_doctor_silent_when_executor_matches_lockfile(tmp_path: Path) -> None:
+    """Doctor does not warn when executor matches the repository lockfile."""
+    (tmp_path / "bun.lock").write_text("{}")
+    config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(executor="bun"))
+    doctor = ViteDoctor(config=config)
+    doctor._check_runtime_lockfile_alignment()
+
+    issues = [i for i in doctor.issues if i.check == "Runtime / Lockfile Mismatch"]
+    assert len(issues) == 0

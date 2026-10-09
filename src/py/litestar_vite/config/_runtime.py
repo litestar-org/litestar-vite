@@ -4,11 +4,17 @@ import os
 import warnings
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal, cast
+
+from litestar.exceptions import SerializationException
+from litestar.serialization import decode_json
 
 from litestar_vite.config._constants import TRUE_VALUES
 
-__all__ = ("ExternalDevServer", "RuntimeConfig", "resolve_trusted_proxies")
+__all__ = ("ExternalDevServer", "RuntimeConfig", "detect_runtime", "detect_runtime_marker", "resolve_trusted_proxies")
+
+ExecutorType = Literal["node", "bun", "deno", "yarn", "pnpm"]
 
 _EXECUTOR_COMMANDS: dict[str, dict[str, tuple[str, ...]]] = {
     "node": {
@@ -24,7 +30,6 @@ _EXECUTOR_COMMANDS: dict[str, dict[str, tuple[str, ...]]] = {
         "build_watch": ("bun", "run", "watch"),
         "serve": ("bun", "run", "serve"),
         "install": ("bun", "install"),
-        "serve_ssr": ("bun", "run", "resources/ssr.tsx"),
     },
     "deno": {
         "run": ("deno", "task", "dev"),
@@ -177,9 +182,11 @@ class RuntimeConfig:
     Attributes:
         dev_mode: Enable development mode with HMR/watch.
         proxy_mode: Proxy handling mode (auto-derived from ``ViteConfig.mode`` when None):
+
             - "vite": Proxy Vite assets only (allow list - SPA / hybrid / template modes)
             - "proxy": Proxy everything except Litestar routes (deny list - framework mode)
             - None: No proxy (auto-derived for production)
+
         external_dev_server: Configuration for external dev server (used with proxy_mode="proxy").
         host: Vite dev server host.
         port: Vite dev server port.
@@ -193,9 +200,36 @@ class RuntimeConfig:
         is_react: Enable React Fast Refresh support.
         health_check: Enable health check for dev server startup.
         detect_nodeenv: Detect and use nodeenv in virtualenv (opt-in).
+        provisioning_mode: How runtime binaries are located:
+
+            - "auto" (default): active virtual environment / PEP 425 wheel first, then ``PATH``
+            - "wheel": only the virtual environment; build commands and production SSR
+              transport construction raise ``ViteExecutableNotFoundError`` at startup when
+              the runtime wheel is missing (unless an explicit SSR command is configured or
+              ``ssr_transport="auto"`` can fall back to the ``wasm`` extra)
+            - "nodeenv": like "auto" and additionally enables ``detect_nodeenv``
+            - "system": only ``PATH`` (ignores virtual-environment binaries)
+
+        ssr_transport: Production SSR IPC transport selection:
+
+            - "auto" (default): explicit SSR command, then the configured JS runtime, then
+              in-process WASM when ``litestar-vite[wasm]`` is installed
+            - "stdio": always spawn the JS runtime over NDJSON stdio
+            - "wasm": always run the self-contained SSR bundle in-process via QuickJS
+
         set_environment: Set Vite environment variables from config.
         set_static_folders: Automatically configure static file serving.
-        csp_nonce: Content Security Policy nonce for inline scripts.
+        csp_nonce: Static Content Security Policy nonce for inline scripts. Inertia and
+            template responses additionally honor a per-request ``scope["state"]["csp_nonce"]``;
+            the cached SPA/hybrid HTML shell only supports this static value.
+        link_preload_headers: Emit RFC 8288 ``Link`` ``modulepreload``/``preload`` headers for the
+            served entry graph on production HTML responses.
+        early_hints: Also emit a ``103 Early Hints`` frame when the ASGI server advertises the
+            ``http.response.early_hint`` extension (opt-in).
+        immutable_cache_headers: Attach ``Cache-Control: public, max-age=31536000, immutable`` to
+            content-hashed files under the Vite ``assets`` directory served by Litestar's static
+            router. Not applied when a server serves assets natively (for example Granian
+            ``StaticPlacement.NATIVE``).
         spa_handler: Auto-register catch-all SPA route when mode="spa".
         http2: Enable HTTP/2 for proxy HTTP requests (better multiplexing).
             WebSocket traffic (HMR) uses a separate connection and is unaffected.
@@ -220,9 +254,14 @@ class RuntimeConfig:
     is_react: bool = False
     health_check: bool = field(default_factory=lambda: os.getenv("VITE_HEALTH_CHECK", "False") in TRUE_VALUES)
     detect_nodeenv: bool = False
+    provisioning_mode: Literal["auto", "wheel", "nodeenv", "system"] = "auto"
+    ssr_transport: Literal["stdio", "wasm", "auto"] = "auto"
     set_environment: bool = True
     set_static_folders: bool = True
     csp_nonce: "str | None" = None
+    link_preload_headers: bool = True
+    early_hints: bool = False
+    immutable_cache_headers: bool = True
     spa_handler: bool = True
     http2: bool = True
     start_dev_server: bool = True
@@ -262,8 +301,19 @@ class RuntimeConfig:
     your app serves documentation there.
     """
 
+    _executor_explicit: bool = field(default=False, init=False, repr=False)
+    _explicit_commands: frozenset[str] = field(default=frozenset(), init=False, repr=False)
+
+    @property
+    def has_explicit_executor(self) -> bool:
+        """Return whether the runtime executor was explicitly configured via args or env."""
+        return self._executor_explicit
+
     def __post_init__(self) -> None:
         """Normalize runtime settings and apply derived defaults."""
+        if self.provisioning_mode == "nodeenv":
+            self.detect_nodeenv = True
+
         if isinstance(self.extra_route_prefixes, str):
             self.extra_route_prefixes = (self.extra_route_prefixes,)
         else:
@@ -275,18 +325,120 @@ class RuntimeConfig:
         if self.external_dev_server is not None and self.proxy_mode in {None, "vite"}:
             self.proxy_mode = "proxy"
 
-        if self.executor is None:
-            self.executor = "node"
+        explicit_cmds: set[str] = set()
+        for cmd_attr in ("run_command", "build_command", "build_watch_command", "serve_command", "install_command"):
+            if getattr(self, cmd_attr) is not None:
+                explicit_cmds.add(cmd_attr)
+        self._explicit_commands = frozenset(explicit_cmds)
 
+        if self.executor is not None:
+            self._executor_explicit = True
+        else:
+            env_executor = (os.getenv("LITESTAR_VITE_RUNTIME") or os.getenv("VITE_EXECUTOR") or "").strip().lower()
+            if env_executor in _EXECUTOR_COMMANDS:
+                self.executor = cast("ExecutorType", env_executor)
+                self._executor_explicit = True
+            else:
+                self.executor = "node"
+                self._executor_explicit = False
+
+        self._populate_default_commands()
+
+    def _populate_default_commands(self) -> None:
+        """Populate unset command lists from the active executor command table."""
         if self.executor in _EXECUTOR_COMMANDS:
             cmds = _EXECUTOR_COMMANDS[self.executor]
-            if self.run_command is None:
+            if "run_command" not in self._explicit_commands:
                 self.run_command = list(cmds["run"])
-            if self.build_command is None:
+            if "build_command" not in self._explicit_commands:
                 self.build_command = list(cmds["build"])
-            if self.build_watch_command is None:
+            if "build_watch_command" not in self._explicit_commands:
                 self.build_watch_command = list(cmds["build_watch"])
-            if self.serve_command is None:
+            if "serve_command" not in self._explicit_commands:
                 self.serve_command = list(cmds["serve"])
-            if self.install_command is None:
+            if "install_command" not in self._explicit_commands:
                 self.install_command = list(cmds["install"])
+
+    def apply_detected_executor(self, executor: ExecutorType) -> None:
+        """Apply a lockfile-detected executor and refresh non-explicit command lists.
+
+        Args:
+            executor: The detected executor identifier.
+        """
+        self.executor = executor
+        self._populate_default_commands()
+
+
+_LOCKFILE_EXECUTORS: tuple[tuple[str, ExecutorType], ...] = (
+    ("bun.lockb", "bun"),
+    ("bun.lock", "bun"),
+    ("deno.lock", "deno"),
+    ("deno.json", "deno"),
+    ("deno.jsonc", "deno"),
+    ("pnpm-lock.yaml", "pnpm"),
+    ("yarn.lock", "yarn"),
+    ("package-lock.json", "node"),
+)
+
+_PACKAGE_MANAGER_EXECUTORS: dict[str, ExecutorType] = {
+    "bun": "bun",
+    "deno": "deno",
+    "pnpm": "pnpm",
+    "yarn": "yarn",
+    "npm": "node",
+    "node": "node",
+}
+
+
+def detect_runtime_marker(root_dir: Path) -> "tuple[ExecutorType, str] | None":
+    """Return the executor implied by project lockfiles or manifests together with its source.
+
+    Precedence:
+        1. ``bun.lockb`` or ``bun.lock`` -> ``"bun"``
+        2. ``deno.lock``, ``deno.json``, or ``deno.jsonc`` -> ``"deno"``
+        3. ``pnpm-lock.yaml`` -> ``"pnpm"``
+        4. ``yarn.lock`` -> ``"yarn"``
+        5. ``package-lock.json`` -> ``"node"``
+        6. ``package.json`` ``"packageManager"`` field (``pnpm@...``, ``yarn@...``, ``bun@...``, ``deno@...``)
+
+    Args:
+        root_dir: Project root directory to inspect.
+
+    Returns:
+        ``(executor, marker)`` where ``marker`` is the file name (or
+        ``"package.json#packageManager"``) that produced the match, or ``None``
+        when no marker is present.
+    """
+    for filename, executor in _LOCKFILE_EXECUTORS:
+        if (root_dir / filename).exists():
+            return executor, filename
+
+    package_json = root_dir / "package.json"
+    if package_json.exists():
+        try:
+            payload = decode_json(package_json.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, SerializationException):
+            payload = None
+        if isinstance(payload, dict):
+            pkg_manager = cast("dict[str, Any]", payload).get("packageManager")
+            if isinstance(pkg_manager, str):
+                normalized = pkg_manager.strip().lower().split("@", 1)[0]
+                if normalized in _PACKAGE_MANAGER_EXECUTORS:
+                    return _PACKAGE_MANAGER_EXECUTORS[normalized], "package.json#packageManager"
+
+    return None
+
+
+def detect_runtime(root_dir: Path) -> ExecutorType:
+    """Detect the JavaScript runtime/package manager from project lockfiles and manifests.
+
+    Delegates to ``detect_runtime_marker`` and falls back to ``"node"``.
+
+    Args:
+        root_dir: Project root directory to inspect.
+
+    Returns:
+        The detected executor identifier.
+    """
+    marker = detect_runtime_marker(root_dir)
+    return marker[0] if marker is not None else "node"
