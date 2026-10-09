@@ -91,4 +91,3 @@ The Litestar static route remains available on every server. See
    static-props
    modes
    types
-

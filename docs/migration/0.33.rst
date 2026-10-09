@@ -55,4 +55,3 @@ immutable`` on content-hashed files under the Vite ``assets`` directory. Set
 ``RuntimeConfig(immutable_cache_headers=False)`` to keep the previous headers.
 These hooks are not applied when Granian serves assets natively; configure
 equivalent rules at the server or CDN layer in that deployment.
-

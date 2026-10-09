@@ -22,4 +22,3 @@ Transport Overview
 - :class:`TCPStreamIPCTransport`: Pooled ``httpx2`` HTTP transport used in development mode to dispatch SSR and fragment render requests to the running Vite dev server's ``/__litestar_ssr__`` endpoint.
 
 Production transport selection is controlled by ``RuntimeConfig.ssr_transport`` (``"auto"``, ``"stdio"``, or ``"wasm"``) and resolved by :func:`resolve_ssr_transport`. In ``"auto"`` mode an explicit ``InertiaSSRConfig.command`` wins, followed by the configured JS runtime, and finally the WASM transport when ``quickjs`` is importable.
-

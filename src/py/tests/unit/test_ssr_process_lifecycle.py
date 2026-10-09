@@ -25,6 +25,13 @@ from litestar_vite.plugin._process import ViteProcess
 _SESSION = CookieBackendConfig(secret=b"x" * 32).middleware
 
 
+@pytest.fixture(autouse=True)
+def _isolate_venv_binaries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate unit tests from wheel-provisioned JS binaries installed in the host .venv."""
+    monkeypatch.setattr("litestar_vite.executor.sys.executable", str(tmp_path / "_isolated_venv" / "bin" / "python"))
+    monkeypatch.setattr("litestar_vite.executor.find_spec", lambda _name: None)
+
+
 class _BlockingStderr:
     """Controllable binary stderr stream for restart-generation tests."""
 
