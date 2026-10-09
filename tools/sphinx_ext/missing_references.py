@@ -32,6 +32,7 @@ PRIVATE_TO_PUBLIC_MODULE_MAP: dict[str, str] = {
     "litestar_vite.config._runtime": "litestar_vite.config",
     "litestar_vite.config._spa": "litestar_vite.config",
     "litestar_vite.config._types": "litestar_vite.config",
+    "litestar_vite.config._vite": "litestar_vite.config",
     "litestar_vite.config._constants": "litestar_vite.config",
     # codegen package private modules → public codegen module
     "litestar_vite.codegen._export": "litestar_vite.codegen",

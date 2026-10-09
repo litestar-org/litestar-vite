@@ -2,7 +2,7 @@
 Server-Side Rendering & IPC Transports
 ==========================================
 
-``litestar-vite`` executes server-side rendering (SSR) and component fragments using Vite 7+'s ``RunnableDevEnvironment`` in development and either a managed ``stdio`` child process or an in-process QuickJS engine in production, through a dedicated IPC layer. Development SSR uses a managed ``httpx2`` connection pool inside ``TCPStreamIPCTransport`` to call the existing Vite server. Asset and framework HTTP proxying use their own managed clients. Production SSR communicates over stdio by default; :attr:`RuntimeConfig.ssr_transport <litestar_vite.config.RuntimeConfig>` selects the in-process ``WasmIPCTransport`` when no JavaScript runtime is available on the host.
+``litestar-vite`` executes server-side rendering (SSR) and component fragments using Vite 7+'s ``RunnableDevEnvironment`` in development and either a managed ``stdio`` child process or an in-process QuickJS engine in production, through a dedicated IPC layer. Development SSR uses a managed ``httpx2`` connection pool inside ``TCPStreamIPCTransport`` to call the existing Vite server. Asset and framework HTTP proxying use their own managed clients. Production SSR communicates over stdio by default; ``RuntimeConfig.ssr_transport`` selects the in-process ``WasmIPCTransport`` when no JavaScript runtime is available on the host.
 
 ---------------------------------
 Development vs. Production Model
@@ -22,7 +22,7 @@ Development vs. Production Model
      - Evaluates ``resources/ssr.ts`` or individual components in-memory inside the running Vite dev server via ``server.environments.ssr.runner`` (``RunnableDevEnvironment``). No separate SSR daemon process or build step is needed during development.
    * - **Production** (``dev_mode=False``)
      - :class:`~litestar_vite.ipc.StdioIPCTransport` (``stdin`` / ``stdout`` pipes)
-     - Spawns the compiled SSR bundle (for example ``node resources/bootstrap/ssr/ssr.js``, ``bun run ssr.js``, ``deno run ssr.js``, or a compiled ``litestar-ssr-worker`` binary) as a managed child process communicating over newline-delimited JSON pipes.
+     - Spawns the compiled SSR bundle (for example ``node resources/bootstrap/ssr/ssr.js``, ``bun run ssr.js``, or ``deno run ssr.js``) as a managed child process communicating over newline-delimited JSON pipes.
    * - **Production, no JS runtime** (``ssr_transport="wasm"`` or auto-detected)
      - :class:`~litestar_vite.ipc.WasmIPCTransport` (in-process QuickJS)
      - Evaluates the self-contained ``ssr.js`` bundle inside an embedded QuickJS context on a dedicated thread. Requires the ``litestar-vite[wasm]`` extra and a bundle built with ``ssr.noExternal: true`` (the default since 0.33). Experimental; see :doc:`/reference/ipc`.

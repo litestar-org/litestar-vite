@@ -14,10 +14,9 @@ from typing import Any, cast
 from litestar.exceptions import SerializationException
 from litestar.serialization import decode_json, encode_json
 
-from litestar_vite.config._inertia import InertiaConfig, InertiaSSRConfig
-from litestar_vite.config._paths import PathConfig, resolve_ssr_bundle_path
-from litestar_vite.config._vite import ViteConfig
-from litestar_vite.executor import JSExecutor, find_bundled_ssr_worker, resolve_ssr_command
+from litestar_vite.config import InertiaConfig, InertiaSSRConfig, PathConfig, ViteConfig
+from litestar_vite.config._paths import resolve_ssr_bundle_path  # pyright: ignore[reportPrivateUsage]
+from litestar_vite.executor import JSExecutor, resolve_ssr_command
 from litestar_vite.ipc._base import BaseIPCTransport, IPCError, IPCTimeoutError, IPCWorkerCrashError
 from litestar_vite.ipc._stdio import StdioIPCTransport
 
@@ -436,10 +435,9 @@ def resolve_ssr_transport(
         2. ``runtime.ssr_transport == "stdio"`` -> ``StdioIPCTransport`` using ``resolve_ssr_command``.
         3. ``runtime.ssr_transport == "auto"`` (default):
            a. Explicit ``ssr_config.command`` -> ``StdioIPCTransport``.
-           b. Co-located ``litestar-ssr-worker`` binary next to ``sys.executable`` -> ``StdioIPCTransport``.
-           c. Configured JS runtime binary available on ``PATH`` or venv -> ``StdioIPCTransport``.
-           d. ``is_wasm_available()`` is ``True`` -> ``WasmIPCTransport`` fallback.
-           e. Default to ``StdioIPCTransport`` using ``resolve_ssr_command``.
+           b. Configured JS runtime binary available on ``PATH`` or venv -> ``StdioIPCTransport``.
+           c. ``is_wasm_available()`` is ``True`` -> ``WasmIPCTransport`` fallback.
+           d. Default to ``StdioIPCTransport`` using ``resolve_ssr_command``.
 
     Args:
         config: Optional active ``ViteConfig`` instance.
@@ -468,8 +466,7 @@ def resolve_ssr_transport(
     if mode == "auto" and not (ssr_config is not None and ssr_config.command):
         provisioning_mode = config.runtime.provisioning_mode if config is not None else "auto"
         if (
-            find_bundled_ssr_worker() is None
-            and JSExecutor.which(_resolve_ssr_runtime_binary_name(config), provisioning_mode) is None
+            JSExecutor.which(_resolve_ssr_runtime_binary_name(config), provisioning_mode) is None
             and is_wasm_available()
         ):
             return WasmIPCTransport(bundle_path=bundle_path)

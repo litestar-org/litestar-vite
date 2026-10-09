@@ -2,18 +2,17 @@
 Migrating to 0.33
 =================
 
-Version 0.33 makes production SSR bundles self-contained and adds optional
-single-file packaging. Review these points before upgrading applications that
-use Inertia SSR or server-side fragments.
+Version 0.33 makes production SSR bundles self-contained. Review these points
+before upgrading applications that use Inertia SSR or server-side fragments.
 
 Self-contained SSR bundles (``ssr.noExternal``)
 -----------------------------------------------
 
 The npm plugin now sets ``ssr.noExternal: true`` when building the production
 SSR bundle (``ssrOutputDir``). Every dependency imported by the SSR entry is
-inlined into ``ssr.js`` so the worker can run under Node, Bun, Deno, a
-Bun/Deno-compiled binary, or the in-process QuickJS transport without a
-``node_modules`` directory present on the production host.
+inlined into ``ssr.js`` so the worker can run under Node, Bun, Deno, or the
+in-process QuickJS transport without a ``node_modules`` directory present on the
+production host.
 
 Projects that intentionally kept packages external, for example to share a
 native-module dependency or to keep ``ssr.js`` small, can restore the previous
@@ -21,9 +20,11 @@ behavior in ``vite.config.ts``:
 
 .. code-block:: typescript
 
+    import { defineConfig } from "vite"
+
     export default defineConfig({
       ssr: {
-        noExternal: false,              // previous Vite default
+        noExternal: [],                 // externalize everything except litestar-vite-plugin
         // or an allow-list: noExternal: ["@inertiajs/react"],
       },
     })
@@ -32,8 +33,7 @@ Explicit user ``ssr.noExternal`` values always win over the plugin default.
 
 Packages that cannot be bundled (native Node addons, packages that rely on
 ``__dirname``-relative file access) must stay external and therefore require a
-host JavaScript runtime; they are incompatible with ``WasmIPCTransport`` and with
-``compile_ssr_worker``.
+host JavaScript runtime; they are incompatible with ``WasmIPCTransport``.
 
 SSR worker lifecycle
 --------------------
@@ -56,9 +56,3 @@ immutable`` on content-hashed files under the Vite ``assets`` directory. Set
 These hooks are not applied when Granian serves assets natively; configure
 equivalent rules at the server or CDN layer in that deployment.
 
-Python 3.10
------------
-
-``tomli`` is now a declared dependency on Python 3.10 so ``pyproject.toml``
-parsing used by ``litestar assets bundle`` and ``litestar assets doctor`` works
-out of the box. No action is required beyond reinstalling the package.

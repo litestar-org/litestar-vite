@@ -14,6 +14,16 @@ from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
 from litestar_vite.exceptions import ViteExecutableNotFoundError, ViteExecutionError
 from litestar_vite.executor import BunExecutor, DenoExecutor, NodeenvExecutor, NodeExecutor, PnpmExecutor, YarnExecutor
 
+
+@pytest.fixture(autouse=True)
+def _isolate_venv_binaries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate unit tests from wheel-provisioned JS binaries installed in the host .venv."""
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "_isolated_venv" / "bin" / "python"))
+    monkeypatch.setattr(
+        "litestar_vite.executor.find_spec", lambda name: None if name == "deno" else importlib.util.find_spec(name)
+    )
+
+
 # =====================================================
 # Executor Base Tests (NodeExecutor, BunExecutor, etc.)
 # =====================================================
@@ -669,32 +679,6 @@ def test_pyproject_declares_wheel_provisioning_extras() -> None:
     assert 'node = ["nodejs-wheel>=22.0.0"]' in content
     assert 'deno = ["deno>=2.0.0"]' in content
     assert 'bun = ["bun-wheel>=1.2.0"]' in content
-
-
-def test_find_bundled_ssr_worker_probes_interpreter_dir_and_siblings(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The bundled worker is found next to sys.executable or in a Scripts/bin sibling directory."""
-    from litestar_vite.executor import find_bundled_ssr_worker
-
-    python_root = tmp_path / "python"
-    python_root.mkdir()
-    fake_python = python_root / "python.exe"
-    fake_python.write_text("", encoding="utf-8")
-    monkeypatch.setattr(sys, "executable", str(fake_python))
-
-    assert find_bundled_ssr_worker() is None
-
-    scripts_worker = python_root / "Scripts" / "litestar-ssr-worker"
-    scripts_worker.parent.mkdir()
-    scripts_worker.write_text("#!/bin/sh\n", encoding="utf-8")
-    scripts_worker.chmod(0o755)
-    assert find_bundled_ssr_worker() == scripts_worker
-
-    root_worker = python_root / "litestar-ssr-worker"
-    root_worker.write_text("#!/bin/sh\n", encoding="utf-8")
-    root_worker.chmod(0o755)
-    assert find_bundled_ssr_worker() == root_worker
 
 
 def test_executor_provisioning_mode_controls_binary_discovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

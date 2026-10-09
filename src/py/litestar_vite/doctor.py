@@ -6,13 +6,11 @@ Regex patterns used for vite.config parsing are compiled at import time to avoid
 
 import os
 import re
-import shutil
 import socket
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
-import msgspec
 from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUsage]
 from litestar.serialization import decode_json, encode_json
 from rich.console import Group
@@ -21,8 +19,7 @@ from rich.prompt import Confirm
 from rich.syntax import Syntax
 from rich.table import Table
 
-from litestar_vite.config import BundleConfig, ExternalDevServer, TypeGenConfig, detect_runtime_marker
-from litestar_vite.ipc import is_wasm_available
+from litestar_vite.config import ExternalDevServer, TypeGenConfig, detect_runtime_marker
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -266,7 +263,6 @@ class ViteDoctor:
             self._check_realtime_config,
             self._check_env_alignment,
             self._check_runtime_lockfile_alignment,
-            self._check_bundle_config,
             self._check_mode_inertia_conflicts,
             self._check_ssr_reachability,
             self._check_static_props_secrets,
@@ -1276,113 +1272,6 @@ class ViteDoctor:
                     fix_hint=(
                         f"Set RuntimeConfig(executor={expected_executor!r}) or omit executor to "
                         "allow automatic lockfile detection"
-                    ),
-                    auto_fixable=False,
-                )
-            )
-
-    def _resolve_active_bundle_config(self) -> tuple[BundleConfig | None, dict[str, Any]]:
-        """Resolve the active BundleConfig and parsed ``pyproject.toml`` when bundling is configured.
-
-        An enabled ``ViteConfig.bundle`` wins. Otherwise ``[tool.litestar.bundle]``
-        in ``pyproject.toml`` is used when present and enabled. Returns
-        ``(None, data)`` when bundling is not configured anywhere.
-        """
-        root = self.config.root_dir or Path.cwd()
-        pyproject_path = root / "pyproject.toml"
-        pyproject_data: dict[str, Any] = {}
-        if pyproject_path.exists():
-            try:
-                decoded = msgspec.toml.decode(pyproject_path.read_bytes())
-            except (ImportError, OSError, msgspec.DecodeError):
-                decoded = None
-            if isinstance(decoded, dict):
-                pyproject_data = cast("dict[str, Any]", decoded)
-
-        explicit = self.config.bundle_config
-        if explicit is not None:
-            return explicit, pyproject_data
-
-        if pyproject_data:
-            pyproject_bundle = BundleConfig.from_pyproject(pyproject_path)
-            if pyproject_bundle.enabled:
-                return pyproject_bundle, pyproject_data
-
-        return None, pyproject_data
-
-    def _check_bundle_config(self) -> None:
-        """Check PyApp bundle configuration and required host toolchains when bundling is configured."""
-        bundle_cfg, pyproject_data = self._resolve_active_bundle_config()
-        if bundle_cfg is None:
-            return
-
-        if shutil.which("cargo") is None:
-            self.issues.append(
-                DoctorIssue(
-                    check="Bundle Cargo Missing",
-                    severity="warning",
-                    message="Rust 'cargo' binary not found on PATH for PyApp binary compilation",
-                    fix_hint="Install Rust via rustup (https://rustup.rs) or run `litestar assets bundle --stage-only`",
-                    auto_fixable=False,
-                )
-            )
-
-        if bundle_cfg.use_zigbuild and (shutil.which("cargo-zigbuild") is None or shutil.which("zig") is None):
-            self.issues.append(
-                DoctorIssue(
-                    check="Bundle Zigbuild Missing",
-                    severity="warning",
-                    message="BundleConfig(use_zigbuild=True) requires 'cargo-zigbuild' and 'zig' on PATH",
-                    fix_hint="Install zig and cargo-zigbuild (`cargo install cargo-zigbuild` and `pip install ziglang`)",
-                    auto_fixable=False,
-                )
-            )
-
-        project_any = pyproject_data.get("project")
-        project_table = cast("dict[str, Any]", project_any) if isinstance(project_any, dict) else None
-        scripts_any = project_table.get("scripts") if project_table is not None else None
-        has_scripts = isinstance(scripts_any, dict) and len(cast("dict[str, Any]", scripts_any)) > 0
-        if not bundle_cfg.exec_spec and not bundle_cfg.exec_module and not has_scripts:
-            self.issues.append(
-                DoctorIssue(
-                    check="Bundle Entrypoint Missing",
-                    severity="warning",
-                    message="No bundle entrypoint found in BundleConfig(exec_spec/exec_module) or [project.scripts]",
-                    fix_hint="Add a [project.scripts] entry in pyproject.toml or set exec_spec/exec_module in [tool.litestar.bundle]",
-                    auto_fixable=False,
-                )
-            )
-
-        if bundle_cfg.compile_ssr_worker in {"bun", "deno"} and shutil.which(bundle_cfg.compile_ssr_worker) is None:
-            self.issues.append(
-                DoctorIssue(
-                    check="Bundle SSR Compiler Missing",
-                    severity="warning",
-                    message=(
-                        f"BundleConfig(compile_ssr_worker={bundle_cfg.compile_ssr_worker!r}) "
-                        f"requires {bundle_cfg.compile_ssr_worker!r} on PATH"
-                    ),
-                    fix_hint=(
-                        f"Install {bundle_cfg.compile_ssr_worker} or switch to Wasm SSR with "
-                        "`pip install 'litestar-vite[wasm]'`"
-                    ),
-                    auto_fixable=False,
-                )
-            )
-        elif (
-            self.config.ssr_enabled
-            and bundle_cfg.compile_ssr_worker == "none"
-            and self.config.ssr_transport in {"wasm", "auto"}
-            and not is_wasm_available()
-        ):
-            self.issues.append(
-                DoctorIssue(
-                    check="Bundle Wasm SSR Missing",
-                    severity="warning",
-                    message="SSR is enabled with bundle mode, but quickjs is not installed for in-process Wasm SSR",
-                    fix_hint=(
-                        "Install `litestar-vite[wasm]` (`uv add 'litestar-vite[wasm]'`) "
-                        "or set compile_ssr_worker='bun'/'deno'"
                     ),
                     auto_fixable=False,
                 )

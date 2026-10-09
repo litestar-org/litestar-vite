@@ -214,9 +214,10 @@ async def test_wasm_ipc_transport_timeout_and_missing_extra(tmp_path: Path, monk
 
 
 def test_resolve_ssr_transport_priority(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify resolve_ssr_transport priority across explicit wasm, bundled binary, auto fallback, and stdio."""
+    """Verify resolve_ssr_transport priority across explicit wasm, auto fallback, and stdio."""
     _install_fake_quickjs(monkeypatch)
     monkeypatch.setattr("litestar_vite.ipc._wasm.find_spec", lambda name: object() if name == "quickjs" else None)
+    monkeypatch.setattr("litestar_vite.executor.find_spec", lambda _name: None)
 
     wasm_config = ViteConfig(
         mode="template",
@@ -233,9 +234,6 @@ def test_resolve_ssr_transport_priority(tmp_path: Path, monkeypatch: pytest.Monk
     fake_bin_dir.mkdir(parents=True)
     fake_python = fake_bin_dir / "python3"
     fake_python.write_text("", encoding="utf-8")
-    bundled_worker = fake_bin_dir / "litestar-ssr-worker"
-    bundled_worker.write_text("#!/bin/sh\n", encoding="utf-8")
-    bundled_worker.chmod(0o755)
     monkeypatch.setattr(sys, "executable", str(fake_python))
 
     auto_config = ViteConfig(
@@ -244,11 +242,6 @@ def test_resolve_ssr_transport_priority(tmp_path: Path, monkeypatch: pytest.Monk
         runtime=RuntimeConfig(executor="node", dev_mode=False, ssr_transport="auto"),
         inertia=InertiaConfig(ssr=True),
     )
-    bundled_transport = resolve_ssr_transport(auto_config)
-    assert isinstance(bundled_transport, StdioIPCTransport)
-    assert bundled_transport.command == [str(bundled_worker)]
-
-    bundled_worker.unlink()
     monkeypatch.setattr("litestar_vite.executor.shutil.which", lambda _name: None)
     fallback_transport = resolve_ssr_transport(auto_config)
     assert isinstance(fallback_transport, WasmIPCTransport)

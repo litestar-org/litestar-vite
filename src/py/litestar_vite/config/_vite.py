@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkabl
 from litestar.exceptions import SerializationException
 from litestar.serialization import decode_json
 
-from litestar_vite.config._bundle import BundleConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._constants import (  # pyright: ignore[reportPrivateUsage]
     FSSPEC_INSTALLED,
     JINJA_INSTALLED,
@@ -46,7 +45,6 @@ if TYPE_CHECKING:
 __all__ = (
     "FSSPEC_INSTALLED",
     "JINJA_INSTALLED",
-    "BundleConfig",
     "DeployConfig",
     "ExternalDevServer",
     "InertiaConfig",
@@ -242,16 +240,6 @@ class ViteConfig:
     dev_mode: bool = False
     base_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
     deploy: "DeployConfig | bool" = False
-    bundle: "BundleConfig | bool" = False
-    """PyApp single-file executable bundling configuration.
-
-    - ``False`` (default): bundling disabled; ``pyproject.toml`` is not read.
-    - ``True``: load ``[tool.litestar.bundle]`` from ``root_dir/pyproject.toml``.
-    - ``BundleConfig``: explicit configuration.
-
-    The ``litestar assets bundle`` command and ``ViteDoctor`` also consult
-    ``pyproject.toml`` directly, so most projects can leave this ``False``.
-    """
     enabled: "bool | None" = None
     """Whether the plugin actively serves assets/routes.
 
@@ -346,7 +334,6 @@ class ViteConfig:
         self._apply_proxy_mode_defaults()
         self._validate_proxy_mode()
         self._normalize_deploy()
-        self._normalize_bundle()
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
 
@@ -562,20 +549,6 @@ class ViteConfig:
             self.deploy = DeployConfig(enabled=True)
         elif self.deploy is False:
             self.deploy = DeployConfig(enabled=False)
-
-    def _normalize_bundle(self) -> None:
-        """Normalize ``bundle`` to a ``BundleConfig`` instance.
-
-        ``bundle=False`` (the default) never touches ``pyproject.toml``: the
-        ``litestar assets bundle`` CLI and ``ViteDoctor`` resolve the project
-        table themselves when needed. ``bundle=True`` loads
-        ``[tool.litestar.bundle]`` from ``root_dir/pyproject.toml`` and forces
-        ``enabled=True``.
-        """
-        if self.bundle is True:
-            self.bundle = BundleConfig.from_pyproject(self.root_dir / "pyproject.toml").with_overrides(enabled=True)
-        elif self.bundle is False:
-            self.bundle = BundleConfig(enabled=False)
 
     def _resolve_type_paths(self, types: TypeGenConfig) -> None:
         """Resolve type generation paths relative to the configured root.
@@ -1273,17 +1246,6 @@ class ViteConfig:
         """
         if isinstance(self.deploy, DeployConfig) and self.deploy.enabled:
             return self.deploy
-        return None
-
-    @property
-    def bundle_config(self) -> "BundleConfig | None":
-        """Get PyApp bundle configuration if enabled.
-
-        Returns:
-            BundleConfig instance when bundling is enabled, None otherwise.
-        """
-        if isinstance(self.bundle, BundleConfig) and self.bundle.enabled:
-            return self.bundle
         return None
 
     @property

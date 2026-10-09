@@ -29,25 +29,15 @@ Unreleased
   ``StaticPlacement.NATIVE`` eligibility; they do not apply to Granian-native file hits.
 - Added self-contained production SSR: the npm plugin now defaults ``ssr.noExternal: true`` for
   production SSR builds and ``litestar-vite-plugin/ssr-worker`` no longer imports ``node:readline``,
-  so the same ``ssr.js`` runs under Node, Bun, Deno, compiled binaries, and QuickJS. The worker exits on
+  so the same ``ssr.js`` runs under Node, Bun, Deno, and QuickJS. The worker exits on
   ``stdin`` EOF after draining in-flight requests. **Breaking:** projects that relied on SSR bundles
-  resolving packages from ``node_modules`` at runtime must opt out with ``ssr: { noExternal: false }``
+  resolving packages from ``node_modules`` at runtime must opt out with ``ssr: { noExternal: [] }``
   (or a package allow-list) in ``vite.config.ts``; see :doc:`migration/0.33`.
 - Added experimental in-process ``WasmIPCTransport`` (``litestar-vite[wasm]``, QuickJS) with ES-module
   bundle loading, a global shim (``TextEncoder``/``TextDecoder``, ``queueMicrotask``, ``setTimeout``),
   per-request engine time limits, and automatic context rebuild after a timeout.
   ``RuntimeConfig.ssr_transport`` (``auto``/``stdio``/``wasm``) and ``resolve_ssr_transport`` select the
-  production transport; a compiled ``litestar-ssr-worker`` placed next to ``sys.executable`` is detected
-  automatically.
-- Added the ``litestar assets bundle`` command, ``BundleConfig`` (``[tool.litestar.bundle]`` in
-  ``pyproject.toml``), and ``PyAppBundler`` for building single-file PyApp executables that embed a
-  ``python-build-standalone`` runtime, the project wheel, built assets, and an optional Bun/Deno-compiled
-  SSR worker. ``PYAPP_PROJECT_VERSION`` is taken from ``[project].version``; PyApp is cloned at a pinned
-  ``pyapp_version`` (``v0.29.0``); distribution URLs are derived from ``python_version``/``pbs_release``;
-  tar extraction rejects traversal, escaping links, and device nodes. ``litestar assets doctor`` reports
-  missing ``cargo``/``zig``/SSR compilers and entrypoints when bundling is configured.
-- Added ``tomli`` as a dependency on Python 3.10 so ``pyproject.toml`` parsing via ``msgspec.toml`` works
-  without extra installs; ``ViteConfig(bundle=False)`` (the default) never reads ``pyproject.toml``.
+  production transport.
 
 0.32.0 - 2026-09-28
 -------------------

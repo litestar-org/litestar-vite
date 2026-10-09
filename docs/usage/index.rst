@@ -87,8 +87,8 @@ The Litestar static route remains available on every server. See
    vite
    development
    production
-   bundling
    streams
    static-props
    modes
    types
+

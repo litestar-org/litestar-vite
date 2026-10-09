@@ -119,7 +119,7 @@ def _resolve_venv_executable(bin_name: str) -> "str | None":
     """Locate an executable inside the current Python virtual environment or wheel package.
 
     Checks ``Path(sys.executable).parent`` first (supporting ``nodejs-wheel``, ``bun-wheel``,
-    ``deno``, and PyApp distributions), and falls back to ``deno.find_deno_bin()`` when
+    and ``deno``), and falls back to ``deno.find_deno_bin()`` when
     ``bin_name == "deno"`` and the ``deno`` Python package is installed.
 
     Args:
@@ -600,42 +600,13 @@ class NodeenvExecutor(JSExecutor):
         return [self._find_npm_in_venv(), "run", "build"]
 
 
-def find_bundled_ssr_worker() -> Path | None:
-    """Detect a compiled standalone SSR worker binary co-located with the Python executable.
-
-    When packaged with PyApp (``PYAPP_FULL_ISOLATION=1``) or staged into a virtual
-    environment, ``litestar-ssr-worker`` (or ``litestar-ssr-worker.exe`` on Windows)
-    resides next to the interpreter. The interpreter directory is probed first,
-    followed by its ``Scripts`` and ``bin`` siblings so that both the
-    ``python-build-standalone`` Windows layout (``python.exe`` at the root) and
-    virtual-environment layouts resolve.
-
-    Returns:
-        Resolved path to the compiled SSR worker binary if present and executable,
-        otherwise ``None``.
-    """
-    exe_dir = Path(sys.executable).parent
-    names = (
-        ("litestar-ssr-worker.exe", "litestar-ssr-worker")
-        if platform.system() == "Windows"
-        else ("litestar-ssr-worker", "litestar-ssr-worker.exe")
-    )
-    for directory in (exe_dir, exe_dir / "Scripts", exe_dir / "bin"):
-        for name in names:
-            candidate = directory / name
-            if candidate.is_file() and os.access(candidate, os.X_OK):
-                return candidate
-    return None
-
-
 def resolve_ssr_command(config: "ViteConfig | None" = None, ssr_config: "InertiaSSRConfig | None" = None) -> list[str]:
     """Resolve the production SSR worker command for the active JS runtime.
 
-    Honors an explicit ``ssr_config.command`` override first, then checks for a
-    compiled ``litestar-ssr-worker`` binary co-located with ``sys.executable``.
-    Otherwise resolves the built SSR bundle path and returns the runtime-appropriate
-    invocation via the configured executor (``bun run <path>``,
-    ``deno run --allow-read --allow-env <path>``, or ``node <path>``).
+    Honors an explicit ``ssr_config.command`` override first. Otherwise resolves the
+    built SSR bundle path and returns the runtime-appropriate invocation via the
+    configured executor (``bun run <path>``, ``deno run --allow-read --allow-env <path>``,
+    or ``node <path>``).
 
     Args:
         config: Optional active ``ViteConfig`` instance.
@@ -648,9 +619,6 @@ def resolve_ssr_command(config: "ViteConfig | None" = None, ssr_config: "Inertia
         ssr_config = config.inertia.ssr_config
     if ssr_config is not None and ssr_config.command:
         return list(ssr_config.command)
-    bundled_worker = find_bundled_ssr_worker()
-    if bundled_worker is not None:
-        return [str(bundled_worker)]
     if config is not None:
         bundle_path = resolve_ssr_bundle_path(config.paths)
         return config.executor.ssr_command(bundle_path)

@@ -182,9 +182,11 @@ class RuntimeConfig:
     Attributes:
         dev_mode: Enable development mode with HMR/watch.
         proxy_mode: Proxy handling mode (auto-derived from ``ViteConfig.mode`` when None):
+
             - "vite": Proxy Vite assets only (allow list - SPA / hybrid / template modes)
             - "proxy": Proxy everything except Litestar routes (deny list - framework mode)
             - None: No proxy (auto-derived for production)
+
         external_dev_server: Configuration for external dev server (used with proxy_mode="proxy").
         host: Vite dev server host.
         port: Vite dev server port.
@@ -199,20 +201,22 @@ class RuntimeConfig:
         health_check: Enable health check for dev server startup.
         detect_nodeenv: Detect and use nodeenv in virtualenv (opt-in).
         provisioning_mode: How runtime binaries are located:
+
             - "auto" (default): active virtual environment / PEP 425 wheel first, then ``PATH``
             - "wheel": only the virtual environment; build commands and production SSR
               transport construction raise ``ViteExecutableNotFoundError`` at startup when
-              the runtime wheel is missing (unless an explicit SSR command or a bundled
-              ``litestar-ssr-worker`` is available, or ``ssr_transport="auto"`` can fall
-              back to the ``wasm`` extra)
+              the runtime wheel is missing (unless an explicit SSR command is configured or
+              ``ssr_transport="auto"`` can fall back to the ``wasm`` extra)
             - "nodeenv": like "auto" and additionally enables ``detect_nodeenv``
             - "system": only ``PATH`` (ignores virtual-environment binaries)
+
         ssr_transport: Production SSR IPC transport selection:
-            - "auto" (default): explicit SSR command, then a bundled ``litestar-ssr-worker``
-              binary, then the configured JS runtime, then in-process WASM when
-              ``litestar-vite[wasm]`` is installed
+
+            - "auto" (default): explicit SSR command, then the configured JS runtime, then
+              in-process WASM when ``litestar-vite[wasm]`` is installed
             - "stdio": always spawn the JS runtime over NDJSON stdio
             - "wasm": always run the self-contained SSR bundle in-process via QuickJS
+
         set_environment: Set Vite environment variables from config.
         set_static_folders: Automatically configure static file serving.
         csp_nonce: Static Content Security Policy nonce for inline scripts. Inertia and
@@ -428,7 +432,7 @@ def detect_runtime_marker(root_dir: Path) -> "tuple[ExecutorType, str] | None":
 def detect_runtime(root_dir: Path) -> ExecutorType:
     """Detect the JavaScript runtime/package manager from project lockfiles and manifests.
 
-    Delegates to :func:`detect_runtime_marker` and falls back to ``"node"``.
+    Delegates to ``detect_runtime_marker`` and falls back to ``"node"``.
 
     Args:
         root_dir: Project root directory to inspect.

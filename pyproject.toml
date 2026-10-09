@@ -24,7 +24,6 @@ dependencies = [
   "markupsafe>=2.0",
   "websockets>=12.0",
   "typing_extensions",
-  "tomli>=2.0; python_version < '3.11'"
 ]
 description = "Vite plugin for Litestar"
 keywords = ["litestar", "vite"]
