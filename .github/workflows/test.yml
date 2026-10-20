@@ -18,11 +18,16 @@ on:
         required: false
         type: number
         default: 60
+      allow-failure:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   test:
     runs-on: ${{ inputs.os }}
     timeout-minutes: ${{ inputs.timeout }}
+    continue-on-error: ${{ inputs.allow-failure }}
     defaults:
       run:
         shell: bash
