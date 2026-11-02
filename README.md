@@ -1,23 +1,41 @@
-# Litestar Vite
+<div align="center">
 
-Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA, Template, Inertia, and meta-framework workflows, and it can proxy Vite dev traffic through your ASGI port or run Vite directly.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-inline-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/banner-inline-light.svg">
+  <img alt="Litestar Vite" src="docs/assets/banner-inline-light.svg" width="60%" height="auto">
+</picture>
 
-## Features
+<p><strong>First-class Vite 7+, Inertia.js v2, Island Fragments, and End-to-End Type Generation for Litestar</strong></p>
 
-- One-port dev: proxies Vite HTTP + WS/HMR through Litestar on a single ASGI port by default.
-- Framework-mode support: use `mode="framework"` (alias `mode="ssr"`) for Astro, Nuxt, and SvelteKit. Litestar proxies everything except your API routes.
-- Production assets: reads the Vite manifest from `public/manifest.json` (configurable) and serves under `asset_url`.
-- Type-safe frontends: optional OpenAPI/routes export plus `@hey-api/openapi-ts` via the Vite plugin.
-- Inertia support: Inertia v2/v3 protocol support with session middleware, script-element bootstrap by default, and optional SSR.
+[![PyPI](https://img.shields.io/pypi/v/litestar-vite?style=flat-square&color=1d4ed8)](https://pypi.org/project/litestar-vite/)
+[![npm](https://img.shields.io/npm/v/litestar-vite-plugin?style=flat-square&color=1d4ed8)](https://www.npmjs.com/package/litestar-vite-plugin)
+[![Python](https://img.shields.io/pypi/pyversions/litestar-vite?style=flat-square&color=1d4ed8)](https://pypi.org/project/litestar-vite/)
+[![License](https://img.shields.io/badge/license-MIT-1d4ed8?style=flat-square)](https://github.com/litestar-org/litestar-vite/blob/main/LICENSE)
+[![Docs](https://img.shields.io/badge/docs-litestar--vite-1d4ed8?style=flat-square)](https://litestar-org.github.io/litestar-vite/)
+
+[Documentation](https://litestar-org.github.io/litestar-vite/) · [Getting Started](https://litestar-org.github.io/litestar-vite/getting-started/) · [Inertia.js v2](https://litestar-org.github.io/litestar-vite/frameworks/inertia/) · [API Reference](https://litestar-org.github.io/litestar-vite/reference/) · [Discord](https://discord.gg/litestar)
+
+</div>
+
+---
+
+**Litestar Vite** connects [Litestar](https://litestar.dev) (Python ASGI) to the [Vite 7+](https://vite.dev) frontend toolchain through a single-port AnyIO streaming proxy, deterministic `.litestar.json` runtime bridge, Inertia.js v2 protocol support, server-rendered UI islands, and automatic OpenAPI + AsyncAPI TypeScript generation.
 
 ## Install
 
 ```bash
-pip install litestar-vite
-npm install litestar-vite-plugin
+uv add litestar-vite
+npm install -D litestar-vite-plugin
 ```
 
-## Quick Start
+Or with `pip`:
+
+```bash
+pip install litestar-vite
+```
+
+## Quickstart
 
 ```python
 from litestar import Litestar
@@ -26,71 +44,34 @@ from litestar_vite import VitePlugin
 app = Litestar(plugins=[VitePlugin()])
 ```
 
+Scaffold a frontend template, install dependencies, and run both Litestar and Vite on a single port:
+
 ```bash
-litestar assets init --template vue
+litestar assets init --template react-inertia
 litestar assets install
 litestar run --reload
 ```
 
-`VitePlugin()` detects development and production behavior without manual `VITE_DEV_MODE` parsing. The effective
-`litestar run --host/--port` values are also passed to the frontend environment and `.litestar.json` bridge.
+## Capabilities
 
-### Optional Granian native static serving
-
-Granian 0.16+ can serve eligible production bundle files before the request enters Python:
-
-```python
-from litestar import Litestar
-from litestar_granian import GranianPlugin
-from litestar_vite import VitePlugin
-
-app = Litestar(plugins=[VitePlugin(), GranianPlugin(static="auto")])
-```
-
-This is an optimization, not a separate application configuration. The Litestar static route stays registered, so
-Uvicorn and other ASGI servers serve the same files. Granian automatically falls back to Litestar when assets are
-protected, customized, missing, or otherwise unsafe to intercept.
-
-Native hits bypass ASGI middleware, guards, compression, custom headers, and Python access logging. Keep protected or
-customized assets on the Litestar fallback path. See the
-[production guide](https://litestar-org.github.io/litestar-vite/latest/usage/production.html) for the server matrix and
-advanced configuration.
+| Capability | What it provides |
+| --- | --- |
+| **Single-Port AnyIO Dev Proxy** | Streams Vite HTTP assets and upgrades `/vite-hmr` WebSockets directly through your Litestar port (`:8000`) with zero CORS setup |
+| **Four Operating Modes** | First-class support for `spa`, `hybrid` (Inertia.js v2), `template` (Jinja2 + `<litestar-island>`), and `framework` (Astro, Nuxt, SvelteKit) |
+| **Inertia.js v2 Protocol & SSR** | Native `defer()`, `merge()`, `once()`, shared session props, Laravel Precognition validation, and fault-tolerant SSR (`RunnableDevEnvironment` in dev, `StdioIPCTransport` worker in prod) |
+| **End-to-End Type Generation** | Deterministic SHA-256 `openapi.json`, `routes.json`, and `asyncapi.json` artifacts driving `@hey-api/openapi-ts`, ziggy-style `route()` / `wsRoute()`, and `createTypedChannels()` |
+| **Islands & HTMX Fragments** | Server-rendered UI components via `ComponentResponse`, Jinja `vite_fragment()`, and `<litestar-island>` hydration with automatic CSS chunk injection |
+| **Production & Granian Native Static** | Manifest-resolved hashed bundles, `fsspec` CDN deployment (`litestar assets deploy`), and zero-copy Rust static serving with `GranianPlugin` (`StaticPlacement.NATIVE`) |
 
 ## Documentation
 
-- Get started: <https://litestar-org.github.io/litestar-vite/latest/usage/index.html>
-- Framework guides: <https://litestar-org.github.io/litestar-vite/latest/frameworks/index.html>
-- Inertia: <https://litestar-org.github.io/litestar-vite/latest/frameworks/inertia/index.html>
-- API reference: <https://litestar-org.github.io/litestar-vite/latest/reference/index.html>
-- Changelog: <https://litestar-org.github.io/litestar-vite/latest/changelog.html>
+- [Getting Started & Quick Starts](https://litestar-org.github.io/litestar-vite/getting-started/)
+- [Core Concepts & Operating Modes](https://litestar-org.github.io/litestar-vite/learn/operating-modes/)
+- [Inertia.js v2 Guide](https://litestar-org.github.io/litestar-vite/frameworks/inertia/)
+- [TypeGen, Typed Routes & Realtime Channels](https://litestar-org.github.io/litestar-vite/typegen/)
+- [Internal Architecture & Animated Diagrams](https://litestar-org.github.io/litestar-vite/architecture/)
+- [Python, TypeScript & CLI Reference](https://litestar-org.github.io/litestar-vite/reference/)
 
-## Common Commands
+## Contributing & License
 
-- `litestar assets init --template <name>`: scaffold a frontend or framework app
-- `litestar assets install`: install frontend dependencies with the configured executor
-- `litestar assets build`: build production assets
-- `litestar assets serve`: run the frontend toolchain directly
-- `litestar assets generate-types`: export OpenAPI, routes, and Inertia page-prop metadata
-- `litestar assets doctor`: inspect and optionally repair config drift
-
-## Development
-
-```bash
-# Install Python, docs, and JS dependencies; build package artifacts
-make install && make build
-
-# Run an example app
-uv run litestar --app-dir examples/vue-inertia assets install
-uv run litestar --app-dir examples/vue-inertia run
-```
-
-Replace `vue-inertia` with any other example app: `vue`, `react`, `svelte`, `react-inertia`, `htmx`, `angular`, `astro`, `nuxt`, or `sveltekit`.
-
-litestar-vite now defaults Inertia apps to script-element bootstrap. Inertia v3 clients use that transport automatically; if you pin Inertia v2, keep `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })` aligned in the browser entry and SSR entry when `ssr=True` is enabled, or opt back into the legacy `data-page` path with `InertiaConfig(use_script_element=False)`.
-
-## Links
-
-- Docs: <https://litestar-org.github.io/litestar-vite/latest/>
-- Examples: `examples/` (React, Vue, Svelte, HTMX, Inertia, Astro, Nuxt, SvelteKit, Angular)
-- Real-world example: [litestar-fullstack](https://github.com/litestar-org/litestar-fullstack)
-- Issues: <https://github.com/litestar-org/litestar-vite/issues/>
+Contributions are welcome — see the [Contributing & Development Guide](docs/reference/contributing.md) for local workspace setup, test commands, and architecture guidelines. Distributed under the [MIT License](LICENSE).
