@@ -1,0 +1,198 @@
+[project]
+site_name = "Litestar Vite"
+site_description = "Connect Litestar ASGI applications with Vite 7+, Inertia.js v2, cross-platform SSR, island fragments, and end-to-end OpenAPI + AsyncAPI type generation."
+site_url = "https://litestar-org.github.io/litestar-vite/"
+repo_url = "https://github.com/litestar-org/litestar-vite"
+repo_name = "litestar-org/litestar-vite"
+docs_dir = "docs"
+site_dir = "site"
+use_directory_urls = true
+exclude_docs = """
+examples/**
+_tapes/**
+"""
+extra_css = ["stylesheets/extra.css"]
+nav = [
+  { "Home" = [
+    { "Overview" = "index.md" },
+    { "Changelog" = "changelog.md" },
+  ] },
+  { "Getting Started" = [
+    { "Installation & Setup" = "getting-started/index.md" },
+    { "Quick Start: SPA Mode" = "getting-started/quick-start-spa.md" },
+    { "Quick Start: Inertia v2" = "getting-started/quick-start-inertia.md" },
+    { "Quick Start: Jinja & Islands" = "getting-started/quick-start-templates.md" },
+  ] },
+  { "Core Concepts" = [
+    { "How Litestar & Vite Work Together" = "learn/index.md" },
+    { "Operating Modes" = "learn/operating-modes.md" },
+    { "Configuration Guide" = "learn/configuration.md" },
+    { "Static Props" = "learn/static-props.md" },
+    { "Islands & HTMX" = "learn/islands-and-htmx.md" },
+    { "Server-Side Rendering (SSR)" = "learn/ssr.md" },
+    { "Production & Deployment" = "learn/production-and-deploy.md" },
+    { "Doctor & Troubleshooting" = "learn/doctor-and-troubleshooting.md" },
+  ] },
+  { "Frameworks & Inertia" = [
+    { "Framework Matrix" = "frameworks/index.md" },
+    { "Inertia v2" = [
+      { "Overview & Lifecycle" = "frameworks/inertia/index.md" },
+      { "Pages, Responses & Redirects" = "frameworks/inertia/pages-and-responses.md" },
+      { "Props, Deferred & Partial Reloads" = "frameworks/inertia/props-and-reloads.md" },
+      { "Shared Data, Flash & Precognition" = "frameworks/inertia/shared-data-and-precognition.md" },
+      { "Inertia SSR & Client Helpers" = "frameworks/inertia/ssr-and-helpers.md" },
+    ] },
+    { "React, Vue 3 & Svelte 5" = "frameworks/react-vue-svelte.md" },
+    { "Astro, Nuxt, SvelteKit & Angular" = "frameworks/meta-frameworks.md" },
+  ] },
+  { "TypeGen & Realtime" = [
+    { "Type Generation Pipeline" = "typegen/index.md" },
+    { "OpenAPI TypeScript SDK" = "typegen/openapi-sdk.md" },
+    { "Type-Safe Routes (route & wsRoute)" = "typegen/routes.md" },
+    { "AsyncAPI Channels & SSE Streams" = "typegen/realtime-channels.md" },
+  ] },
+  { "Architecture" = [
+    { "System Overview" = "architecture/index.md" },
+    { "Single-Port Dev Proxy & Bridge" = "architecture/dev-proxy-and-bridge.md" },
+    { "SSR & Fragment IPC Transports" = "architecture/ssr-and-ipc.md" },
+    { "Codegen & Artifact Determinism" = "architecture/codegen-pipeline.md" },
+  ] },
+  { "Reference" = [
+    { "Overview" = "reference/index.md" },
+    { "Plugin & Configuration" = "reference/plugin-and-config.md" },
+    { "Inertia API" = "reference/inertia.md" },
+    { "Fragments & IPC" = "reference/fragments-and-ipc.md" },
+    { "Runtime, Assets & Executors" = "reference/runtime-and-assets.md" },
+    { "Tooling, Doctor, Deploy & Codegen" = "reference/tooling-and-codegen.md" },
+    { "CLI Reference (litestar assets)" = "reference/cli.md" },
+    { "Bridge & Wire Contracts" = "reference/contracts.md" },
+    { "TypeScript API" = [
+      { "Subpaths & Vite Plugin" = "reference/typescript/index.md" },
+      { "Runtime & Inertia Helpers" = "reference/typescript/helpers.md" },
+      { "Framework Hooks & Integrations" = "reference/typescript/frameworks.md" },
+      { "Fragments & Island Hydrators" = "reference/typescript/fragments.md" },
+    ] },
+    { "Contributing" = "reference/contributing.md" },
+  ] },
+]
+
+[project.theme]
+variant = "modern"
+language = "en"
+logo = "assets/logo.svg"
+favicon = "assets/favicon.svg"
+features = [
+  "content.code.annotate",
+  "content.code.copy",
+  "content.tabs.link",
+  "navigation.path",
+  "navigation.sections",
+  "navigation.tabs",
+  "navigation.top",
+  "search.highlight",
+  "toc.follow",
+]
+
+[project.theme.font]
+text = "Inter"
+code = "JetBrains Mono"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "custom"
+accent = "indigo"
+toggle = { icon = "lucide/sun", name = "Switch to dark mode" }
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "custom"
+accent = "indigo"
+toggle = { icon = "lucide/moon", name = "Switch to light mode" }
+
+[project.extra]
+generator = false
+social = [
+  { icon = "fontawesome/brands/github", link = "https://github.com/litestar-org/litestar-vite", name = "GitHub" },
+  { icon = "fontawesome/brands/discord", link = "https://discord.gg/X3FJqy8d2j", name = "Discord" },
+  { icon = "fontawesome/brands/python", link = "https://pypi.org/project/litestar-vite/", name = "PyPI" },
+  { icon = "fontawesome/brands/npm", link = "https://www.npmjs.com/package/litestar-vite-plugin", name = "npm" },
+]
+
+[project.plugins.redirects.redirect_maps]
+
+[project.plugins.mkdocstrings]
+default_handler = "python"
+custom_templates = "tools/docs/templates"
+enable_inventory = true
+
+[project.plugins.mkdocstrings.handlers.python]
+paths = ["src/py"]
+inventories = [
+  "https://docs.python.org/3/objects.inv",
+  "https://click.palletsprojects.com/en/stable/objects.inv",
+  "https://docs.litestar.dev/latest/objects.inv",
+]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+docstring_style = "google"
+docstring_section_style = "table"
+heading_level = 3
+inherited_members = false
+line_length = 80
+members_order = "source"
+merge_init_into_class = false
+modernize_annotations = true
+annotations_path = "brief"
+preload_modules = ["litestar_vite"]
+separate_signature = true
+show_bases = true
+show_category_heading = false
+show_if_no_docstring = true
+show_labels = false
+show_object_full_path = false
+show_overloads = false
+show_root_full_path = false
+show_root_heading = true
+show_root_toc_entry = true
+show_signature_annotations = false
+show_source = false
+show_symbol_type_heading = true
+show_symbol_type_toc = false
+signature_crossrefs = true
+summary = { attributes = true, functions = false, classes = false, modules = false }
+unwrap_annotated = true
+filters = ["!^_"]
+
+[project.markdown_extensions]
+admonition = {}
+attr_list = {}
+def_list = {}
+footnotes = {}
+md_in_html = {}
+tables = {}
+toc = { permalink = true, toc_depth = "2-3" }
+
+[project.markdown_extensions.pymdownx.details]
+[project.markdown_extensions.pymdownx.inlinehilite]
+[project.markdown_extensions.pymdownx.keys]
+
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+line_spans = "__span"
+pygments_lang_class = true
+
+[project.markdown_extensions.pymdownx.snippets]
+base_path = ["."]
+check_paths = true
+dedent_subsections = true
+
+[project.markdown_extensions.pymdownx.superfences]
+custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
+
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+slugify = { object = "pymdownx.slugs.slugify", kwds = { case = "lower" } }
