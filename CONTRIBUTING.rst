@@ -45,39 +45,27 @@ Writing and running tests
 Project documentation
 ---------------------
 
-The documentation is located in the ``/docs`` directory and is `ReST <https://docutils.sourceforge.io/rst.html>`_ and
-`Sphinx <https://www.sphinx-doc.org/en/master/>`_. If you're unfamiliar with any of those,
-`ReStructuredText primer <https://www.sphinx-doc.org/en/master/lib/usage/restructuredtext/basics.html>`_ and
-`Sphinx quickstart <https://www.sphinx-doc.org/en/master/lib/usage/quickstart.html>`_ are recommended reads.
+The documentation is located in the ``/docs`` directory and is written in Markdown powered by
+`Zensical <https://zensical.org/>`_.
 
 Running the docs locally
 ++++++++++++++++++++++++
 
 To run or build the docs locally, you need to first install the required dependencies:
 
-``make install``
+``uv sync --group doc``
 
 Then you can serve the documentation with ``make docs-serve``, or build them with ``make docs``.
 
-Docs theme maintenance
-++++++++++++++++++++++
+Documentation structure
++++++++++++++++++++++++
 
-The docs theme is based directly on `Shibuya <https://shibuya.lepture.com/>`_. Keep theme work inside the
-docs theme layer instead of scattering one-off overrides:
+The documentation theme and structure are configured via ``zensical.toml``:
 
-- ``docs/conf.py`` owns the Shibuya setup and grouped navigation
-- ``docs/_static/theme.css`` and ``docs/_static/layout.css`` own global tokens and shell styling
-- ``docs/_static/code.css`` owns the official docs code-block and inline-code theme
-- ``docs/_static/theme.js`` owns local docs interactions
-- ``docs/_templates/components/copy-page-button.html`` owns page/source/AI actions
-
-When updating the theme, check the official `Shibuya changelog <https://github.com/lepture/shibuya/releases>`_
-first. If you need to retune the code palette, the reference came from the SQLSpec WASM playground in the sibling
-``../sqlspec`` workspace, specifically ``docs/_static/custom.css`` and ``tools/sphinx_ext/playground_template.html``
-when that repository is available locally.
-
-``auto-pytabs`` shells out to ``ruff`` during docs builds, so ensure the virtualenv tools are on ``PATH`` when
-running ``make docs`` or ``make docs-serve``.
+- ``zensical.toml`` owns project navigation, theme options, search, and markdown extensions
+- ``docs/stylesheets/extra.css`` owns custom styling, header typography, and glow effects
+- ``docs/assets/logo.svg`` and ``docs/assets/favicon.svg`` define the Litestar brand logo and favicon marks
+- Reference pages are generated via ``tools/docs/generate_cli_docs.py`` and ``tools/docs/generate_ts_docs.py``
 
 Demo GIFs
 +++++++++

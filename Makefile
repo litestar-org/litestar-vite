@@ -294,8 +294,8 @@ docs-clean:                                        ## Clean documentation build
 .PHONY: docs-gen
 docs-gen:                                          ## Regenerate CLI and TypeScript API reference pages
 	@echo "${INFO} Generating CLI and TypeScript reference pages... 📝"
-	@uv run python tools/docs/generate_cli_docs.py
-	@uv run python tools/docs/generate_ts_docs.py
+	@PYTHONPATH=. uv run python tools/docs/generate_cli_docs.py
+	@PYTHONPATH=. uv run python tools/docs/generate_ts_docs.py
 	@echo "${OK} Reference pages generated"
 
 .PHONY: docs-serve
@@ -306,12 +306,12 @@ docs-serve: docs-clean                             ## Serve documentation locall
 .PHONY: docs
 docs: docs-clean                                   ## Build and verify Zensical documentation
 	@echo "${INFO} Building documentation... 📝"
-	@uv run python tools/docs/generate_cli_docs.py --check
-	@uv run python tools/docs/generate_ts_docs.py --check
-	@uv run python tools/docs/scan_public_docstrings.py
+	@PYTHONPATH=. uv run python tools/docs/generate_cli_docs.py --check
+	@PYTHONPATH=. uv run python tools/docs/generate_ts_docs.py --check
+	@PYTHONPATH=. uv run python tools/docs/scan_public_docstrings.py
 	@uv run zensical build --clean
-	@uv run python tools/docs/postbuild.py
-	@uv run python tools/docs/verify_docs_artifacts.py --strict-warnings --no-build
+	@PYTHONPATH=. uv run python tools/docs/postbuild.py
+	@PYTHONPATH=. uv run python tools/docs/verify_docs_artifacts.py --strict-warnings --no-build
 	@echo "${OK} Documentation built successfully"
 
 .PHONY: docs-check
@@ -321,7 +321,7 @@ docs-check: docs                                   ## Build documentation and ru
 .PHONY: docs-linkcheck
 docs-linkcheck:                                    ## Check documentation links and artifacts
 	@echo "${INFO} Checking documentation links and artifacts... 🔗"
-	@uv run python tools/docs/verify_docs_artifacts.py --strict-warnings --no-build
+	@PYTHONPATH=. uv run python tools/docs/verify_docs_artifacts.py --strict-warnings --no-build
 	@echo "${OK} Link check complete"
 
 .PHONY: docs-linkcheck-full

@@ -92,6 +92,8 @@ app = Litestar(
     });
     ```
 
+    For general SvelteKit configuration and routing patterns, refer to the official [SvelteKit documentation](https://svelte.dev/docs/kit).
+
 ---
 
 ## 3. Scaffolding a Meta-Framework Workspace

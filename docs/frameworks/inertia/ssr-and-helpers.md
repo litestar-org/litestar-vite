@@ -6,10 +6,10 @@ This page covers the TypeScript helpers exported by `litestar-vite-plugin/inerti
 
 ## 1. Script-Element Initial Page Bootstrap (`use_script_element=True`)
 
-By default, `InertiaConfig(use_script_element=True)` embeds initial page props inside a `<script type="application/json" data-page="app">` element instead of an HTML-escaped `data-page="..."` attribute on `<div id="app">`. This reduces initial HTML payload size by ~30% on data-heavy pages and avoids double-parsing HTML entities.
+By default, `InertiaConfig(use_script_element=True)` embeds initial page props inside a `<script type="application/json" data-page="app">` element instead of an HTML-escaped `data-page="..."` attribute on `<div id="app">` (or your configured `app_selector`). This reduces initial HTML payload size by ~30% on data-heavy pages and avoids double-parsing HTML entities.
 
 - **Inertia v3 clients** read `<script type="application/json" data-page="app">` automatically.
-- **Inertia v2 clients** enable it with `defaults: { future: { useScriptElementForInitialPage: true } }` in both the client entrypoint (`main.tsx` / `main.ts`) and SSR entrypoint (`ssr.tsx` / `ssr.ts`):
+- **Inertia v2 clients** enable it with `defaults: { future: { useScriptElementForInitialPage: true } }` in both the client entrypoint (`resources/main.tsx` / `resources/main.ts`) and SSR entrypoint (`resources/ssr.tsx` / `resources/ssr.ts`):
 
 ```tsx title="resources/ssr.tsx"
 import { createInertiaApp } from "@inertiajs/react";

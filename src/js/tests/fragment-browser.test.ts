@@ -101,7 +101,16 @@ it.skipIf(!chrome)(
       const port = (server.address() as { port: number }).port
       const { stdout } = await exec(
         chrome!,
-        ["--headless", "--no-sandbox", "--disable-gpu", `--user-data-dir=${directory}/chrome`, "--virtual-time-budget=5000", "--dump-dom", `http://127.0.0.1:${port}`],
+        [
+          "--headless",
+          "--no-sandbox",
+          "--disable-gpu",
+          "--disable-dev-shm-usage",
+          `--user-data-dir=${directory}/chrome`,
+          "--virtual-time-budget=5000",
+          "--dump-dom",
+          `http://127.0.0.1:${port}`,
+        ],
         { timeout: 20000, maxBuffer: 1000000 },
       )
       expect(stdout).toContain('data-result="3,4,5"')

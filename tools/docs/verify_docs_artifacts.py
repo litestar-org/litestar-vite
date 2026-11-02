@@ -9,14 +9,16 @@ import sys
 import zlib
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from litestar_vite.cli import vite_group
 from tools.docs.generate_cli_docs import main as cli_docs_main
 from tools.docs.generate_ts_docs import PAGE_ROUTING, collect_subpath_docs
 from tools.docs.generate_ts_docs import main as ts_docs_main
 from tools.docs.postbuild import DEFAULT_DOCS_DIR, DEFAULT_SITE_DIR, LEGACY_REDIRECTS, run_postbuild
 from tools.docs.scan_public_docstrings import scan_package
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
 MAX_REFERENCE_HTML_BYTES = 160 * 1024
 MAX_REFERENCE_TOC_HEADINGS = 14
 
