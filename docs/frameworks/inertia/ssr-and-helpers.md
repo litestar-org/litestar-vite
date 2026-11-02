@@ -25,12 +25,12 @@ export default function render(page: unknown) {
         useScriptElementForInitialPage: true,
       },
     },
-    resolve: (name) =>
+    resolve: (name: string) =>
       resolvePageComponent(
         `./pages/${name}.tsx`,
         import.meta.glob("./pages/**/*.tsx", { eager: true }),
       ),
-    setup: ({ App, props }) => <App {...props} />,
+    setup: ({ App, props }: { App: any; props: any }) => <App {...props} />,
   });
 }
 ```

@@ -19,22 +19,22 @@ When your Litestar application registers `litestar-asyncapi`'s `AsyncAPIPlugin` 
 `src/generated/channels.ts` exports `createTypedChannels()`, which wraps any standard `WebSocket` (or custom transport) with strongly typed `subscribe()`, `send()`, and `onMessage()` methods keyed by channel name and message type:
 
 ```typescript title="src/realtime.ts"
-import { wsRoute } from "./generated/routes";
-import { createTypedChannels } from "./generated/channels";
+import { createTypedChannels } from "litestar-vite-plugin/helpers";
+import { CHANNEL_METADATA, type RealtimeChannels } from "./generated/channels";
 
-const socket = new WebSocket(wsRoute("notifications:ws"));
-const channels = createTypedChannels(socket);
-
-const unsubscribe = channels.on("ws__notifications", "OrderCreated", (payload) => {
-  console.log(`Order ${payload.orderId}: $${payload.amountCents / 100}`);
+const channels = createTypedChannels<RealtimeChannels>(CHANNEL_METADATA);
+const stream = channels.stream("ws__notifications", {
+  onEvent: (payload: { orderId: string; amountCents: number }) => {
+    console.log(payload.orderId);
+  },
 });
 ```
 
 ---
 
-## 3. Reactive Framework Hooks (`useEventStream` & `useWsChannel`)
+## 3. Reactive Framework Hooks (`useEventStream` & `createEventStreamStore`)
 
-For declarative UI components, import the reactive SSE and WebSocket composables from `litestar-vite-plugin/{react,vue,svelte}`:
+For declarative UI components, import the reactive SSE composables from `litestar-vite-plugin/{react,vue,svelte}`:
 
 === "React (`litestar-vite-plugin/react`)"
 
@@ -47,13 +47,16 @@ For declarative UI components, import the reactive SSE and WebSocket composables
     }
 
     export function LiveOrders() {
-      const { data, status, close } = useEventStream<OrderEvent>("/api/orders/stream");
+      const { healthy, lastEvent, events } = useEventStream<OrderEvent>({
+        key: "orders",
+        url: "/api/orders/stream",
+        onEvent: () => {},
+      });
 
       return (
         <div>
-          <span>Stream status: {status}</span>
-          {data && <p>Latest order: {data.orderId}</p>}
-          <button onClick={close}>Disconnect</button>
+          <span>Stream healthy: {String(healthy)}</span>
+          {lastEvent && <p>Latest order: {lastEvent.orderId} ({events.length} total)</p>}
         </div>
       );
     }
@@ -65,14 +68,17 @@ For declarative UI components, import the reactive SSE and WebSocket composables
     <script setup lang="ts">
     import { useEventStream } from "litestar-vite-plugin/vue";
 
-    const { data, status, close } = useEventStream<{ orderId: string }>("/api/orders/stream");
+    const { healthy, lastEvent } = useEventStream<{ orderId: string }>({
+      key: "orders",
+      url: "/api/orders/stream",
+      onEvent: () => {},
+    });
     </script>
 
     <template>
       <div>
-        <span>Stream status: {{ status }}</span>
-        <p v-if="data">Latest order: {{ data.orderId }}</p>
-        <button @click="close">Disconnect</button>
+        <span>Stream healthy: {{ healthy }}</span>
+        <p v-if="lastEvent">Latest order: {{ lastEvent.orderId }}</p>
       </div>
     </template>
     ```
@@ -82,7 +88,8 @@ For declarative UI components, import the reactive SSE and WebSocket composables
     ```typescript title="src/lib/ordersStream.ts"
     import { createEventStreamStore } from "litestar-vite-plugin/svelte";
 
-    export const ordersStream = createEventStreamStore<{ orderId: string }>(
-      "/api/orders/stream",
-    );
+    export const ordersStream = createEventStreamStore<{ orderId: string }>({
+      url: "/api/orders/stream",
+      onEvent: () => {},
+    });
     ```

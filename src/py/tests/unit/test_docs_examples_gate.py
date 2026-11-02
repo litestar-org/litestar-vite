@@ -42,7 +42,6 @@ def test_gate_fails_on_known_bad_fixture(repo_root: Path) -> None:
     assert "enabled" in combined_output
 
 
-@pytest.mark.xfail(strict=False, reason="Legacy documentation pages contain partial snippets without skip markers")
 def test_gate_passes_on_docs_tree(repo_root: Path) -> None:
     """Verify that the full documentation tree passes the verification gate."""
     gate_script = repo_root / "tools" / "check_docs_examples.py"
@@ -61,7 +60,7 @@ def test_gate_passes_on_docs_tree(repo_root: Path) -> None:
 
 
 def test_skip_marker_is_honored(tmp_path: Path, repo_root: Path) -> None:
-    """Verify that the .. docs-example: skip marker excludes intentionally partial snippets."""
+    """Verify that .. docs-example: skip and <!-- docs-example: skip --> exclude partial snippets."""
     gate_script = repo_root / "tools" / "check_docs_examples.py"
     rst_file = tmp_path / "test_skip.rst"
     rst_file.write_text(
@@ -78,9 +77,20 @@ def test_skip_marker_is_honored(tmp_path: Path, repo_root: Path) -> None:
         "   const stream = createEventStream({ url: '/x' })\n",
         encoding="utf-8",
     )
+    md_file = tmp_path / "test_skip.md"
+    md_file.write_text(
+        "# Test Document\n\n"
+        "<!-- docs-example: skip -->\n"
+        "```python\n"
+        "@websocket_listener('/ws')\n"
+        "def handle_ws() -> None:\n"
+        "    pass\n"
+        "```\n",
+        encoding="utf-8",
+    )
 
     result = subprocess.run(
-        [sys.executable, str(gate_script), "--paths", str(rst_file)],
+        [sys.executable, str(gate_script), "--paths", str(rst_file), str(md_file)],
         cwd=str(repo_root),
         capture_output=True,
         text=True,

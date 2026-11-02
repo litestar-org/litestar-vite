@@ -56,38 +56,47 @@ Register `<litestar-island>` and the Litestar HTMX CSRF/Directive extension in y
 === "React"
 
     ```typescript title="resources/main.ts"
-    import { registerLitestarIslands } from "litestar-vite-plugin/fragments";
-    import { createReactAdapter } from "litestar-vite-plugin/fragments/react";
-    import { registerHtmxExtension } from "litestar-vite-plugin/htmx";
+    import { hydrateIslands } from "litestar-vite-plugin/fragments/client";
+    import { hydrateReact } from "litestar-vite-plugin/fragments/react";
+    import { registerHtmxExtension } from "litestar-vite-plugin/helpers";
 
     registerHtmxExtension();
-    registerLitestarIslands({
-      adapter: createReactAdapter(import.meta.glob("./islands/**/*.tsx")),
+    hydrateIslands({
+      "islands/RevenueChart": {
+        load: () => import("./islands/RevenueChart"),
+        hydrate: hydrateReact,
+      },
     });
     ```
 
 === "Vue 3"
 
     ```typescript title="resources/main.ts"
-    import { registerLitestarIslands } from "litestar-vite-plugin/fragments";
-    import { createVueAdapter } from "litestar-vite-plugin/fragments/vue";
-    import { registerHtmxExtension } from "litestar-vite-plugin/htmx";
+    import { hydrateIslands } from "litestar-vite-plugin/fragments/client";
+    import { hydrateVue } from "litestar-vite-plugin/fragments/vue";
+    import { registerHtmxExtension } from "litestar-vite-plugin/helpers";
 
     registerHtmxExtension();
-    registerLitestarIslands({
-      adapter: createVueAdapter(import.meta.glob("./islands/**/*.vue")),
+    hydrateIslands({
+      "islands/RevenueChart": {
+        load: () => import("./islands/RevenueChart.vue"),
+        hydrate: hydrateVue,
+      },
     });
     ```
 
 === "Svelte 5"
 
     ```typescript title="resources/main.ts"
-    import { registerLitestarIslands } from "litestar-vite-plugin/fragments";
-    import { createSvelteAdapter } from "litestar-vite-plugin/fragments/svelte";
-    import { registerHtmxExtension } from "litestar-vite-plugin/htmx";
+    import { hydrateIslands } from "litestar-vite-plugin/fragments/client";
+    import { hydrateSvelte } from "litestar-vite-plugin/fragments/svelte";
+    import { registerHtmxExtension } from "litestar-vite-plugin/helpers";
 
     registerHtmxExtension();
-    registerLitestarIslands({
-      adapter: createSvelteAdapter(import.meta.glob("./islands/**/*.svelte")),
+    hydrateIslands({
+      "islands/RevenueChart": {
+        load: () => import("./islands/RevenueChart.svelte"),
+        hydrate: hydrateSvelte,
+      },
     });
     ```

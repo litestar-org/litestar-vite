@@ -30,7 +30,7 @@ type Customers = SuccessResponse<"customers:list">;
 
 export async function fetchEnterpriseCustomers(): Promise<Customers> {
   const { data } = await listCustomers({ throwOnError: true });
-  return data.filter((customer) => customer.tier === "enterprise");
+  return data.filter((customer: { tier: string }) => customer.tier === "enterprise");
 }
 ```
 

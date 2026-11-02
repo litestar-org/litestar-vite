@@ -10,27 +10,10 @@ permissions:
   contents: read
 
 jobs:
-  generate-demos:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y tree ffmpeg
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Set up Python
-        run: uv python install 3.12
-
-      - name: Install dependencies
-        run: uv sync --all-extras --dev
-
-      - name: Install litestar-vite package
-        run: uv pip install -e .
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -43,66 +26,6 @@ jobs:
           npm ci
           npm run build
 
-      - name: Install Go (for VHS)
-        uses: actions/setup-go@v7
-        with:
-          go-version: ">=1.24.0"
-          check-latest: true
-
-      - name: Install VHS
-        run: |
-          go install github.com/charmbracelet/vhs@latest
-          echo "$HOME/go/bin" >> $GITHUB_PATH
-
-      - name: Install ttyd
-        run: |
-          sudo apt-get install -y ttyd || {
-            # Fallback: install from GitHub releases
-            curl -fsSL -o /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64
-            chmod +x /tmp/ttyd
-            sudo mv /tmp/ttyd /usr/local/bin/ttyd
-          }
-
-      - name: Create output directory
-        run: mkdir -p docs/_static/demos
-
-      - name: Generate Demo GIFs
-        run: |
-          export PATH="$HOME/go/bin:$PATH"
-          # VHS needs to run from the project root where uv.lock exists
-          for tape in docs/_tapes/*.tape; do
-            echo "Processing $tape..."
-            vhs "$tape" || echo "Warning: $tape failed"
-          done
-        env:
-          # Disable Chrome sandbox for headless rendering
-          VHS_NO_SANDBOX: "true"
-          # Bypass CI environment check - demos intentionally run dev commands
-          LITESTAR_BYPASS_ENV_CHECK: "1"
-
-      - name: List generated files
-        run: ls -la docs/_static/demos/ || echo "No demos generated"
-
-      - name: Upload demos artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: demo-gifs
-          path: docs/_static/demos/
-          if-no-files-found: warn
-
-  build:
-    needs: generate-demos
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Download demo artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: demo-gifs
-          path: docs/_static/demos/
-        continue-on-error: true
-
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
@@ -110,12 +33,12 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --all-groups --all-extras
 
-      - name: Build documentation
-        run: uv run python tools/build_docs.py docs-build
-        env:
-          _LITESTAR_VITE_DOCS_BASE_PATH: "/litestar-vite/"
+      - name: Build and verify documentation
+        run: |
+          uv run python tools/build_docs.py docs-build
+          DOCS_EXAMPLES_STRICT=1 uv run python tools/check_docs_examples.py
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5

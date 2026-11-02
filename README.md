@@ -1,9 +1,9 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-inline-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="docs/assets/banner-inline-light.svg">
-  <img alt="Litestar Vite" src="docs/assets/banner-inline-light.svg" width="60%" height="auto">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/litestar-org/litestar-vite/main/docs/assets/banner-inline-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/litestar-org/litestar-vite/main/docs/assets/banner-inline-light.svg">
+  <img alt="Litestar Vite" src="https://raw.githubusercontent.com/litestar-org/litestar-vite/main/docs/assets/banner-inline-light.svg" width="520">
 </picture>
 
 <p><strong>First-class Vite 7+, Inertia.js v2, Island Fragments, and End-to-End Type Generation for Litestar</strong></p>

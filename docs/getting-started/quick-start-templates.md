@@ -104,13 +104,14 @@ Use `{{ vite_hmr() }}` and `{{ vite('resources/main.ts') }}` in `<head>`, and em
 Register the `<litestar-island>` custom element in your client entrypoint so islands hydrate according to their `data-hydrate` strategy (`load`, `idle`, `visible`, or `media`):
 
 ```typescript title="resources/main.ts"
-import { registerLitestarIslands } from "litestar-vite-plugin/fragments";
-import { createReactAdapter } from "litestar-vite-plugin/fragments/react";
+import { hydrateIslands } from "litestar-vite-plugin/fragments/client";
+import { hydrateReact } from "litestar-vite-plugin/fragments/react";
 
-const components = import.meta.glob("./components/**/*.tsx");
-
-registerLitestarIslands({
-  adapter: createReactAdapter(components),
+hydrateIslands({
+  "islands/RevenueChart": {
+    load: () => import("./islands/RevenueChart"),
+    hydrate: hydrateReact,
+  },
 });
 ```
 

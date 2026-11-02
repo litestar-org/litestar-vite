@@ -97,12 +97,12 @@ createInertiaApp({
       useScriptElementForInitialPage: true,
     },
   },
-  resolve: (name) =>
+  resolve: (name: string) =>
     resolvePageComponent(
       `./pages/${name}.tsx`,
       import.meta.glob("./pages/**/*.tsx"),
     ),
-  setup({ el, App, props }) {
+  setup({ el, App, props }: { el: HTMLElement; App: any; props: any }) {
     createRoot(el).render(<App {...props} />);
   },
 });

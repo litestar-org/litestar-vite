@@ -275,6 +275,9 @@ docs-examples:                                     ## Verify documentation code 
 .PHONY: lint
 lint: pre-commit type-check slotscheck oxlint oxfmt docs-examples ## Run all linting checks
 
+.PHONY: check
+check: lint                                        ## Run all static analysis and linting gates
+
 .PHONY: check-all
 check-all: lint test coverage                      ## Run all checks (lint, test, coverage)
 
@@ -285,45 +288,47 @@ check-all: lint test coverage                      ## Run all checks (lint, test
 .PHONY: docs-clean
 docs-clean:                                        ## Clean documentation build
 	@echo "${INFO} Cleaning documentation build assets... 🧹"
-	@rm -rf docs/_build >/dev/null 2>&1
+	@rm -rf site docs/_build >/dev/null 2>&1
 	@echo "${OK} Documentation assets cleaned"
+
+.PHONY: docs-gen
+docs-gen:                                          ## Regenerate CLI and TypeScript API reference pages
+	@echo "${INFO} Generating CLI and TypeScript reference pages... 📝"
+	@uv run python tools/docs/generate_cli_docs.py
+	@uv run python tools/docs/generate_ts_docs.py
+	@echo "${OK} Reference pages generated"
 
 .PHONY: docs-serve
 docs-serve: docs-clean                             ## Serve documentation locally
-	@echo "${INFO} Starting documentation server... 📚"
-	@uv run sphinx-autobuild docs docs/_build/ -j auto --watch src/py/litestar_vite --watch docs --watch CONTRIBUTING.rst --port 8002
+	@echo "${INFO} Starting Zensical documentation server... 📚"
+	@uv run zensical serve -a localhost:8000
 
 .PHONY: docs
-docs: docs-clean                                   ## Build documentation
+docs: docs-clean                                   ## Build and verify Zensical documentation
 	@echo "${INFO} Building documentation... 📝"
-	@uv run sphinx-build -M html docs docs/_build/ -E -a -j auto -W --keep-going
+	@uv run python tools/docs/generate_cli_docs.py --check
+	@uv run python tools/docs/generate_ts_docs.py --check
+	@uv run python tools/docs/scan_public_docstrings.py
+	@uv run zensical build --clean
+	@uv run python tools/docs/postbuild.py
+	@uv run python tools/docs/verify_docs_artifacts.py --strict-warnings --no-build
 	@echo "${OK} Documentation built successfully"
 
+.PHONY: docs-check
+docs-check: docs                                   ## Build documentation and run strict example checks
+	@DOCS_EXAMPLES_STRICT=1 uv run python tools/check_docs_examples.py
+
 .PHONY: docs-linkcheck
-docs-linkcheck:                                    ## Check documentation links
-	@echo "${INFO} Checking documentation links... 🔗"
-	@uv run sphinx-build -b linkcheck ./docs ./docs/_build -D linkcheck_ignore='http://.*','https://.*'
+docs-linkcheck:                                    ## Check documentation links and artifacts
+	@echo "${INFO} Checking documentation links and artifacts... 🔗"
+	@uv run python tools/docs/verify_docs_artifacts.py --strict-warnings --no-build
 	@echo "${OK} Link check complete"
 
 .PHONY: docs-linkcheck-full
-docs-linkcheck-full:                               ## Run full documentation link check
-	@echo "${INFO} Running full link check... 🔗"
-	@uv run sphinx-build -b linkcheck ./docs ./docs/_build -D linkcheck_anchors=0
-	@echo "${OK} Full link check complete"
-
-.PHONY: docs-demos
-docs-demos:                                        ## Generate demo GIFs locally (requires vhs)
-	@echo "${INFO} Generating demo GIFs... 🎬"
-	@command -v vhs >/dev/null 2>&1 || { echo "${ERROR} VHS required. Install with: brew install vhs (macOS) or see https://github.com/charmbracelet/vhs"; exit 1; }
-	@mkdir -p docs/_static/demos
-	@for tape in docs/_tapes/*.tape; do \
-		echo "${INFO} Processing $$tape..."; \
-		VHS_NO_SANDBOX=true vhs "$$tape"; \
-	done
-	@echo "${OK} Demo GIFs generated successfully"
+docs-linkcheck-full: docs-linkcheck                ## Run full documentation link check
 
 .PHONY: docs-all
-docs-all: docs-demos docs                          ## Generate demos and build documentation
+docs-all: docs                                     ## Build and verify documentation
 
 # =============================================================================
 # Example Management

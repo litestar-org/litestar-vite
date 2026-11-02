@@ -9,30 +9,43 @@ API reference for the Inertia.js v2 plugin, request/response primitives, deferre
 ::: litestar_vite.inertia.InertiaPlugin
     options:
       heading_level: 4
+      members:
+        - on_app_init
 
 ::: litestar_vite.inertia.InertiaMiddleware
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.InertiaRequest
     options:
       heading_level: 4
+      members:
+        - is_inertia
+        - is_partial_render
+        - partial_keys
+        - partial_except_keys
+        - reset_keys
 
 ::: litestar_vite.inertia.InertiaDetails
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.InertiaHeaders
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.types.PageProps
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.types.InertiaHeaderType
     options:
       heading_level: 4
+      members: false
 
 ---
 
@@ -41,18 +54,22 @@ API reference for the Inertia.js v2 plugin, request/response primitives, deferre
 ::: litestar_vite.inertia.InertiaResponse
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.InertiaRedirect
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.InertiaBack
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.InertiaExternalRedirect
     options:
       heading_level: 4
+      members: false
 
 ---
 
@@ -101,34 +118,42 @@ API reference for the Inertia.js v2 plugin, request/response primitives, deferre
 ::: litestar_vite.inertia.helpers.DeferredProp
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.helpers.MergeProp
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.OnceProp
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.OptionalProp
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.AlwaysProp
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.helpers.StaticProp
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.PropFilter
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.types.ScrollPropsConfig
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.extract_deferred_props
     options:
@@ -174,13 +199,14 @@ API reference for the Inertia.js v2 plugin, request/response primitives, deferre
 
 ## Laravel Precognition & Exception Handling
 
-::: litestar_vite.inertia.precognition
+::: litestar_vite.inertia.precognition.precognition
     options:
       heading_level: 4
 
 ::: litestar_vite.inertia.PrecognitionResponse
     options:
       heading_level: 4
+      members: false
 
 ::: litestar_vite.inertia.create_precognition_exception_handler
     options:
