@@ -10,7 +10,12 @@ from typing import TYPE_CHECKING, Any
 
 from click import Choice, Context, group, option
 from click import Path as ClickPath
-from litestar.cli._utils import LitestarCLIException, LitestarEnv, LitestarGroup, console  # pyright: ignore[reportPrivateImportUsage]
+from litestar.cli._utils import (  # pyright: ignore[reportPrivateImportUsage]
+    LitestarCLIException,
+    LitestarEnv,
+    LitestarGroup,
+    console,
+)
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
