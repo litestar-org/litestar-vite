@@ -38,8 +38,8 @@ my-project/
 
 ## Configuration
 
-> [!IMPORTANT]
-> Register `litestarSvelteKit()` **before** `sveltekit()` in `vite.config.ts` so the `/api` proxy middleware runs before SvelteKit's catch-all route matcher.
+!!! important
+    Register `litestarSvelteKit()` **before** `sveltekit()` in `vite.config.ts` so the `/api` proxy middleware runs before SvelteKit's catch-all route matcher.
 
 === "Python (`app.py`)"
 
@@ -97,7 +97,7 @@ my-project/
 
 ---
 
-## Typed `load` Functions (`+page.ts`)
+## Typed Load Functions
 
 Use SvelteKit's universal `load` function (`+page.ts`) with the generated `route()` helper so both SSR and client-side navigations fetch typed data from Litestar:
 

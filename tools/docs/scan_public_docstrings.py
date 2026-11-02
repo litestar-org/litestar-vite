@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = REPO_ROOT / "src" / "py" / "litestar_vite"
 ATTRIBUTES_RE = re.compile(r"(?m)^\s*Attributes:\s*$")
 RST_DIRECTIVE_RE = re.compile(
-    r"(\.\.\s+(?:code-block|warning|note|deprecated|versionadded)::|:(?:class|func|attr|meth|exc|mod):`[^`]+`)"
+    r"(\.\.\s+(?:code-block|warning|note|deprecated|versionadded)::|:(?:class|func|attr|meth|exc|mod):`[^`]+`|\bExamples?::)"
 )
 
 

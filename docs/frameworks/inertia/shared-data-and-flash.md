@@ -4,7 +4,7 @@ Cross-cutting concerns like the currently authenticated user, organization permi
 
 ---
 
-## 1. Per-Request Shared Props (`share()`)
+## Per-Request Shared Props (`share`)
 
 Call [`share(connection, key, value)`](../../reference/inertia.md#litestar_vite.inertia.share) inside route handlers, guards, dependencies, or middleware to attach props to the current request's Inertia envelope:
 
@@ -30,7 +30,7 @@ def attach_shared_context(request: Request[Any, Any, Any]) -> None:
 
 ---
 
-## 2. Static & Session-Backed Shared Props (`InertiaConfig`)
+## Static & Session-Backed Shared Props
 
 In addition to calling `share()` per request, `InertiaConfig` supports declarative static and session-backed props:
 
@@ -40,20 +40,20 @@ In addition to calling `share()` per request, `InertiaConfig` supports declarati
 | `extra_session_page_props` | `set[str]` | Keys automatically read from `request.session` and included in `props` when present. |
 | **Built-in Shared Props** | `errors`, `csrf_token` | Automatically injected on every Inertia response (`errors` defaults to `{}`). |
 
-> [!NOTE]
-> During partial reloads (`only` / `except`), shared props are filtered by the client's requested keys just like handler props — unless wrapped in `always()`.
+!!! note
+    During partial reloads (`only` / `except`), shared props are filtered by the client's requested keys just like handler props — unless wrapped in `always()`.
 
 ---
 
-## 3. Typing Shared Props (`InertiaConfig.shared_page_prop_types`)
+## Typing Shared Props
 
 Props registered dynamically via `share(connection, key, value)` inside guards or middleware have no static return annotation on individual route handlers.
 
-By declaring `InertiaConfig(shared_page_prop_types={"currentUser": AuthenticatedUser})`, `litestar-vite`'s OpenAPI/TypeScript generator registers `AuthenticatedUser` in the shared schema registry and emits the exact TypeScript type on `SharedPageProps` in `page-props.ts` — eliminating `unknown` or hand-maintained duplicate interfaces.
+By declaring `InertiaConfig(shared_page_prop_types={"currentUser": AuthenticatedUser})`, Litestar Vite's OpenAPI/TypeScript generator registers `AuthenticatedUser` in the shared schema registry and emits the exact TypeScript type on `SharedPageProps` in `page-props.ts` — eliminating `unknown` or hand-maintained duplicate interfaces.
 
 ---
 
-## 4. Top-Level Flash Messages (`page.flash`)
+## Top-Level Flash Messages
 
 Inertia v2.3+ places flash messages at the **top level** of the page object (`page.flash`) rather than inside `page.props.flash` so flash messages are never accidentally cached in `window.history.state` or re-triggered on Back/Forward navigation.
 
@@ -72,11 +72,11 @@ def save_settings(request: Request[Any, Any, Any]) -> InertiaRedirect:
     return InertiaRedirect(request, redirect_to="/settings")
 ```
 
-### Reading `page.flash` on the Client
+### Reading Flash Messages on the Client
 
-When `TypeGenConfig` runs (with `InertiaTypeGenConfig(include_default_flash=True)`), `litestar-vite` generates `src/generated/inertia.d.ts` augmenting Inertia's `FlashDataType` with `FlashMessages` (`success?: string[]`, `error?: string[]`, `info?: string[]`, `warning?: string[]`):
+When `TypeGenConfig` runs (with `InertiaTypeGenConfig(include_default_flash=True)`), Litestar Vite generates `src/generated/inertia.d.ts` augmenting Inertia's `FlashDataType` with `FlashMessages` (`success?: string[]`, `error?: string[]`, `info?: string[]`, `warning?: string[]`):
 
-=== "React (`@inertiajs/react`)"
+=== "React"
 
     ```tsx title="resources/components/ToastBanner.tsx"
     import { usePage } from "@inertiajs/react";
@@ -96,7 +96,7 @@ When `TypeGenConfig` runs (with `InertiaTypeGenConfig(include_default_flash=True
     }
     ```
 
-=== "Vue 3 (`@inertiajs/vue3`)"
+=== "Vue 3"
 
     ```vue title="resources/components/ToastBanner.vue"
     <script setup lang="ts">

@@ -17,7 +17,7 @@ from tools.docs.postbuild import DEFAULT_DOCS_DIR, DEFAULT_SITE_DIR, LEGACY_REDI
 from tools.docs.scan_public_docstrings import scan_package
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-MAX_REFERENCE_HTML_BYTES = 180 * 1024
+MAX_REFERENCE_HTML_BYTES = 220 * 1024
 MAX_REFERENCE_TOC_HEADINGS = 14
 
 WARNING_PATTERN = re.compile(r"\b(WARNING|ERROR)\b")

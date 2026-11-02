@@ -90,7 +90,7 @@ my-project/
 
 ---
 
-## How `litestar-vite-plugin/astro` Works
+## How the Astro Integration Works
 
 1. **Bridge & Hotfile Sync**: Reads `.litestar.json` on startup and writes the active Astro dev server URL to the `hot` file (`dist/hot`) so Litestar's single-port `ViteProxyMiddleware` routes non-API requests to Astro automatically.
 2. **Dev Proxy**: Configures Vite's `server.proxy` for `apiPrefix` (default `"/api"`) so direct visits to Astro's port also forward API requests to Litestar.
@@ -98,7 +98,7 @@ my-project/
 
 ---
 
-## Fetching Typed Data in `.astro` Pages
+## Fetching Typed Data in Astro Pages
 
 Import `route()` and OpenAPI types directly inside Astro's server frontmatter fence (`---`):
 

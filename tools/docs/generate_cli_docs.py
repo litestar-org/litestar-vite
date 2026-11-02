@@ -188,8 +188,7 @@ def _format_param_type(param: click.Parameter) -> str:
         return "`bool`"
     param_type = param.type
     if isinstance(param_type, click.Choice):
-        choices = " \\| ".join(f'"{c}"' for c in param_type.choices)
-        return f"`Choice({choices})`"
+        return "`Choice`"
     if isinstance(param_type, click.Path):
         return "`Path`"
     name = getattr(param_type, "name", None) or type(param_type).__name__.lower()
@@ -218,6 +217,9 @@ def _extract_params(cmd: click.Command) -> tuple[list[CliParamDoc], list[CliPara
             opts = [*param.opts, *param.secondary_opts]
             flags = ", ".join(f"`{opt}`" for opt in opts)
             desc = _clean_help(param.help or "").replace("\n", " ").replace("|", r"\|")
+            if isinstance(param.type, click.Choice):
+                choice_list = ", ".join(f"`{c}`" for c in param.type.choices)
+                desc = f"{desc} (Choices: {choice_list})" if desc else f"Choices: {choice_list}"
             options.append(
                 CliParamDoc(
                     flags=flags,

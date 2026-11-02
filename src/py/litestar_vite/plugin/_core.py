@@ -111,8 +111,8 @@ class VitePlugin(InitPlugin, CLIPlugin):
     - Vite dev server process management
     - Async asset loader initialization
 
-    Example::
-
+    Example:
+        ```python
         from litestar import Litestar
         from litestar_vite import VitePlugin, ViteConfig
 
@@ -121,6 +121,7 @@ class VitePlugin(InitPlugin, CLIPlugin):
                 VitePlugin(config=ViteConfig(dev_mode=True))
             ],
         )
+        ```
     """
 
     __slots__ = (

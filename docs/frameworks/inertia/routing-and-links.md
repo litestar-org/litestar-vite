@@ -6,7 +6,7 @@ In Inertia applications, **all routing is defined on the server** using standard
 
 ## How Litestar Routing Compares to Laravel + Ziggy
 
-| Concept | Laravel + Ziggy | Litestar + `litestar-vite` |
+| Concept | Laravel + Ziggy | Litestar + Litestar Vite |
 | --- | --- | --- |
 | **Route Declaration** | `Route::get('/users/{id}', ...)->name('users.show')` | `@get("/users/{user_id:int}", name="users.show", component="Users/Show")` |
 | **Frontend URL Helper** | Ziggy `route('users.show', { id: 1 })` | Native generated `route("users.show", { user_id: 1 })` in `routes.ts` |
@@ -15,11 +15,11 @@ In Inertia applications, **all routing is defined on the server** using standard
 
 ---
 
-## 1. Client-Side Navigation with `<Link>` and `route()`
+## Client-Side Navigation with `<Link>` and `route`
 
 Use Inertia's `<Link>` component for internal navigation so clicks are intercepted as lightweight XHR/Fetch requests instead of full browser reloads. Pair `<Link>` with the generated `route()` function from `@/generated/routes` for compile-time URL safety:
 
-=== "React (`@inertiajs/react`)"
+=== "React"
 
     ```tsx title="resources/components/Nav.tsx"
     import { Link } from "@inertiajs/react";
@@ -38,7 +38,7 @@ Use Inertia's `<Link>` component for internal navigation so clicks are intercept
     }
     ```
 
-=== "Vue 3 (`@inertiajs/vue3`)"
+=== "Vue 3"
 
     ```vue title="resources/components/Nav.vue"
     <script setup lang="ts">
@@ -57,7 +57,7 @@ Use Inertia's `<Link>` component for internal navigation so clicks are intercept
     </template>
     ```
 
-=== "Svelte 5 (`@inertiajs/svelte`)"
+=== "Svelte 5"
 
     ```svelte title="resources/components/Nav.svelte"
     <script lang="ts">
@@ -77,25 +77,25 @@ Use Inertia's `<Link>` component for internal navigation so clicks are intercept
     </nav>
     ```
 
-### Global `window.route` (`TypeGenConfig.global_route`)
+### Global Route Helper
 
 If you want `route()` available globally without importing it in every file (similar to Laravel Ziggy), set `TypeGenConfig(global_route=True)` in Python and register `window.route = route` in your application entrypoint.
 
 ---
 
-## 2. Redirect Primitives
+## Redirect Primitives
 
 Inertia expects specific HTTP status codes when redirecting after form submissions or navigating to external domains:
 
 | Class | Status / Header | Security & Behavior |
 | --- | --- | --- |
-| [`InertiaRedirect(request, redirect_to="/...")`](../../reference/inertia.md#litestar_vite.inertia.InertiaRedirect) | `303 See Other` (after `PUT`/`PATCH`/`DELETE`) or `302 Found` | Validates that `redirect_to` is same-origin (or relative) to prevent open-redirect vulnerabilities, and preserves staged `flash()` / `error()` session data. |
-| [`InertiaBack(request)`](../../reference/inertia.md#litestar_vite.inertia.InertiaBack) | `303 See Other` to `Referer` | Redirects back to the referring page if the `Referer` header matches the request's origin; falls back to `base_url` otherwise. |
-| [`InertiaExternalRedirect(request, redirect_to="https://...")`](../../reference/inertia.md#litestar_vite.inertia.InertiaExternalRedirect) | `409 Conflict` + `X-Inertia-Location` | Instructs the Inertia client to perform a full `window.location` redirect to an external URL (e.g., Stripe Checkout or an OAuth provider). |
+| [`InertiaRedirect(request, redirect_to="/...")`](../../reference/inertia.md#litestar_vite.inertia.InertiaRedirect) | 303 See Other (after `PUT`/`PATCH`/`DELETE`) or 302 Found | Validates that `redirect_to` is same-origin (or relative) to prevent open-redirect vulnerabilities, and preserves staged `flash()` / `error()` session data. |
+| [`InertiaBack(request)`](../../reference/inertia.md#litestar_vite.inertia.InertiaBack) | 303 See Other to `Referer` | Redirects back to the referring page if the `Referer` header matches the request's origin; falls back to `base_url` otherwise. |
+| [`InertiaExternalRedirect(request, redirect_to="https://...")`](../../reference/inertia.md#litestar_vite.inertia.InertiaExternalRedirect) | 409 Conflict + `X-Inertia-Location` | Instructs the Inertia client to perform a full `window.location` redirect to an external URL (e.g., Stripe Checkout or an OAuth provider). |
 
 ---
 
-## 3. The POST-Redirect-GET Pattern
+## The POST-Redirect-GET Pattern
 
 Following any mutation (`POST`, `PUT`, `PATCH`, `DELETE`), return an `InertiaRedirect` or `InertiaBack` so the browser follows up with a `GET` visit and updates the page props cleanly:
 

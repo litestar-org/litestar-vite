@@ -28,8 +28,8 @@ PAGE_ROUTING: dict[str, str] = {
     "./astro": "docs/reference/typescript/frameworks.md",
     "./sveltekit": "docs/reference/typescript/frameworks.md",
     "./nuxt": "docs/reference/typescript/frameworks.md",
-    "./dev-ssr": "docs/reference/typescript/frameworks.md",
-    "./ssr-worker": "docs/reference/typescript/frameworks.md",
+    "./dev-ssr": "docs/reference/typescript/fragments.md",
+    "./ssr-worker": "docs/reference/typescript/fragments.md",
     "./fragments": "docs/reference/typescript/fragments.md",
     "./fragments/client": "docs/reference/typescript/fragments.md",
     "./fragments/react": "docs/reference/typescript/fragments.md",
@@ -76,23 +76,31 @@ PAGE_HEADERS: tuple[PageHeader, ...] = (
     PageHeader(
         rel_path="docs/reference/typescript/frameworks.md",
         title="Framework Bindings & Meta-Frameworks",
-        description="TypeScript API reference for React, Vue, Svelte, Astro, SvelteKit, Nuxt, dev-ssr, and ssr-worker subpaths.",
+        description="TypeScript API reference for React, Vue, Svelte, Astro, SvelteKit, and Nuxt subpaths.",
         intro=(
-            "Framework-idiomatic reactive stream bindings (`litestar-vite-plugin/react`, `/vue`, `/svelte`), "
-            "meta-framework Vite/Nitro integrations (`litestar-vite-plugin/astro`, `/sveltekit`, `/nuxt`), "
-            "and SSR execution transports (`litestar-vite-plugin/dev-ssr`, `/ssr-worker`)."
+            "Framework-idiomatic reactive stream bindings (`litestar-vite-plugin/react`, `/vue`, `/svelte`) "
+            "and meta-framework Vite/Nitro integrations (`litestar-vite-plugin/astro`, `/sveltekit`, `/nuxt`)."
         ),
-        subpaths=("./react", "./vue", "./svelte", "./astro", "./sveltekit", "./nuxt", "./dev-ssr", "./ssr-worker"),
+        subpaths=("./react", "./vue", "./svelte", "./astro", "./sveltekit", "./nuxt"),
     ),
     PageHeader(
         rel_path="docs/reference/typescript/fragments.md",
-        title="Server Fragments & Islands",
-        description="TypeScript API reference for litestar-vite-plugin/fragments and client hydration adapters.",
+        title="Server Fragments, Islands & SSR Runtimes",
+        description="TypeScript API reference for litestar-vite-plugin/fragments, client hydration adapters, dev-ssr, and ssr-worker.",
         intro=(
-            "Server-rendered component fragments (`litestar-vite-plugin/fragments`) and `<litestar-island>` "
-            "progressive hydration adapters (`litestar-vite-plugin/fragments/client`, `/react`, `/vue`, `/svelte`)."
+            "Server-rendered component fragments (`litestar-vite-plugin/fragments`), `<litestar-island>` "
+            "progressive hydration adapters (`litestar-vite-plugin/fragments/client`, `/react`, `/vue`, `/svelte`), "
+            "and SSR execution transports (`litestar-vite-plugin/dev-ssr`, `/ssr-worker`)."
         ),
-        subpaths=("./fragments", "./fragments/client", "./fragments/react", "./fragments/vue", "./fragments/svelte"),
+        subpaths=(
+            "./fragments",
+            "./fragments/client",
+            "./fragments/react",
+            "./fragments/vue",
+            "./fragments/svelte",
+            "./dev-ssr",
+            "./ssr-worker",
+        ),
     ),
 )
 
@@ -182,13 +190,17 @@ def _find_preceding_jsdoc(source: str, start_idx: int) -> tuple[str, str | None,
     lines = prefix.splitlines()
     while lines and (not lines[-1].strip() or lines[-1].strip().startswith("//")):
         lines.pop()
-    trimmed = "\n".join(lines).rstrip()
-    if not trimmed.endswith("*/"):
+    if not lines or not lines[-1].rstrip().endswith("*/"):
         return "", None, False
-    open_idx = trimmed.rfind("/**")
-    if open_idx == -1:
+    open_line_idx = -1
+    for idx in range(len(lines) - 1, -1, -1):
+        if lines[idx].lstrip().startswith("/**"):
+            open_line_idx = idx
+            break
+    if open_line_idx == -1:
         return "", None, False
-    comment_body = trimmed[open_idx + 3 : -2]
+    block = "\n".join(lines[open_line_idx:]).strip()
+    comment_body = block[3:-2]
     return _clean_jsdoc(comment_body)
 
 
@@ -358,6 +370,34 @@ def _extract_interfaces_and_types(source: str, rel_file: str, symbols: dict[str,
         )
 
 
+def _find_function_body_start(source: str, start_idx: int) -> int:
+    """Locate the opening `{` or terminating `;` of a TypeScript function signature."""
+    paren_depth = 0
+    brace_depth = 0
+    seen_open_paren = False
+    idx = start_idx
+    length = len(source)
+    while idx < length:
+        ch = source[idx]
+        if ch == "(":
+            paren_depth += 1
+            seen_open_paren = True
+        elif ch == ")":
+            paren_depth = max(0, paren_depth - 1)
+        elif ch == "{":
+            if seen_open_paren and paren_depth == 0 and brace_depth == 0:
+                prefix_tail = source[max(start_idx, idx - 24) : idx].rstrip()
+                if not prefix_tail.endswith((":", "=", "extends", "|", "&", "<", ",")):
+                    return idx
+            brace_depth += 1
+        elif ch == "}":
+            brace_depth = max(0, brace_depth - 1)
+        elif ch == ";" and seen_open_paren and paren_depth == 0 and brace_depth == 0:
+            return idx
+        idx += 1
+    return length
+
+
 def _extract_direct_symbols(file_path: Path, repo_root: Path) -> dict[str, SubpathSymbol]:
     """Parse all top-level declarations in a TypeScript file into a symbol map."""
     source = file_path.read_text(encoding="utf-8")
@@ -372,14 +412,7 @@ def _extract_direct_symbols(file_path: Path, repo_root: Path) -> dict[str, Subpa
         summary, _, is_internal = _find_preceding_jsdoc(source, match.start())
         if is_internal or name.startswith("__"):
             continue
-        decl_end = source.find("\n", match.start())
-        brace_pos = source.find("{", match.end())
-        semi_pos = source.find("\nexport ", match.end())
-        end_pos = (
-            brace_pos
-            if brace_pos != -1 and (semi_pos == -1 or brace_pos < semi_pos)
-            else (decl_end if decl_end != -1 else len(source))
-        )
+        end_pos = _find_function_body_start(source, match.end())
         raw_sig = source[match.start() : end_pos].strip().rstrip("{;").strip()
         sig = " ".join(line.strip() for line in raw_sig.splitlines())
         existing = symbols.get(name)
@@ -448,13 +481,23 @@ def _parse_specifier_list(raw_list: str) -> list[tuple[str, str]]:
 
 
 def _hydrate_shared_alias_properties(collected: dict[str, SubpathSymbol], repo_root: Path) -> None:
-    """Attach interface properties to `TypesConfigShape` and `LitestarIntegrationConfig` aliases."""
+    """Attach interface properties to `TypesConfig` and `LitestarIntegrationConfig` aliases."""
     shared_targets = {
         "TypesConfigShape": repo_root / "src" / "js" / "src" / "shared" / "typegen-plugin.ts",
         "LitestarIntegrationConfig": repo_root / "src" / "js" / "src" / "shared" / "integration-config.ts",
     }
     for name, sym in list(collected.items()):
         if sym.kind != "type" or sym.properties:
+            continue
+        if name in ("AstroTypesConfig", "SvelteKitTypesConfig", "NuxtTypesConfig"):
+            collected[name] = SubpathSymbol(
+                name=sym.name,
+                kind=sym.kind,
+                signature=sym.signature,
+                summary=f"{sym.summary or 'Type generation configuration.'} Same fields as [`TypesConfig`](index.md#typesconfig).",
+                properties=(),
+                defined_in=sym.defined_in,
+            )
             continue
         for shared_key, shared_path in shared_targets.items():
             if shared_key in sym.signature:
@@ -571,8 +614,27 @@ def collect_subpath_docs(repo_root: Path = REPO_ROOT) -> list[SubpathDoc]:
 
 
 def _escape_cell(value: str) -> str:
-    """Escape Markdown table cell pipes and newlines."""
-    return " ".join(value.replace("|", r"\|").splitlines()).strip()
+    """Escape Markdown table cell pipes and newlines without literal backslashes in code spans."""
+    cleaned = " ".join(value.splitlines()).strip()
+    cleaned = re.sub(
+        r"`([^`]*\|[^`]*)`",
+        lambda m: (
+            "<code>"
+            + m.group(1).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("|", "&#124;")
+            + "</code>"
+        ),
+        cleaned,
+    )
+    return cleaned.replace("|", "&#124;")
+
+
+def _format_code_cell(value: str) -> str:
+    """Format a code value for a Markdown table cell without literal backslash escapes."""
+    cleaned = " ".join(value.splitlines()).strip()
+    if "|" in cleaned:
+        escaped = cleaned.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("|", "&#124;")
+        return f"<code>{escaped}</code>"
+    return f"`{cleaned}`"
 
 
 def _render_subpath_section(doc: SubpathDoc, repo_root: Path) -> list[str]:
@@ -601,8 +663,8 @@ def _render_subpath_section(doc: SubpathDoc, repo_root: Path) -> list[str]:
             lines.extend(["| Property | Type | Default | Description |", "| :--- | :--- | :--- | :--- |"])
             for prop in sym.properties:
                 prop_label = f"`{prop.name}?`" if prop.optional else f"`{prop.name}`"
-                type_cell = f"`{_escape_cell(prop.type_str)}`"
-                default_cell = f"`{_escape_cell(prop.default)}`" if prop.default else "—"
+                type_cell = _format_code_cell(prop.type_str)
+                default_cell = _format_code_cell(prop.default) if prop.default else "—"
                 desc_cell = _escape_cell(prop.description) if prop.description else "—"
                 lines.append(f"| {prop_label} | {type_cell} | {default_cell} | {desc_cell} |")
             lines.append("")

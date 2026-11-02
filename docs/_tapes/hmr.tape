@@ -1,41 +1,66 @@
-# VHS tape for recording HMR (Hot Module Replacement) demo
-# Run with: vhs docs/_tapes/hmr.tape
-# Output: docs/assets/demos/hmr.gif
-# Note: This tape shows the terminal side of HMR
+# HMR Demo - Integrated Dev Server
+# Demonstrates: litestar run with integrated Vite dev server
+# Uses: examples/react-inertia
 
 Output docs/assets/demos/hmr.gif
 
-Set FontSize 15
-Set Width 950
-Set Height 550
-Set Theme "Dracula"
+Set Shell "bash"
+Set FontSize 14
+Set Width 1000
+Set Height 600
+Set Theme "Catppuccin Mocha"
 Set Padding 20
-Set TypingSpeed 40ms
+Set TypingSpeed 50ms
 
-# Setup in background
+Type "# Litestar Vite - Integrated Dev Server"
+Enter
+Sleep 1s
+
 Hide
-Type "cd examples/react && clear"
+Type "source .venv/bin/activate"
 Enter
 Sleep 500ms
+Type "cd examples/react-inertia"
+Enter
+Sleep 500ms
+# Ensure dependencies are installed (hidden)
+Type "litestar --app app:app assets install 2>/dev/null"
+Enter
+Sleep 4s
 Show
 
-Type "# Starting Litestar with Vite single-port proxy + HMR"
+Type "# One command starts everything - Litestar + Vite HMR"
 Enter
-Sleep 1s
+Sleep 500ms
 
-# Show how to start both servers
-Type "# Single command starts both Litestar and Vite:"
+Type "# In dev_mode=True, Vite is automatically proxied"
 Enter
-Sleep 1s
+Sleep 500ms
 
-Type "litestar run --reload"
+Type "litestar --app app:app run"
 Enter
 Sleep 5s
 
-# Simulate Ctrl+C after showing output
-Ctrl+C
+Type ""
 Sleep 1s
 
-Type "# Vite HMR updates components in-place without losing state"
+# Show that server is running
+Type "# Server running at http://localhost:5002"
+Enter
+Sleep 500ms
+
+Type "# Vite HMR is proxied through /static/vite-hmr"
+Enter
+Sleep 500ms
+
+Type "# Edit your React components - changes appear instantly!"
+Enter
+Sleep 2s
+
+# Simulate Ctrl+C to stop
+Ctrl+C
+Sleep 500ms
+
+Type "# That's it - unified development experience!"
 Enter
 Sleep 2s

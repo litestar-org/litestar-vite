@@ -1,12 +1,12 @@
-# Quick Start: Jinja2 Templates & Islands (`mode="template"`)
+# Quick Start: Jinja2 Templates & Islands
 
 In **Template mode** (`mode="template"`), Litestar renders server-side Jinja2 templates while `VitePlugin` registers template callables (`vite_hmr()`, `vite()`, `vite_fragment()`, `vite_static()`) and mounts `<litestar-island>` web components or HTMX `ComponentResponse` fragments.
 
 ---
 
-## 1. Install Dependencies
+## Install Dependencies
 
-Install `litestar-vite` with the `jinja` extra:
+Install Litestar Vite with the `jinja` extra:
 
 === "uv"
 
@@ -54,7 +54,7 @@ Install `litestar-vite-plugin` in your frontend workspace:
 
 ---
 
-## 2. Configure Litestar (`app.py`)
+## Configure Litestar
 
 Configure `TemplateConfig(engine=JinjaTemplateEngine)` alongside `VitePlugin(config=ViteConfig(mode="template"))`. Route handlers can return standard `Template` responses for full pages or `ComponentResponse` for partial HTMX swaps:
 
@@ -64,7 +64,7 @@ Configure `TemplateConfig(engine=JinjaTemplateEngine)` alongside `VitePlugin(con
 
 ---
 
-## 3. Author the Jinja2 Template (`home.html.j2`)
+## Author the Jinja2 Template
 
 Use `{{ vite_hmr() }}` and `{{ vite('resources/main.ts') }}` in `<head>`, and embed interactive islands with `{{ vite_fragment('components/MetricsCard.tsx', props={'activeOrders': initial_count}, hydrate='visible') }}`:
 
@@ -99,7 +99,7 @@ Use `{{ vite_hmr() }}` and `{{ vite('resources/main.ts') }}` in `<head>`, and em
 
 ---
 
-## 4. Register Island Hydration (`resources/main.ts`)
+## Register Island Hydration
 
 Register the `<litestar-island>` custom element in your client entrypoint so islands hydrate according to their `data-hydrate` strategy (`load`, `idle`, `visible`, or `media`):
 

@@ -4,7 +4,7 @@ By default, partial reloads replace existing prop values. Using [`merge()`](../.
 
 ---
 
-## 1. Prop Merge Strategies (`merge()`)
+## Prop Merge Strategies (`merge`)
 
 ```python
 from litestar import get
@@ -30,14 +30,14 @@ def list_notifications(page: int = 1) -> dict[str, object]:
 | `strategy="append"` | Default | `mergeProps: ["notifications"]` | Appends new array items to the end of the existing client array. |
 | `strategy="prepend"` | `"prepend"` | `prependProps: ["live_activity"]` | Prepends new array items to the start of the existing client array. |
 | `strategy="deep"` | `"deep"` | `deepMergeProps: ["facets"]` | Recursively merges nested objects and arrays. |
-| `match_on` | `str \| list[str]` | `matchPropsOn: ["notifications.id"]` | Deduplicates merged items by matching one or more keys (updating existing items in place). |
+| `match_on` | <code>str &#124; list[str]</code> | `matchPropsOn: ["notifications.id"]` | Deduplicates merged items by matching one or more keys (updating existing items in place). |
 
-> [!TIP]
-> To discard merged items and start fresh (for example, when the user changes a search filter), pass `reset: ["notifications"]` in `router.visit(url, { only: ["notifications"], reset: ["notifications"] })`.
+!!! tip
+    To discard merged items and start fresh (for example, when the user changes a search filter), pass `reset: ["notifications"]` in `router.visit(url, { only: ["notifications"], reset: ["notifications"] })`.
 
 ---
 
-## 2. Automatic Infinite Scroll (`infinite_scroll=True`)
+## Automatic Infinite Scroll
 
 When your route handler returns a Litestar `OffsetPagination[T]`, `ClassicPagination[T]`, or `advanced_alchemy` pagination container, setting `infinite_scroll=True` in the route decorator automatically configures `mergeProps` and `scrollProps` (`pageName`, `currentPage`, `previousPage`, `nextPage`):
 
@@ -64,7 +64,7 @@ def feed_index(page: int = 1, page_size: int = 20) -> ClassicPagination[FeedPost
     )
 ```
 
-### Manual `scroll_props()` Configuration
+### Manual `scroll_props` Configuration
 
 If you build custom cursor or keyset pagination without `ClassicPagination` / `OffsetPagination`, attach [`scroll_props()`](../../reference/inertia.md#litestar_vite.inertia.scroll_props) explicitly:
 
@@ -90,21 +90,26 @@ def timeline(page: int = 1) -> InertiaResponse[dict[str, object]]:
 
 ---
 
-## 3. Frontend Infinite Scroll with `<WhenVisible>`
+## Frontend Infinite Scroll
 
-Pair `merge()` and `scrollProps` with `<WhenVisible always>` at the bottom of your list:
+Pair `merge()` and `scrollProps` with `<WhenVisible always>` at the bottom of your list. When `infinite_scroll=True` or `scroll_props()` is used, Inertia attaches pagination metadata on `page.props.scrollProps` (with `nextPage`, `previousPage`, `currentPage`, and `pageName`):
 
-=== "React (`@inertiajs/react`)"
+=== "React"
 
     ```tsx title="resources/pages/Feed/Index.tsx"
-    import { WhenVisible } from "@inertiajs/react";
+    import { usePage, WhenVisible } from "@inertiajs/react";
 
     interface FeedProps {
       posts: Array<{ id: number; title: string }>;
-      nextPage?: number | null;
+      scrollProps?: {
+        nextPage?: number | null;
+      };
     }
 
-    export default function FeedIndex({ posts, nextPage }: FeedProps) {
+    export default function FeedIndex({ posts }: FeedProps) {
+      const { props } = usePage<{ scrollProps?: { nextPage?: number | null } }>();
+      const nextPage = props.scrollProps?.nextPage;
+
       return (
         <div>
           <ul>
@@ -118,7 +123,7 @@ Pair `merge()` and `scrollProps` with `<WhenVisible always>` at the bottom of yo
               always
               params={{
                 data: { page: nextPage },
-                only: ["posts", "nextPage"],
+                only: ["posts"],
                 preserveUrl: true,
               }}
               fallback={<div>Loading more posts...</div>}
@@ -131,16 +136,19 @@ Pair `merge()` and `scrollProps` with `<WhenVisible always>` at the bottom of yo
     }
     ```
 
-=== "Vue 3 (`@inertiajs/vue3`)"
+=== "Vue 3"
 
     ```vue title="resources/pages/Feed/Index.vue"
     <script setup lang="ts">
-    import { WhenVisible } from "@inertiajs/vue3";
+    import { computed } from "vue";
+    import { usePage, WhenVisible } from "@inertiajs/vue3";
 
     defineProps<{
       posts: Array<{ id: number; title: string }>;
-      nextPage?: number | null;
     }>();
+
+    const page = usePage<{ scrollProps?: { nextPage?: number | null } }>();
+    const nextPage = computed(() => page.props.scrollProps?.nextPage);
     </script>
 
     <template>
@@ -153,7 +161,7 @@ Pair `merge()` and `scrollProps` with `<WhenVisible always>` at the bottom of yo
         always
         :params="{
           data: { page: nextPage },
-          only: ['posts', 'nextPage'],
+          only: ['posts'],
           preserveUrl: true,
         }"
       >

@@ -1,11 +1,11 @@
 ---
-title: Server Fragments & Islands
-description: TypeScript API reference for litestar-vite-plugin/fragments and client hydration adapters.
+title: Server Fragments, Islands & SSR Runtimes
+description: TypeScript API reference for litestar-vite-plugin/fragments, client hydration adapters, dev-ssr, and ssr-worker.
 ---
 
-# Server Fragments & Islands
+# Server Fragments, Islands & SSR Runtimes
 
-Server-rendered component fragments (`litestar-vite-plugin/fragments`) and `<litestar-island>` progressive hydration adapters (`litestar-vite-plugin/fragments/client`, `/react`, `/vue`, `/svelte`).
+Server-rendered component fragments (`litestar-vite-plugin/fragments`), `<litestar-island>` progressive hydration adapters (`litestar-vite-plugin/fragments/client`, `/react`, `/vue`, `/svelte`), and SSR execution transports (`litestar-vite-plugin/dev-ssr`, `/ssr-worker`).
 
 | Subpath | Import Specifier | Source Entrypoint | Exports |
 | :--- | :--- | :--- | :--- |
@@ -14,6 +14,8 @@ Server-rendered component fragments (`litestar-vite-plugin/fragments`) and `<lit
 | `./fragments/react` | `litestar-vite-plugin/fragments/react` | `src/js/src/fragments/react.ts` | `hydrateReact` |
 | `./fragments/vue` | `litestar-vite-plugin/fragments/vue` | `src/js/src/fragments/vue.ts` | `hydrateVue` |
 | `./fragments/svelte` | `litestar-vite-plugin/fragments/svelte` | `src/js/src/fragments/svelte.ts` | `hydrateSvelte` |
+| `./dev-ssr` | `litestar-vite-plugin/dev-ssr` | `src/js/src/dev-ssr.ts` | `litestarViteSsrPlugin` |
+| `./ssr-worker` | `litestar-vite-plugin/ssr-worker` | `src/js/src/ssr-worker.ts` | `SsrWorkerOptions`, `IPCRequest`, `dispatchSsrRequest`, `startSsrWorker` |
 
 ## `litestar-vite-plugin/fragments`
 
@@ -36,7 +38,7 @@ export interface RenderFragmentOptions
 | :--- | :--- | :--- | :--- |
 | `componentPath` | `string` | — | — |
 | `props?` | `Record<string, unknown>` | — | — |
-| `mode?` | `"static" \| "island"` | — | — |
+| `mode?` | <code>"static" &#124; "island"</code> | — | — |
 | `islandId?` | `string` | — | — |
 | `clientEntry?` | `string` | — | — |
 
@@ -61,7 +63,7 @@ export async function renderFragment(options: RenderFragmentOptions, customImpor
 #### `createFragmentRenderer`
 
 ```ts
-export function createFragmentRenderer( registry: Record<string, () => Promise<any>>, options:
+export function createFragmentRenderer( registry: Record<string, () => Promise<any>>, options: { clientEntry?: string } = {}, ): (params: Record<string, unknown>) => Promise<RenderFragmentResult>
 ```
 
 Create a production renderer from imports compiled by the application's SSR build.
@@ -149,3 +151,68 @@ export const hydrateVue: IslandHydrator
 ```ts
 export const hydrateSvelte: IslandHydrator
 ```
+
+## `litestar-vite-plugin/dev-ssr`
+
+**Package Subpath**: `./dev-ssr` · **Types**: `./dist/js/dev-ssr.d.ts` · **Source**: `src/js/src/dev-ssr.ts`
+
+| Export | Kind | Description |
+| :--- | :--- | :--- |
+| `litestarViteSsrPlugin` | `function` | Exported `function` from `src/js/src/dev-ssr.ts`. |
+
+#### `litestarViteSsrPlugin`
+
+```ts
+export function litestarViteSsrPlugin(options: DevSsrOptions = {}): Plugin
+```
+
+## `litestar-vite-plugin/ssr-worker`
+
+**Package Subpath**: `./ssr-worker` · **Types**: `./dist/js/ssr-worker.d.ts` · **Source**: `src/js/src/ssr-worker.ts`
+
+| Export | Kind | Description |
+| :--- | :--- | :--- |
+| `SsrWorkerOptions` | `interface` | Exported `interface` from `src/js/src/ssr-worker.ts`. |
+| `IPCRequest` | `interface` | Exported `interface` from `src/js/src/ssr-worker.ts`. |
+| `dispatchSsrRequest` | `function` | Dispatch one request, preserving rendering errors for the transport's fallback policy. |
+| `startSsrWorker` | `function` | Start the shared newline-delimited JSON RPC worker for an application's SSR entry. |
+
+#### `SsrWorkerOptions`
+
+```ts
+export interface SsrWorkerOptions
+```
+
+| Property | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `render?` | <code>(page: any) =&gt; unknown &#124; Promise&lt;unknown&gt;</code> | — | — |
+| `renderFragment?` | <code>(params: Record&lt;string, unknown&gt;) =&gt; unknown &#124; Promise&lt;unknown&gt;</code> | — | — |
+
+#### `IPCRequest`
+
+```ts
+export interface IPCRequest
+```
+
+| Property | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `id?` | <code>number &#124; string</code> | — | — |
+| `method?` | `string` | — | — |
+| `params?` | `Record<string, unknown>` | — | — |
+| `payload?` | `Record<string, unknown>` | — | — |
+
+#### `dispatchSsrRequest`
+
+```ts
+export async function dispatchSsrRequest(request: IPCRequest, options: SsrWorkerOptions = {}): Promise<unknown>
+```
+
+Dispatch one request, preserving rendering errors for the transport's fallback policy.
+
+#### `startSsrWorker`
+
+```ts
+export function startSsrWorker(options: SsrWorkerOptions = {}): void
+```
+
+Start the shared newline-delimited JSON RPC worker for an application's SSR entry.

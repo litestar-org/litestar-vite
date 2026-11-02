@@ -1,6 +1,6 @@
-# Configuration & the `.litestar.json` Bridge
+# Configuration & Runtime Bridge
 
-`litestar-vite` organizes its configuration into a root [`ViteConfig`](../reference/plugin-and-config.md#litestar_vite.config.ViteConfig) object backed by five focused sub-configurations. At application startup, `ViteConfig` serializes a deterministic `.litestar.json` runtime bridge file that `litestar-vite-plugin` reads automatically in TypeScript.
+Litestar Vite organizes its configuration into a root [`ViteConfig`](../reference/plugin-and-config.md#litestar_vite.config.ViteConfig) object backed by five focused sub-configurations. At application startup, `ViteConfig` serializes a deterministic `.litestar.json` runtime bridge file that `litestar-vite-plugin` reads automatically in TypeScript.
 
 ---
 
@@ -82,9 +82,9 @@ Every runtime setting can be controlled via environment variables for container 
 
 ---
 
-## How the `.litestar.json` Bridge Eliminates Config Drift
+## How the Runtime Bridge Eliminates Config Drift
 
-Without a bridge, full-stack apps duplicate `bundle_dir`, `resource_dir`, `asset_url`, and `ssr_output_dir` across both `app.py` and `vite.config.ts`. In `litestar-vite`:
+Without a bridge, full-stack apps duplicate `bundle_dir`, `resource_dir`, `asset_url`, and `ssr_output_dir` across both `app.py` and `vite.config.ts`. In Litestar Vite:
 
 1. **Python is the Single Source of Truth**: On startup (or during `litestar assets generate-types` / `litestar assets build`), Litestar writes `.litestar.json` atomically using SHA-256 `write_if_changed`.
 2. **Vite Reads `.litestar.json` Automatically**: When `litestar-vite-plugin` initializes in `vite.config.ts`, it reads `.litestar.json` and configures `base`, `build.outDir`, `build.manifest`, `server.origin`, and codegen paths to match Python.

@@ -58,20 +58,16 @@
     <text x="135" y="246" text-anchor="middle" fill="var(--lv-blue)" font-size="11" font-family="monospace">BaseIPCTransport.request()</text>
 
     <!-- Middle Top: Dev IPC Track -->
-    <rect x="315" y="30" width="305" height="130" rx="12" fill="var(--lv-card)" stroke="var(--lv-blue)" stroke-width="2" />
-    <text x="467" y="58" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="700">Development IPC: TCPStreamIPCTransport</text>
-    <text x="467" y="80" text-anchor="middle" fill="var(--lv-blue)" font-size="11" font-family="monospace">POST /__litestar_ssr__ (403 on Origin)</text>
-    <text x="467" y="102" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Vite 7+ RunnableDevEnvironment ModuleRunner</text>
-    <text x="467" y="122" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Recursive importer cache invalidation on HMR</text>
-    <text x="467" y="142" text-anchor="middle" fill="var(--lv-muted)" font-size="10.5" font-family="monospace">fs.realpathSync componentRoots confinement</text>
+    <rect x="315" y="45" width="305" height="105" rx="12" fill="var(--lv-card)" stroke="var(--lv-blue)" stroke-width="2" />
+    <text x="467" y="76" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="700">Development IPC: TCPStreamIPCTransport</text>
+    <text x="467" y="102" text-anchor="middle" fill="var(--lv-blue)" font-size="11" font-family="monospace">POST /__litestar_ssr__</text>
+    <text x="467" y="126" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Vite ServerModuleRunner execution</text>
 
     <!-- Middle Bottom: Prod IPC Track -->
-    <rect x="315" y="190" width="305" height="130" rx="12" fill="var(--lv-card)" stroke="var(--lv-emerald)" stroke-width="2" />
-    <text x="467" y="218" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="700">Production IPC: StdioIPCTransport / Wasm</text>
-    <text x="467" y="240" text-anchor="middle" fill="var(--lv-emerald)" font-size="11" font-family="monospace">litestar-vite-ssr-worker (startSsrWorker)</text>
-    <text x="467" y="262" text-anchor="middle" fill="var(--lv-muted)" font-size="11">NDJSON over stdin/stdout pipes + request IDs</text>
-    <text x="467" y="282" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Concurrent stderr drain (prevents 4KB pipe deadlock)</text>
-    <text x="467" y="302" text-anchor="middle" fill="var(--lv-muted)" font-size="10.5" font-family="monospace">Auto-restarts up to max_restarts</text>
+    <rect x="315" y="200" width="305" height="105" rx="12" fill="var(--lv-card)" stroke="var(--lv-emerald)" stroke-width="2" />
+    <text x="467" y="231" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="700">Production IPC: StdioIPCTransport</text>
+    <text x="467" y="257" text-anchor="middle" fill="var(--lv-emerald)" font-size="11" font-family="monospace">litestar-vite-ssr-worker</text>
+    <text x="467" y="281" text-anchor="middle" fill="var(--lv-muted)" font-size="11">NDJSON over stdin/stdout pipes</text>
 
     <!-- Right: HTML Splicing & Island Hydration -->
     <rect x="680" y="65" width="220" height="220" rx="12" fill="var(--lv-card)" stroke="var(--lv-violet)" stroke-width="2" />

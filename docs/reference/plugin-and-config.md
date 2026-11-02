@@ -7,24 +7,16 @@ API reference for [`VitePlugin`](#litestar_vite.plugin.VitePlugin), [`ViteConfig
 ## Core Plugin & Root Config
 
 ::: litestar_vite.plugin.VitePlugin
-    options:
-      heading_level: 4
 
 ::: litestar_vite.config.ViteConfig
-    options:
-      heading_level: 4
 
 ---
 
 ## Filesystem & Runtime Configuration
 
 ::: litestar_vite.config.PathConfig
-    options:
-      heading_level: 4
 
 ::: litestar_vite.config.RuntimeConfig
-    options:
-      heading_level: 4
 
 ::: litestar_vite.config.ExternalDevServer
     options:
@@ -43,8 +35,6 @@ API reference for [`VitePlugin`](#litestar_vite.plugin.VitePlugin), [`ViteConfig
 ## Inertia, TypeGen & Deploy Configuration
 
 ::: litestar_vite.config.InertiaConfig
-    options:
-      heading_level: 4
 
 ::: litestar_vite.config.InertiaSSRConfig
     options:
@@ -55,12 +45,8 @@ API reference for [`VitePlugin`](#litestar_vite.plugin.VitePlugin), [`ViteConfig
       heading_level: 4
 
 ::: litestar_vite.config.TypeGenConfig
-    options:
-      heading_level: 4
 
 ::: litestar_vite.config.DeployConfig
-    options:
-      heading_level: 4
 
 ::: litestar_vite.config.PaginationContainer
     options:

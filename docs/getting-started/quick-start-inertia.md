@@ -1,10 +1,10 @@
-# Quick Start: Inertia.js v2 (`mode="hybrid"`)
+# Quick Start: Inertia.js v2
 
 In **Inertia Hybrid mode** (`mode="hybrid"`), Litestar owns server-side routing, authentication, and data loading while React, Vue, or Svelte renders each page component. Route handlers declare `component="Dashboard/Index"` and return a Python `dict` or `msgspec.Struct` directly — no client REST or GraphQL boilerplate required.
 
 ---
 
-## 1. Install Dependencies
+## Install Dependencies
 
 === "uv"
 
@@ -55,7 +55,7 @@ Install `litestar-vite-plugin` and your Inertia.js v2 adapter:
 
 ---
 
-## 2. Configure Litestar (`app.py`)
+## Configure Litestar
 
 Set `mode="hybrid"` and configure `InertiaConfig(root_template="index.html")`. When `mode="hybrid"` is active, `VitePlugin` automatically activates `InertiaPlugin` and `InertiaMiddleware`:
 
@@ -65,9 +65,9 @@ Set `mode="hybrid"` and configure `InertiaConfig(root_template="index.html")`. W
 
 ---
 
-## 3. Create the Root HTML Shell and Client Entrypoint
+## Create the Root HTML Shell and Client Entrypoint
 
-In `mode="hybrid"`, `index.html` needs only `<div id="app"></div>` and your module entrypoint. By default (`InertiaConfig(use_script_element=True)`), `litestar-vite` injects `<script type="application/json" data-page="app">{...}</script>` right before `<div id="app"></div>`:
+In `mode="hybrid"`, `index.html` needs only `<div id="app"></div>` and your module entrypoint. By default (`InertiaConfig(use_script_element=True)`), Litestar Vite injects `<script type="application/json" data-page="app">{...}</script>` right before `<div id="app"></div>`:
 
 ```html title="index.html"
 <!doctype html>
@@ -110,7 +110,7 @@ createInertiaApp({
 
 ---
 
-## 4. Run and Navigate
+## Run and Navigate
 
 Start Litestar and Vite together:
 

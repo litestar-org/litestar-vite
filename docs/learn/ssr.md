@@ -1,6 +1,6 @@
-# Server-Side Rendering (Dev vs. Prod IPC)
+# Server-Side Rendering
 
-`litestar-vite` provides unified Server-Side Rendering (SSR) for both **Inertia.js v2 pages** (`mode="hybrid"`) and **UI component islands/fragments** (`mode="template"`). Instead of requiring you to manage a separate Node HTTP server process, `litestar-vite` manages the SSR IPC lifecycle automatically in both development and production.
+Litestar Vite provides unified Server-Side Rendering (SSR) for both **Inertia.js v2 pages** (`mode="hybrid"`) and **UI component islands/fragments** (`mode="template"`). Instead of requiring you to manage a separate Node HTTP server process, Litestar Vite manages the SSR IPC lifecycle automatically in both development and production.
 
 --8<-- "tools/docs/includes/diagram-ssr-ipc.html"
 
@@ -17,7 +17,7 @@
 
 ---
 
-## 1. Enabling SSR in `ViteConfig`
+## Enabling Server-Side Rendering
 
 Enable SSR by passing `InertiaConfig(ssr=True)` (or an explicit [`InertiaSSRConfig`](../reference/plugin-and-config.md#litestar_vite.config.InertiaSSRConfig) instance):
 
@@ -27,12 +27,12 @@ Enable SSR by passing `InertiaConfig(ssr=True)` (or an explicit [`InertiaSSRConf
 
 ---
 
-## 2. HTML Slot Splicing (`<!--inertia-head-->` and `<!--inertia-body-->`)
+## HTML Slot Splicing
 
-When SSR returns `{ head: string[], body: string }`, `litestar-vite` splices the rendered markup into your `root_template` using `_InertiaSlots`:
+When SSR returns `{ head: string[], body: string }`, Litestar Vite splices the rendered markup into your `root_template` using `_InertiaSlots`:
 
-- If your `index.html` includes `<!--inertia-head-->` inside `<head>` and `<!--inertia-body-->` inside `<div id="app">`, `litestar-vite` replaces those exact markers right-to-left in a single pass.
-- If `<!--inertia-body-->` is absent, `litestar-vite` automatically locates `<div id="app"></div>` (or `InertiaSSRConfig.target_selector`) and injects the rendered SSR HTML inside the container while placing `<script type="application/json" data-page="app">` immediately before it.
+- If your `index.html` includes `<!--inertia-head-->` inside `<head>` and `<!--inertia-body-->` inside `<div id="app">`, Litestar Vite replaces those exact markers right-to-left in a single pass.
+- If `<!--inertia-body-->` is absent, Litestar Vite automatically locates `<div id="app"></div>` (or `InertiaSSRConfig.target_selector`) and injects the rendered SSR HTML inside the container while placing `<script type="application/json" data-page="app">` immediately before it.
 
 ```html title="index.html"
 <!doctype html>
@@ -50,10 +50,10 @@ When SSR returns `{ head: string[], body: string }`, `litestar-vite` splices the
 
 ---
 
-## 3. Circuit Breaker & Client-Side Fallback
+## Circuit Breaker & Client-Side Fallback
 
 Production SSR should never take down your Python application if a third-party frontend component accesses `window` unguarded. `InertiaSSRConfig` configures [`SSRCircuitBreaker`](../reference/fragments-and-ipc.md#litestar_vite.ipc.SSRCircuitBreaker) by default:
 
 - **`timeout=2.0`**: Any SSR request exceeding 2 seconds is cancelled cleanly.
 - **`circuit_breaker_failure_threshold=3`**: After 3 consecutive failures, the circuit trips to `OPEN` and bypasses IPC for `circuit_breaker_reset_timeout=30.0` seconds before probing with a single `HALF_OPEN` request.
-- **`fallback_to_client=True`**: Whenever SSR fails or the circuit is `OPEN`, Litestar logs a warning and returns the standard client-rendered HTML shell (`200 OK`) so the browser mounts the page seamlessly.
+- **`fallback_to_client=True`**: Whenever SSR fails or the circuit is `OPEN`, Litestar logs a warning and returns the standard client-rendered HTML shell (200 OK) so the browser mounts the page seamlessly.

@@ -1,50 +1,80 @@
-# VHS tape for recording scaffolding demo
-# Run with: vhs docs/_tapes/scaffolding.tape
-# Output: docs/assets/demos/scaffolding.gif
+# Scaffolding Demo
+# Demonstrates: litestar assets init
+# Uses: temporary directory to show fresh project setup
 
 Output docs/assets/demos/scaffolding.gif
 
-Set FontSize 16
-Set Width 900
-Set Height 500
-Set Theme "Dracula"
+Set Shell "bash"
+Set FontSize 14
+Set Width 1000
+Set Height 600
+Set Theme "Catppuccin Mocha"
 Set Padding 20
-Set TypingSpeed 40ms
+Set TypingSpeed 50ms
 
-# Hide initial setup
+Type "# Litestar Vite - Scaffold a New Frontend"
+Enter
+Sleep 1s
+
 Hide
-Type "cd /tmp && rm -rf demo-app && mkdir demo-app && cd demo-app"
+Type "source .venv/bin/activate"
 Enter
 Sleep 500ms
-Type "clear"
+Type "cd /tmp && rm -rf litestar-demo && mkdir litestar-demo && cd litestar-demo"
+Enter
+Sleep 500ms
+# Create minimal app.py with VitePlugin
+Type "cat > app.py << 'EOF'"
+Enter
+Type "from litestar import Litestar, get"
+Enter
+Type "from typing import Any"
+Enter
+Type "from litestar_vite import ViteConfig, VitePlugin"
+Enter
+Type ""
+Enter
+Type "@get('/')"
+Enter
+Type "async def index() -> dict[str, Any]:"
+Enter
+Type "    return {'message': 'Hello!'}"
+Enter
+Type ""
+Enter
+Type "app = Litestar("
+Enter
+Type "    route_handlers=[index],"
+Enter
+Type "    plugins=[VitePlugin(config=ViteConfig(dev_mode=True))]"
+Enter
+Type ")"
+Enter
+Type "EOF"
 Enter
 Sleep 500ms
 Show
 
-# Create a minimal Litestar app first
-Type "# Scaffold a React + Inertia project with Litestar Vite"
+Type "cat app.py"
 Enter
-Sleep 1s
+Sleep 2s
 
-# Run litestar assets init with React-Inertia template
-Type "litestar assets init --template react-inertia --no-prompt"
+Type "# Scaffold a React frontend with Inertia.js"
+Enter
+Sleep 500ms
+
+Type "litestar --app app:app assets init --template react-inertia --no-prompt --no-install"
 Enter
 Sleep 4s
 
-# Show generated files
-Type "ls -la"
+Type "# Files generated! Check the structure:"
 Enter
-Sleep 2s
+Sleep 500ms
 
-# Show the resources directory
-Type "ls -la resources/"
-Enter
-Sleep 2s
-
-# Show vite.config.ts
-Type "cat vite.config.ts"
+Type "tree -L 2 --dirsfirst -I 'node_modules'"
 Enter
 Sleep 3s
 
-# Final pause
+Type "# Next: litestar assets install && litestar run"
+Enter
 Sleep 2s

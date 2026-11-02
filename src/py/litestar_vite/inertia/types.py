@@ -164,24 +164,21 @@ class ScrollPagination(Generic[T]):
         class with standard pagination attributes.
 
         Args:
-            pagination: Any pagination container with ``items`` attribute.
+            pagination: Any pagination container with `items` attribute.
 
         Returns:
             A ScrollPagination instance with normalized offset-based metadata.
 
-        Example::
-
+        Example:
+            ```python
             from litestar.pagination import OffsetPagination, ClassicPagination
-
-            From OffsetPagination::
 
             offset_page = OffsetPagination(items=[...], limit=10, offset=20, total=100)
             scroll = ScrollPagination.create_from(offset_page)
 
-            From ClassicPagination::
-
             classic_page = ClassicPagination(items=[...], page_size=10, current_page=3, total_pages=10)
             scroll = ScrollPagination.create_from(classic_page)
+            ```
         """
         items = pagination.items
         if meta := _extract_offset_pagination(pagination, items):

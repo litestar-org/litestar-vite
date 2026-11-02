@@ -4,7 +4,7 @@ Complete reference documentation for **`litestar-vite`** (Python package), **`li
 
 ---
 
-## Python API Reference (`litestar_vite`)
+## Python API Reference
 
 | Reference Page | Modules & Symbols Covered |
 | --- | --- |
@@ -16,21 +16,21 @@ Complete reference documentation for **`litestar-vite`** (Python package), **`li
 
 ---
 
-## TypeScript Package Reference (`litestar-vite-plugin`)
+## TypeScript Package Reference
 
 All 18 public subpaths declared in `package.json["exports"]` are automatically documented from the compiled TypeScript declarations:
 
 | Reference Page | Subpaths Covered |
 | --- | --- |
-| [**Main Vite Plugin & Config**](typescript/index.md) | `litestar-vite-plugin` (`default`, `LitestarConfig`, `TypesConfig`, `RunnerHandler`) |
-| [**Client Helpers, Routes & Channels**](typescript/helpers.md) | `./helpers`, `./helpers/csrf`, `./helpers/routes`, `./helpers/htmx`, `./htmx`, `./inertia-helpers`, `./channel-typegen` |
-| [**Framework Integrations & Hooks**](typescript/frameworks.md) | `./react`, `./vue`, `./svelte`, `./astro`, `./nuxt`, `./sveltekit` |
-| [**Islands, Dev SSR & Worker**](typescript/fragments.md) | `./fragments`, `./fragments/react`, `./fragments/vue`, `./fragments/svelte`, `./dev-ssr`, `./ssr-worker` |
+| [**Main Vite Plugin & Config**](typescript/index.md) | `litestar-vite-plugin` (`.`), `./inertia`, `./virtual` |
+| [**Runtime & Inertia Helpers**](typescript/helpers.md) | `./helpers`, `./inertia-helpers` |
+| [**Framework Bindings & Meta-Frameworks**](typescript/frameworks.md) | `./react`, `./vue`, `./svelte`, `./astro`, `./sveltekit`, `./nuxt` |
+| [**Server Fragments, Islands & SSR Runtimes**](typescript/fragments.md) | `./fragments`, `./fragments/client`, `./fragments/react`, `./fragments/vue`, `./fragments/svelte`, `./dev-ssr`, `./ssr-worker` |
 
 ---
 
 ## CLI, Wire Contracts & Contributing
 
-- [**CLI (`litestar assets`)**](cli.md) — Auto-generated reference for all 10 `litestar assets` commands (`init`, `install`, `run`, `serve`, `build`, `watch`, `generate-types`, `export-routes`, `doctor`, `deploy`, `status`).
+- [**CLI (`litestar assets`)**](cli.md) — Auto-generated reference for all 9 `litestar assets` commands (`init`, `install`, `update`, `serve`, `build`, `deploy`, `generate-types`, `export-routes`, `doctor`, `status`).
 - [**Bridge & Wire Contracts**](contracts.md) — Field-by-field JSON schemas for `.litestar.json`, `<bundle_dir>/hot`, NDJSON/HTTP SSR IPC (`IPCRequest` / `IPCResponse`), and Inertia v2 `PageProps`.
 - [**Contributing & Development Setup**](contributing.md) — Local polyglot workspace setup, verification gates, and architectural guardrails.

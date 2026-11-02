@@ -21,7 +21,7 @@ The `litestar-vite-plugin` npm package ships 18 typed ESM entrypoints covering t
 | :--- | :--- | :--- |
 | `PluginConfig` | `interface` | Exported `interface` from `src/js/src/index.ts`. |
 | `RefreshConfig` | `interface` | Exported `interface` from `src/js/src/index.ts`. |
-| `ResolvedPluginConfig` | `interface` | Resolved plugin configuration with all defaults applied. Note: `types` is resolved to `RequiredTypeGenConfig \| false` instead of `boolean \| TypesConfig` Note: `executor` remains optional - undefined means auto-detect from env Note: `inertiaMode` is resolved to boolean (auto-detected from .litestar.json Inertia metadata) |
+| `ResolvedPluginConfig` | `interface` | Resolved plugin configuration with all defaults applied. Note: `types` is resolved to <code>RequiredTypeGenConfig &#124; false</code> instead of <code>boolean &#124; TypesConfig</code> Note: `executor` remains optional - undefined means auto-detect from env Note: `inertiaMode` is resolved to boolean (auto-detected from .litestar.json Inertia metadata) |
 | `TypesConfig` | `type` | Configuration for TypeScript type generation. |
 | `DevServerUrl` | `type` | Exported `type` from `src/js/src/index.ts`. |
 | `litestar` | `default function` | Litestar plugin for Vite. |
@@ -38,23 +38,23 @@ export interface PluginConfig
 
 | Property | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `input` | `string \| string[]` | — | — |
+| `input` | <code>string &#124; string[]</code> | — | — |
 | `assetUrl?` | `string` | — | — |
 | `deployAssetUrl?` | `string` | — | — |
 | `bundleDir?` | `string` | — | — |
 | `staticDir?` | `string` | — | — |
 | `resourceDir?` | `string` | — | — |
 | `hotFile?` | `string` | — | — |
-| `ssr?` | `string \| string[]` | — | — |
+| `ssr?` | <code>string &#124; string[]</code> | — | — |
 | `devSsr?` | `DevSsrOptions` | — | — |
 | `ssrOutDir?` | `string` | — | — |
-| `refresh?` | `boolean \| string \| string[] \| RefreshConfig \| RefreshConfig[]` | — | — |
-| `detectTls?` | `string \| boolean \| null` | — | — |
+| `refresh?` | <code>boolean &#124; string &#124; string[] &#124; RefreshConfig &#124; RefreshConfig[]</code> | — | — |
+| `detectTls?` | <code>string &#124; boolean &#124; null</code> | — | — |
 | `autoDetectIndex?` | `boolean` | — | — |
 | `inertiaMode?` | `boolean` | — | — |
 | `transformOnServe?` | `(code: string, url: DevServerUrl) => string` | — | — |
-| `types?` | `boolean \| "auto" \| TypesConfig` | — | — |
-| `executor?` | `"node" \| "bun" \| "deno" \| "yarn" \| "pnpm"` | — | — |
+| `types?` | <code>boolean &#124; "auto" &#124; TypesConfig</code> | — | — |
+| `executor?` | <code>"node" &#124; "bun" &#124; "deno" &#124; "yarn" &#124; "pnpm"</code> | — | — |
 
 #### `RefreshConfig`
 
@@ -77,8 +77,8 @@ Resolved plugin configuration with all defaults applied. Note: `types` is resolv
 
 | Property | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `types` | `RequiredTypeGenConfig \| false` | — | — |
-| `executor?` | `"node" \| "bun" \| "deno" \| "yarn" \| "pnpm"` | — | — |
+| `types` | <code>RequiredTypeGenConfig &#124; false</code> | — | — |
+| `executor?` | <code>"node" &#124; "bun" &#124; "deno" &#124; "yarn" &#124; "pnpm"</code> | — | — |
 | `deployAssetUrl?` | `string` | — | — |
 | `inertiaMode` | `boolean` | — | — |
 | `hasPythonConfig` | `boolean` | — | — |
@@ -128,7 +128,7 @@ Litestar plugin for Vite.
 #### `litestarViteSsrPlugin`
 
 ```ts
-export function litestarViteSsrPlugin(options: DevSsrOptions =
+export function litestarViteSsrPlugin(options: DevSsrOptions = {}): Plugin
 ```
 
 #### `DevSsrOptions`
@@ -153,10 +153,10 @@ export interface SsrRenderRequest
 
 | Property | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `id?` | `number \| string` | — | — |
+| `id?` | <code>number &#124; string</code> | — | — |
 | `method?` | `string` | — | — |
-| `type?` | `"inertia" \| "fragment"` | — | — |
-| `mode?` | `"static" \| "island"` | — | — |
+| `type?` | <code>"inertia" &#124; "fragment"</code> | — | — |
+| `mode?` | <code>"static" &#124; "island"</code> | — | — |
 | `params?` | `Record<string, unknown>` | — | — |
 | `page?` | `object` | — | — |
 | `component?` | `string` | — | — |
@@ -170,7 +170,7 @@ export interface SsrRenderResponse
 
 | Property | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `id?` | `number \| string` | — | — |
+| `id?` | <code>number &#124; string</code> | — | — |
 | `result?` | `object` | — | — |
 | `error?` | `object` | — | — |
 

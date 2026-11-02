@@ -23,17 +23,9 @@ Example usage::
     VitePlugin(config=ViteConfig(mode="template", dev_mode=True))
 """
 
-from litestar_vite.config._constants import (  # pyright: ignore[reportPrivateUsage]
-    FSSPEC_INSTALLED,
-    JINJA_INSTALLED,
-    TRUE_VALUES,
-)
+from litestar_vite.config._constants import FSSPEC_INSTALLED, JINJA_INSTALLED, TRUE_VALUES  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._deploy import DeployConfig  # pyright: ignore[reportPrivateUsage]
-from litestar_vite.config._inertia import (  # pyright: ignore[reportPrivateUsage]
-    InertiaConfig,
-    InertiaSSRConfig,
-    InertiaTypeGenConfig,
-)
+from litestar_vite.config._inertia import InertiaConfig, InertiaSSRConfig, InertiaTypeGenConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._paths import PathConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._runtime import ExternalDevServer, RuntimeConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._spa import LoggingConfig, SPAConfig  # pyright: ignore[reportPrivateUsage]

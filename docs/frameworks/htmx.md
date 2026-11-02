@@ -119,7 +119,7 @@ my-project/
 
 ---
 
-## Client-Side JSON Templating (`hx-swap="json"`)
+## Client-Side JSON Templating
 
 When an endpoint returns JSON instead of HTML, the `litestar` HTMX extension (`registerHtmxExtension()`) lets you render JSON directly into a `<template>` element using `hx-swap="json"`:
 
@@ -129,14 +129,14 @@ When an endpoint returns JSON instead of HTML, the `litestar` HTMX extension (`r
 </button>
 
 <div id="book-list">
-  <template>
-    <ul>
-      <li ls-for="book in $data">
+  <ul>
+    <template ls-for="book in $data">
+      <li>
         <strong ls-text="book.title"></strong> by <span ls-text="book.author"></span>
-        <span ls-if="book.featured" class="badge">Featured</span>
+        <span ls-show="book.featured" class="badge">Featured</span>
       </li>
-    </ul>
-  </template>
+    </template>
+  </ul>
 </div>
 ```
 
@@ -144,18 +144,20 @@ When an endpoint returns JSON instead of HTML, the `litestar` HTMX extension (`r
 
 | Directive | Description | Example |
 | --- | --- | --- |
-| `ls-for="item in expr"` | Repeat element for each item in an array (`(item, idx) in expr` also supported) | `ls-for="(row, i) in $data.items"` |
-| `ls-if="expr"` / `ls-else` | Conditional element rendering | `ls-if="item.active"` |
-| `ls-text="expr"` | Safe `textContent` binding | `ls-text="item.name"` |
-| `ls-html="expr"` | HTML content binding | `ls-html="item.summaryHtml"` |
-| `:attr="expr"` / `ls-bind:attr` | Dynamic attribute binding (`boolean` attributes toggle presence) | `:href="item.url"`, `:disabled="!item.ready"` |
-| `@event="expr"` / `ls-on:event` | Event listener expression with `$event` context | `@click="selected = item.id"` |
+| `<template ls-for="item in expr">` (or `ls-each`) | Repeat `<template>` content for each item in an array | `<template ls-for="row in $data.items">` |
+| `<template ls-if="expr">` / `<template ls-else>` | Conditional `<template>` structural rendering | `<template ls-if="item.active">` |
+| `ls-show="expr"` / `ls-hide="expr"` | Toggle `style.display` visibility on any element | `ls-show="item.featured"` |
+| `ls-scope="expr"` | Narrow evaluation context for descendant elements | `ls-scope="item.author"` |
+| `ls-text="expr"` / `${expr}` | Safe `textContent` binding or text-node interpolation | `ls-text="item.name"`, `<h3>${item.name}</h3>` |
+| `ls-html="expr"` | Sanitized `innerHTML` content binding | `ls-html="item.summaryHtml"` |
+| `:attr="expr"` | Dynamic attribute or `:class` object binding (`boolean` toggles presence) | `:href="item.url"`, `:disabled="!item.ready"` |
+| `@event="expr"` | Event listener expression with wrapped `$event` context | `@click="selected = item.id"` |
 
-> [!IMPORTANT]
-> **Security Model**: `registerHtmxExtension()` evaluates directive expressions using a restricted property-path and comparison parser — never `eval()` or `new Function()`. Arbitrary function calls and prototype-chain properties (`__proto__`, `constructor`, `prototype`) are blocked.
+!!! important
+    **Security Model**: `registerHtmxExtension()` evaluates directive expressions using a restricted property-path and comparison parser — never `eval()` or `new Function()`. Arbitrary function calls and prototype-chain properties (`__proto__`, `constructor`, `prototype`) are blocked.
 
 ---
 
-## Declarative Realtime Streams (`<litestar-stream>`)
+## Declarative Realtime Streams
 
 Pair HTMX templates with `<litestar-stream>` (`defineStreamElement()`) to append or replace live SSE/WebSocket events without writing custom JavaScript glue. See [Realtime Event Streams](../typegen/event-streams.md) for full details.

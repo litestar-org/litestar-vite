@@ -6,15 +6,15 @@ Inertia gives you fine-grained control over **when** each prop is evaluated on t
 
 ## Prop Evaluation Matrix
 
-| Helper | Sent on Initial Load? | Sent on Standard Partial Reload? | Sent When Explicitly Requested (`only`)? | Client Behavior |
-| --- | --- | --- | --- | --- |
-| **Plain value** (`"user": user`) | Yes | Yes (unless filtered) | Yes | Replaces prop value |
-| [`always(key, value)`](../../reference/inertia.md#litestar_vite.inertia.always) | **Always** | **Always** (bypasses `only`/`except_`) | **Always** | Replaces prop value on every visit (`errors`, auth state) |
-| [`defer(key, fn, group="default")`](../../reference/inertia.md#litestar_vite.inertia.defer) | **No** (queued in `deferredProps`) | No | **Yes** (auto-fetched by `<Deferred>` after mount) | Loaded in grouped background requests after initial paint |
-| [`once(key, val_or_fn)`](../../reference/inertia.md#litestar_vite.inertia.once) | **Yes** | Skipped once cached (`X-Inertia-Except-Once-Props`) | Yes (forces refresh) | Cached across client page navigations (`onceProps`) |
-| [`optional(key, fn)`](../../reference/inertia.md#litestar_vite.inertia.optional) | **Never** | **Never** | **Only when listed in `only`** | Designed for `<WhenVisible data="...">` viewport loading |
-| [`lazy(key, val_or_fn)`](../../reference/inertia.md#litestar_vite.inertia.lazy) | **No** | No | **Only when listed in `only`** | Classic on-demand partial reload prop |
-| [`merge(key, val, strategy=..., match_on=...)`](../../reference/inertia.md#litestar_vite.inertia.merge) | Yes (replaces on full visit) | Appends / prepends / deep-merges | Appends / prepends / deep-merges | Combines items in-place during partial reloads (`mergeProps`) |
+| Helper | Initial Load | Partial Reload | Client Behavior |
+| --- | --- | --- | --- |
+| **Plain value** | Included | Included unless filtered | Replaces prop value |
+| [`always`](../../reference/inertia.md#litestar_vite.inertia.always) | Always included | Always included (bypasses `only` / `except_`) | Replaces prop value on every visit (auth, errors) |
+| [`defer`](../../reference/inertia.md#litestar_vite.inertia.defer) | Queued in `deferredProps` | Auto-fetched by `<Deferred>` after mount | Loaded in grouped background requests after initial paint |
+| [`once`](../../reference/inertia.md#litestar_vite.inertia.once) | Included | Skipped once cached (`only` forces refresh) | Cached across client page navigations (`onceProps`) |
+| [`optional`](../../reference/inertia.md#litestar_vite.inertia.optional) | Excluded | Only when listed in `only` | Designed for `<WhenVisible>` viewport loading |
+| [`lazy`](../../reference/inertia.md#litestar_vite.inertia.lazy) | Excluded | Only when listed in `only` | Classic on-demand partial reload prop |
+| [`merge`](../../reference/inertia.md#litestar_vite.inertia.merge) | Included | Appends, prepends, or deep-merges | Combines items in place during partial reloads (`mergeProps`) |
 
 ---
 
@@ -24,12 +24,12 @@ Inertia gives you fine-grained control over **when** each prop is evaluated on t
 --8<-- "docs/examples/inertia/props_and_reloads.py"
 ```
 
-> [!IMPORTANT]
-> **Avoid the False-Lazy Pitfall**: Always pass a callable reference (`defer("metrics", _load_slow_analytics)` or `lazy("report", lambda: build_report(org_id))`) rather than calling the function eagerly (`defer("metrics", _load_slow_analytics())`). Both synchronous and `async def` callables are supported; async callables are resolved concurrently on the event loop by `InertiaResponse`.
+!!! important
+    **Avoid the False-Lazy Pitfall**: Always pass a callable reference (`defer("metrics", _load_slow_analytics)` or `lazy("report", lambda: build_report(org_id))`) rather than calling the function eagerly (`defer("metrics", _load_slow_analytics())`). Both synchronous and `async def` callables are supported; async callables are resolved concurrently on the event loop by `InertiaResponse`.
 
 ---
 
-## 1. Client-Initiated Partial Reloads (`router.reload`)
+## Client-Initiated Partial Reloads
 
 Use `router.reload({ only: [...] })` or `router.reload({ except: [...] })` to refresh a subset of props on the current page without re-evaluating unrelated database queries:
 
@@ -48,11 +48,11 @@ router.reload({ only: ["feed"], reset: ["feed"] });
 
 ---
 
-## 2. Deferred Props (`<Deferred>`) & Grouped Resolution
+## Deferred Props & Grouped Resolution
 
 Props wrapped in `defer(key, fn, group="default")` are omitted from the initial response and grouped in `deferredProps: { default: ["metrics"], charts: ["revenue", "retention"] }`. Props in the same `group` are fetched together in a single background request after the page mounts:
 
-=== "React (`@inertiajs/react`)"
+=== "React"
 
     ```tsx title="resources/pages/Analytics/Dashboard.tsx"
     import { Deferred, WhenVisible } from "@inertiajs/react";
@@ -72,7 +72,7 @@ Props wrapped in `defer(key, fn, group="default")` are omitted from the initial 
     }
     ```
 
-=== "Vue 3 (`@inertiajs/vue3`)"
+=== "Vue 3"
 
     ```vue title="resources/pages/Analytics/Dashboard.vue"
     <script setup lang="ts">
@@ -98,13 +98,13 @@ Props wrapped in `defer(key, fn, group="default")` are omitted from the initial 
 
 ---
 
-## 3. Viewport-Triggered Loading (`optional()` + `<WhenVisible>`)
+## Viewport-Triggered Loading (`optional` + `<WhenVisible>`)
 
-Wrap below-the-fold data in `optional("audit_log", load_audit_log)` on the server and `<WhenVisible data="audit_log" buffer={200}>` on the client. An `IntersectionObserver` triggers a partial reload (`only: ["audit_log"]`) when the element approaches within `200px` of the viewport. Pass `always` (`<WhenVisible data="audit_log" always>`) to re-fetch every time the element enters the viewport.
+Wrap below-the-fold data in `optional("audit_log", load_audit_log)` on the server and `<WhenVisible data="audit_log" buffer={200}>` on the client. An `IntersectionObserver` triggers a partial reload (`only: ["audit_log"]`) when the element approaches within 200px of the viewport. Pass `always` (`<WhenVisible data="audit_log" always>`) to re-fetch every time the element enters the viewport.
 
 ---
 
-## 4. Client-Cached Props (`once()`) & Fluent Chaining
+## Client-Cached Props (`once`) & Fluent Chaining
 
-- **`once("countries", load_countries)`**: Evaluated on the first visit and listed in `onceProps: ["countries"]`. On subsequent Inertia navigations, the client sends `X-Inertia-Except-Once-Props: countries` so the server skips re-evaluating `load_countries`. Explicitly requesting `only: ["countries"]` forces a refresh.
+- **`once("countries", load_countries)`**: Evaluated on the first visit and advertised in `onceProps: {"countries": {"prop": "countries"}}`. On subsequent Inertia navigations, the client sends `X-Inertia-Except-Once-Props: countries` so the server skips re-evaluating `load_countries`. Explicitly requesting `only: ["countries"]` forces a refresh.
 - **`defer("catalog", load_catalog).once()`**: Defers the expensive query until after initial paint, then caches the resolved value in `onceProps` across subsequent page navigations.

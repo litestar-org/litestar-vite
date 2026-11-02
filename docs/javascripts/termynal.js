@@ -138,6 +138,9 @@
   }
 
   async function runAnimation(ui, items, token) {
+    if (ui.body.offsetHeight > 0) {
+      ui.body.style.minHeight = ui.body.offsetHeight + "px";
+    }
     ui.body.innerHTML = "";
     var reducedMotion =
       window.matchMedia &&

@@ -4,9 +4,9 @@ Inertia includes a reactive `useForm` helper that tracks form state, submission 
 
 ---
 
-## 1. Submitting Forms with `useForm`
+## Submitting Forms with useForm
 
-=== "React (`@inertiajs/react`)"
+=== "React"
 
     ```tsx title="resources/pages/Users/Create.tsx"
     import type { FormEvent } from "react";
@@ -47,7 +47,7 @@ Inertia includes a reactive `useForm` helper that tracks form state, submission 
     }
     ```
 
-=== "Vue 3 (`@inertiajs/vue3`)"
+=== "Vue 3"
 
     ```vue title="resources/pages/Users/Create.vue"
     <script setup lang="ts">
@@ -77,7 +77,7 @@ Inertia includes a reactive `useForm` helper that tracks form state, submission 
     </template>
     ```
 
-=== "Svelte 5 (`@inertiajs/svelte`)"
+=== "Svelte 5"
 
     <!-- docs-example: skip -->
     ```svelte title="resources/pages/Users/Create.svelte"
@@ -109,9 +109,9 @@ Inertia includes a reactive `useForm` helper that tracks form state, submission 
 
 ---
 
-## 2. Server-Side Validation & `error()`
+## Server-Side Validation & `error`
 
-`litestar-vite` supports both **automatic schema validation** (from `msgspec.Struct`, Pydantic, or Litestar DTO constraints) and **manual domain errors** via [`error(connection, key, message)`](../../reference/inertia.md#litestar_vite.inertia.error):
+Litestar Vite supports both **automatic schema validation** (from `msgspec.Struct`, Pydantic, or Litestar DTO constraints) and **manual domain errors** via [`error(connection, key, message)`](../../reference/inertia.md#litestar_vite.inertia.error):
 
 ```python
 from typing import Annotated, Any
@@ -139,17 +139,17 @@ def create_user(
     return InertiaRedirect(request, redirect_to="/users")
 ```
 
-### Error Bags (`errorBag` / `X-Inertia-Error-Bag`)
+### Error Bags
 
-When a page contains multiple forms sharing field names (such as `email`), pass `{ errorBag: "inviteUser" }` in `form.post(url, { errorBag: "inviteUser" })` or pass `error_bag="inviteUser"` to `error(request, "email", "Invalid email", error_bag="inviteUser")`. Litestar automatically scopes the errors under `props.errors.inviteUser`.
+When a page contains multiple forms sharing field names (such as `email`), pass `{ errorBag: "inviteUser" }` in `form.post(url, { errorBag: "inviteUser" })`. The Inertia client sends the `X-Inertia-Error-Bag: inviteUser` request header, and `InertiaMiddleware` automatically scopes any `error(request, "email", ...)` or validation errors under `props.errors.inviteUser`.
 
-### Custom Error Pages (`404`, `403`, `500`)
+### Custom Error Pages
 
 Configure `InertiaConfig(redirect_404="/404", redirect_unauthorized_to="/login")` for automatic redirects, or register a custom Litestar `exception_handlers` mapping returning `InertiaResponse(..., status_code=exc.status_code)` with `component="Error"` to render a branded Inertia error page while preserving the HTTP status code.
 
 ---
 
-## 3. Live Validation with Laravel Precognition (`@precognition`)
+## Live Validation with Laravel Precognition
 
 [Laravel Precognition](https://laravel.com/docs/precognition) lets your frontend validate form fields against your exact Litestar validation rules as the user types, **without executing the route handler body**:
 
@@ -175,9 +175,9 @@ def create_workspace(data: CreateWorkspaceInput) -> dict[str, str]:
     return {"slug": data.slug}
 ```
 
-### How `@precognition` Works
+### How Precognition Works
 
-- When the client sends `Precognition: true` (and optional `Precognition-Validate-Only: slug`), Litestar validates `data: CreateWorkspaceInput` first.
-- If validation fails, Litestar returns `422 Unprocessable Entity` with `{ "message": "...", "errors": { "slug": ["..."] } }` filtered to `Precognition-Validate-Only`.
-- If validation passes on a `Precognition: true` request, `@precognition` short-circuits before executing `create_workspace` and returns `204 No Content` with `Precognition: true` and `Precognition-Success: true`.
-- `litestar-vite-plugin/helpers` also exports `isPrecognitionRequest`, `isPrecognitionSuccess`, ` isPrecognitionError`, `extractPrecognitionErrors`, and `createPrecognitionHeaders` for custom client integrations.
+- When the client sends `Precognition: true` (and optional `Precognition-Validate-Only: slug`), Litestar validates `data: CreateWorkspaceInput` first (you can also inspect `request.is_precognition` and `request.precognition_validate_only` inside custom guards or dependencies).
+- If validation fails, Litestar returns 422 Unprocessable Entity with `{ "message": "...", "errors": { "slug": ["..."] } }` filtered to `Precognition-Validate-Only`.
+- If validation passes on a `Precognition: true` request, `@precognition` short-circuits before executing `create_workspace` and returns 204 No Content with `Precognition: true` and `Precognition-Success: true`.
+- `litestar-vite-plugin/inertia-helpers` also exports `isPrecognitionSuccess`, `isPrecognitionError`, `extractPrecognitionErrors`, and `PrecognitionHeaders` for custom client integrations.

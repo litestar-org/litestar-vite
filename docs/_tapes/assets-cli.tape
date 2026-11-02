@@ -1,45 +1,54 @@
-# VHS tape for recording CLI commands demo
-# Run with: vhs docs/_tapes/assets-cli.tape
-# Output: docs/assets/demos/assets-cli.gif
+# Assets CLI Overview Demo
+# Demonstrates: litestar assets wraps npm/bun/deno workflows
+# Uses: examples/react-inertia
 
 Output docs/assets/demos/assets-cli.gif
 
-Set FontSize 15
-Set Width 950
-Set Height 550
-Set Theme "Dracula"
+Set Shell "bash"
+Set FontSize 14
+Set Width 1000
+Set Height 600
+Set Theme "Catppuccin Mocha"
 Set Padding 20
-Set TypingSpeed 35ms
+Set TypingSpeed 50ms
 
-# Setup
+Type "# Litestar Vite - Asset Management CLI"
+Enter
+Sleep 1s
+
 Hide
-Type "cd examples/vue && clear"
+Type "source .venv/bin/activate"
+Enter
+Sleep 500ms
+Type "cd examples/react-inertia"
 Enter
 Sleep 500ms
 Show
 
-Type "# Litestar Vite CLI Commands"
+Type "# Wraps the npm/bun/deno workflow you already know"
 Enter
-Sleep 1s
+Sleep 500ms
 
-# Show help
-Type "litestar assets --help"
-Enter
-Sleep 3s
-
-# Check status
-Type "litestar assets status"
+Type "litestar --app app:app assets --help"
 Enter
 Sleep 3s
 
-# Run doctor
-Type "litestar assets doctor"
+Type "# 'install' wraps npm/bun/deno install"
 Enter
-Sleep 3s
+Sleep 500ms
 
-# Export routes
-Type "litestar assets export-routes"
+Type "litestar --app app:app assets install"
 Enter
-Sleep 2s
+Sleep 4s
 
-Sleep 2s
+Type "# 'build' wraps vite build"
+Enter
+Sleep 500ms
+
+Type "litestar --app app:app assets build"
+Enter
+Sleep 5s
+
+Type "# Same tools, unified interface!"
+Enter
+Sleep 5s

@@ -298,8 +298,10 @@ def build_llms_files(site_dir: Path = DEFAULT_SITE_DIR, docs_dir: Path = DEFAULT
         rel_md = md_path.relative_to(docs_dir).as_posix()
         raw_md = md_path.read_text(encoding="utf-8")
         expanded_md = _expand_snippets(raw_md)
-        title_match = re.search(r"^#\s+(.+)$", expanded_md, re.MULTILINE)
-        title = title_match.group(1).strip() if title_match else rel_md
+        title_match = re.search(r"^#\s+(.+)$", expanded_md, re.MULTILINE) or re.search(
+            r"^title:\s*(.+)$", expanded_md, re.MULTILINE
+        )
+        title = title_match.group(1).strip().strip("\"'") if title_match else rel_md
         if rel_md == "index.md":
             url_path = ""
         elif rel_md.endswith("/index.md"):

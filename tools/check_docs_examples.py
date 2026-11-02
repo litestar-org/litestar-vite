@@ -67,8 +67,11 @@ _AMBIENT_DECLARATIONS = """interface ImportMeta {
 declare module "@/generated/*";
 declare module "@/generated/routes" {
     export const route: any;
+    export const toRoute: any;
     export const wsRoute: any;
     export const currentRoute: any;
+    export const isCurrentRoute: any;
+    export const isRoute: any;
     export const hasRoute: any;
     export const routeDefinitions: Record<string, any>;
     export type RouteName = string;
@@ -130,8 +133,10 @@ declare module "@/generated/page-props" {
 }
 declare module "./generated/*" {
     export const route: any;
-    export const wsRoute: any;
+    export const toRoute: any;
     export const currentRoute: any;
+    export const isCurrentRoute: any;
+    export const isRoute: any;
     export const hasRoute: any;
     export const routeDefinitions: Record<string, any>;
     export const listItems: any;
@@ -142,8 +147,10 @@ declare module "./generated/*" {
 }
 declare module "./generated/routes" {
     export const route: any;
-    export const wsRoute: any;
+    export const toRoute: any;
     export const currentRoute: any;
+    export const isCurrentRoute: any;
+    export const isRoute: any;
     export const hasRoute: any;
     export const routeDefinitions: Record<string, any>;
     export type RouteName = string;
@@ -177,8 +184,10 @@ declare module "./generated/api/sdk.gen" {
 }
 declare module "../generated/*" {
     export const route: any;
-    export const wsRoute: any;
+    export const toRoute: any;
     export const currentRoute: any;
+    export const isCurrentRoute: any;
+    export const isRoute: any;
     export const hasRoute: any;
     export const listItems: any;
     export const createItem: any;
@@ -204,8 +213,10 @@ declare module "../generated/api" {
 }
 declare module "../generated/routes" {
     export const route: any;
-    export const wsRoute: any;
+    export const toRoute: any;
     export const currentRoute: any;
+    export const isCurrentRoute: any;
+    export const isRoute: any;
     export const hasRoute: any;
     export const routeDefinitions: Record<string, any>;
 }
@@ -597,7 +608,17 @@ def _write_typescript_stubs(ts_dir: Path) -> None:
     stub_generated = ts_dir / "generated"
     stub_generated.mkdir(exist_ok=True)
     (stub_generated / "routes.d.ts").write_text(
-        "export const route: any;\nexport const wsRoute: any;\nexport const currentRoute: any;\nexport const hasRoute: any;\nexport const routes: any;\nexport const routeDefinitions: Record<string, any>;\nexport type RouteName = string;\nexport type RouteParams<T extends string = string> = Record<string, any>;\n",
+        "export const route: any;\n"
+        "export const toRoute: any;\n"
+        "export const wsRoute: any;\n"
+        "export const currentRoute: any;\n"
+        "export const isCurrentRoute: any;\n"
+        "export const isRoute: any;\n"
+        "export const hasRoute: any;\n"
+        "export const routes: any;\n"
+        "export const routeDefinitions: Record<string, any>;\n"
+        "export type RouteName = string;\n"
+        "export type RouteParams<T extends string = string> = Record<string, any>;\n",
         encoding="utf-8",
     )
     stub_api = ts_dir / "api"

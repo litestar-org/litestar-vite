@@ -33,7 +33,7 @@ Notable changes to this project are documented in this file.
 - Upgraded Python and JavaScript dependencies and updated the Makefile upgrade workflow to use `prek update`.
 - Replaced HTTP Inertia SSR configuration with development ModuleRunner and production stdio
   workers. Removed `url`, `auto_start`, `health_check`, and `health_check_timeout`;
-  SSR failures now fall back to client rendering by default. See [v0.32 Migration Guide](learn/ssr.md)
+  SSR failures now fall back to client rendering by default. See [v0.32 Migration Guide](learn/migration-0-32.md)
   for dependency, configuration, and generated-artifact migration steps.
 
 ## 0.31.0 - 2026-08-17

@@ -90,7 +90,7 @@ my-project/
 
 ---
 
-## Using `useFetch` with Generated `route()`
+## Using `useFetch` with Generated `route`
 
 In Nuxt pages and composables, combine `useFetch` with the generated `route()` helper for SSR-hydrated, type-safe data fetching:
 

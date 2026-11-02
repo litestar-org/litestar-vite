@@ -16,7 +16,6 @@ extra_javascript = ["javascripts/termynal.js"]
 nav = [
   { "Home" = [
     { "Overview" = "index.md" },
-    { "Changelog" = "changelog.md" },
   ] },
   { "Getting Started" = [
     { "Installation & Setup" = "getting-started/index.md" },
@@ -52,19 +51,23 @@ nav = [
       { "Security, History & Versioning" = "frameworks/inertia/security-and-versioning.md" },
       { "SSR, TypeScript & Upgrade Guide" = "frameworks/inertia/ssr-and-typescript.md" },
     ] },
-    { "React" = "frameworks/react.md" },
-    { "Vue 3" = "frameworks/vue.md" },
-    { "Svelte 5" = "frameworks/svelte.md" },
-    { "Angular" = "frameworks/angular.md" },
-    { "HTMX" = "frameworks/htmx.md" },
-    { "Astro" = "frameworks/astro.md" },
-    { "Nuxt" = "frameworks/nuxt.md" },
-    { "SvelteKit" = "frameworks/sveltekit.md" },
+    { "UI Libraries & HTMX" = [
+      { "React" = "frameworks/react.md" },
+      { "Vue 3" = "frameworks/vue.md" },
+      { "Svelte 5" = "frameworks/svelte.md" },
+      { "Angular" = "frameworks/angular.md" },
+      { "HTMX" = "frameworks/htmx.md" },
+    ] },
+    { "Meta-Frameworks" = [
+      { "Astro" = "frameworks/astro.md" },
+      { "Nuxt" = "frameworks/nuxt.md" },
+      { "SvelteKit" = "frameworks/sveltekit.md" },
+    ] },
   ] },
   { "TypeGen & Realtime" = [
     { "Type Generation Pipeline" = "typegen/index.md" },
     { "OpenAPI TypeScript SDK" = "typegen/openapi-sdk.md" },
-    { "Type-Safe Routes (route & wsRoute)" = "typegen/routes.md" },
+    { "Type-Safe Routes (route & toRoute)" = "typegen/routes.md" },
     { "AsyncAPI Channels & SSE" = "typegen/realtime-channels.md" },
     { "Browser & Framework Event Streams" = "typegen/event-streams.md" },
   ] },
@@ -90,6 +93,7 @@ nav = [
       { "Fragments & Island Hydrators" = "reference/typescript/fragments.md" },
     ] },
     { "Contributing" = "reference/contributing.md" },
+    { "Changelog" = "changelog.md" },
   ] },
 ]
 
@@ -102,11 +106,15 @@ features = [
   "content.code.annotate",
   "content.code.copy",
   "content.tabs.link",
+  "navigation.footer",
   "navigation.path",
   "navigation.sections",
   "navigation.tabs",
   "navigation.top",
+  "navigation.tracking",
   "search.highlight",
+  "search.share",
+  "search.suggest",
   "toc.follow",
 ]
 

@@ -4,7 +4,7 @@ In `mode="hybrid"`, any Litestar route handler can render an Inertia page compon
 
 ---
 
-## 1. Declaring Page Handlers & Explicit `InertiaResponse`
+## Declaring Page Handlers
 
 You can return a plain `dict[str, Any]` or `msgspec.Struct` when `component="..."` is declared on the route decorator, or return an explicit [`InertiaResponse`](../../reference/inertia.md#litestar_vite.inertia.InertiaResponse) when you need per-response flags such as `encrypt_history=True`, `clear_history=True`, `template_name`, or `prop_filter`:
 
@@ -18,7 +18,7 @@ Organize page components into subdirectories (`resources/pages/Users/Index.tsx`,
 
 ---
 
-## 2. Direct Model Returns (`msgspec.Struct`, `dataclass`, Pydantic)
+## Direct Model Returns
 
 When a route handler returns a `msgspec.Struct`, `dataclass`, or Pydantic `BaseModel` directly instead of a `dict`, `InertiaResponse` serializes its top-level fields as the page's props — respecting `msgspec.Struct(rename="camel")` and `msgspec.field(name=...)` aliases automatically:
 
@@ -41,9 +41,9 @@ def show_profile() -> UserProfileProps:
 
 ---
 
-## 3. Consuming Page Props on the Frontend
+## Consuming Page Props on the Frontend
 
-=== "React (`@inertiajs/react`)"
+=== "React"
 
     ```tsx title="resources/pages/Profile/Show.tsx"
     import { Head } from "@inertiajs/react";
@@ -65,7 +65,7 @@ def show_profile() -> UserProfileProps:
     }
     ```
 
-=== "Vue 3 (`@inertiajs/vue3`)"
+=== "Vue 3"
 
     ```vue title="resources/pages/Profile/Show.vue"
     <script setup lang="ts">
@@ -85,7 +85,7 @@ def show_profile() -> UserProfileProps:
     </template>
     ```
 
-=== "Svelte 5 (`@inertiajs/svelte`)"
+=== "Svelte 5"
 
     ```svelte title="resources/pages/Profile/Show.svelte"
     <script lang="ts">
@@ -110,7 +110,7 @@ def show_profile() -> UserProfileProps:
 
 ---
 
-## 4. Automatic Pagination Container Unwrapping (`key="..."`)
+## Automatic Pagination Container Unwrapping
 
 When a route handler returns a Litestar `OffsetPagination[T]`, `ClassicPagination[T]`, or `advanced_alchemy` pagination container, `InertiaResponse` automatically extracts the items into the prop key specified by `key="..."` (default `"items"`) alongside pagination metadata (`total`, `limit`, `offset`, or `current_page`, `total_pages`):
 
@@ -134,7 +134,7 @@ def list_posts(limit: int = 10, offset: int = 0) -> OffsetPagination[PostSummary
 
 ---
 
-## 5. Server-Side Prop Filtering (`only()` and `except_()`)
+## Server-Side Prop Filtering (`only` and `except_`)
 
 Use [`only(*keys)`](../../reference/inertia.md#litestar_vite.inertia.only) or [`except_(*keys)`](../../reference/inertia.md#litestar_vite.inertia.except_) with `InertiaResponse(..., prop_filter=...)` to restrict which keys from a shared service dictionary or model are serialized into `props`:
 

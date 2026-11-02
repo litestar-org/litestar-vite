@@ -1,19 +1,19 @@
-# Typed Routes (`route()` & `wsRoute()`)
+# Typed Routes (`route` & `toRoute`)
 
 Hardcoding URL strings like `` `/api/users/${userId}/invoices?status=open` `` across frontend components leads to silent 404s whenever a backend route path or parameter name changes.
 
-When `TypeGenConfig(generate_routes=True)` is active (the default whenever `types=True`), `litestar-vite` inspects every HTTP and WebSocket route on your `Litestar` router and generates `src/generated/routes.ts` with compile-time checked `route()` and `wsRoute()` helpers.
+When `TypeGenConfig(generate_routes=True)` is active (the default whenever `types=True`), Litestar Vite inspects every route on your `Litestar` router and generates `src/generated/routes.ts` with compile-time checked `route()`, `toRoute()`, `currentRoute()`, and `isCurrentRoute()` helpers.
 
 ---
 
-## 1. Naming Routes in Litestar
+## Naming Routes in Litestar
 
 Give your Litestar route handlers semantic `name="..."` identifiers. If `name` is omitted, `extract_route_metadata()` derives a deterministic name from the handler function name:
 
 ```python
 from typing import Annotated
 from uuid import UUID
-from litestar import get, websocket_listener
+from litestar import get
 from litestar.params import Parameter
 
 
@@ -21,17 +21,11 @@ from litestar.params import Parameter
 def list_members(org_id: Annotated[UUID, Parameter()], role: str = "all") -> list[dict[str, str]]:
     """Return members for an organization."""
     return [{"org_id": str(org_id), "role": role}]
-
-
-@websocket_listener("/ws/rooms/{room_id:str}", name="rooms:stream")
-def room_socket(data: str, room_id: str) -> str:
-    """Echo messages inside a named WebSocket room."""
-    return f"[{room_id}] {data}"
 ```
 
 ---
 
-## 2. Semantic Parameter Type Aliases
+## Semantic Parameter Type Aliases
 
 `routes.ts` emits semantic TypeScript type aliases corresponding to Litestar path and query parameter types:
 
@@ -45,34 +39,48 @@ def room_socket(data: str, room_id: str) -> str:
 
 ---
 
-## 3. Using `route()` and `wsRoute()` in TypeScript
+## Using `route`, `toRoute`, and `isCurrentRoute` in TypeScript
 
-Import `route`, `wsRoute`, `hasRoute`, `currentRoute`, and `RouteParams` from your generated `src/generated/routes.ts` module:
+`route()` accepts the route name and a single combined `params` object containing both required path parameters and optional query parameters (automatically splitting query keys into the `?query` string):
 
 ```typescript title="src/navigation.ts"
-import { currentRoute, hasRoute, route, wsRoute, type RouteParams } from "./generated/routes";
+import {
+  currentRoute,
+  hasRoute,
+  isCurrentRoute,
+  route,
+  toRoute,
+  type RouteParams,
+} from "./generated/routes";
 
 type OrgMemberParams = RouteParams<"orgs:members">;
 
-const params: OrgMemberParams = { org_id: "123e4567-e89b-12d3-a456-426614174000" };
-const membersUrl = route("orgs:members", params, { role: "admin" });
+const params: OrgMemberParams = {
+  org_id: "123e4567-e89b-12d3-a456-426614174000",
+  role: "admin",
+};
+const membersUrl = route("orgs:members", params);
+const fullUrl = toRoute("orgs:members", params);
 
-const socketUrl = wsRoute("rooms:stream", { room_id: "general" });
-
-if (hasRoute("orgs:members") && currentRoute() === "orgs:members") {
-  console.log("Viewing organization members:", membersUrl, socketUrl);
+if (hasRoute("orgs:members") && isCurrentRoute("orgs:*")) {
+  console.log("Current route:", currentRoute(), membersUrl, fullUrl);
 }
 ```
 
-### How `wsRoute()` Resolves WebSocket Origins
+### Generated Route Helpers Summary
 
-- When called in the browser with a relative path (`/ws/rooms/general`), `wsRoute()` automatically resolves the origin using `window.location` (`ws://` on `http:` and `wss://` on `https:`).
-- When an explicit `serverUrl` is configured or passed, `wsRoute()` normalizes `http://` -> `ws://` and `https://` -> `wss://`.
-- Internal `ChannelsPlugin` and Vite HMR/SSR proxy WebSocket endpoints are automatically filtered out of `routes.json` and `routes.ts` so `wsRoute()` only exposes application WebSocket routes.
+| Exported Helper | Description |
+| --- | --- |
+| `route(name, params?)` | Builds a type-safe URL path (plus `?query` string for non-path keys). |
+| `toRoute(name, params?)` | Like `route()`, prefixed with `API_URL` when an origin is configured. |
+| `hasRoute(name)` | Type guard checking whether `name` exists in `routeDefinitions`. |
+| `currentRoute()` | Matches `window.location.pathname` against `routeDefinitions` and returns the active `RouteName | null`. |
+| `isCurrentRoute(pattern)` | Checks whether `currentRoute()` matches an exact name or wildcard pattern (e.g. `"orgs:*"`). |
+| `isRoute(url, pattern)` | Checks whether an arbitrary URL string or `Location` matches `pattern`. |
 
 ---
 
-## 4. Compile-Time Parameter Enforcement & Global `window.route`
+## Compile-Time Parameter Validation & Global Route
 
 - **Routes with required path parameters** (`"orgs:members"`) require the `params` object; omitting `params` or misspelling `org_id` fails `tsc --noEmit` immediately.
 - **Routes without path parameters** (`"customers:list"`) allow calling `route("customers:list")` with zero arguments or optional query parameters.

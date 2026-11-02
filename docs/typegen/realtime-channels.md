@@ -1,10 +1,10 @@
 # AsyncAPI Channels, WebSockets & Server-Sent Events
 
-When your Litestar application registers `litestar-asyncapi`'s `AsyncAPIPlugin` (for WebSockets, `ChannelsPlugin`, or Server-Sent Events), `litestar-vite` extracts and normalizes the AsyncAPI 3.0 document into `src/generated/asyncapi.json` and generates a zero-dependency typed client in `src/generated/channels.ts`.
+When your Litestar application registers `litestar-asyncapi`'s `AsyncAPIPlugin` (for WebSockets, `ChannelsPlugin`, or Server-Sent Events), Litestar Vite extracts and normalizes the AsyncAPI 3.0 document into `src/generated/asyncapi.json` and generates a zero-dependency typed client in `src/generated/channels.ts`.
 
 ---
 
-## 1. AsyncAPI Ownership & `TypeGenConfig`
+## AsyncAPI Ownership & Configuration
 
 `litestar-asyncapi` owns AsyncAPI 3.0 schema extraction across your Litestar routes, while `litestar_vite.codegen.normalize_asyncapi_document()` normalizes channel addresses, collision-safe channel keys, and JSON Schema message payloads:
 
@@ -14,7 +14,7 @@ When your Litestar application registers `litestar-asyncapi`'s `AsyncAPIPlugin` 
 
 ---
 
-## 2. Litestar `ChannelsPlugin` Pub/Sub Fan-Out
+## ChannelsPlugin Pub/Sub Fan-Out
 
 Use Litestar's `ChannelsPlugin` when you want server-side publish/subscribe fan-out across one or more application workers:
 
@@ -52,7 +52,7 @@ app = Litestar(
 
 ---
 
-## 3. WebSocket Handlers (`@websocket_listener` & `@websocket`)
+## WebSocket Handlers
 
 Use `@websocket_listener` for typed request/response message loops or low-level `@websocket` when you need full lifecycle control over `socket.accept()`, `socket.send_json()`, and disconnect handling:
 
@@ -87,7 +87,7 @@ async def raw_socket_handler(socket: WebSocket, stream_id: str) -> None:
 
 ---
 
-## 4. Server-Sent Events (`ServerSentEvent` & `ServerSentEventMessage`)
+## Server-Sent Events
 
 For unidirectional server-to-browser streaming over HTTP/1.1 or HTTP/2, return a `ServerSentEvent` wrapping an async generator of `ServerSentEventMessage` items:
 
@@ -120,7 +120,7 @@ def stream_order_events(order_id: str) -> ServerSentEvent:
 
 ---
 
-## 5. Generated `channels.ts` & `createTypedChannels()`
+## Generated `channels.ts` & `createTypedChannels`
 
 When `TypeGenConfig(generate_channels=True)` is active, `src/generated/channels.ts` exports:
 

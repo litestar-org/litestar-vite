@@ -1,4 +1,4 @@
-# Inertia.js v2 Reference (`litestar_vite.inertia`)
+# Inertia.js v2 Reference
 
 API reference for the Inertia.js v2 plugin, request/response primitives, deferred/merged prop wrappers, session state helpers, and Laravel Precognition support.
 
@@ -158,18 +158,22 @@ API reference for the Inertia.js v2 plugin, request/response primitives, deferre
 ::: litestar_vite.inertia.extract_deferred_props
     options:
       heading_level: 4
+      show_source: false
 
 ::: litestar_vite.inertia.extract_merge_props
     options:
       heading_level: 4
+      show_source: false
 
 ::: litestar_vite.inertia.extract_once_props
     options:
       heading_level: 4
+      show_source: false
 
 ::: litestar_vite.inertia.helpers.should_render
     options:
       heading_level: 4
+      show_source: false
 
 ---
 
@@ -178,22 +182,27 @@ API reference for the Inertia.js v2 plugin, request/response primitives, deferre
 ::: litestar_vite.inertia.share
     options:
       heading_level: 4
+      show_source: false
 
 ::: litestar_vite.inertia.get_shared_props
     options:
       heading_level: 4
+      show_source: false
 
 ::: litestar_vite.inertia.flash
     options:
       heading_level: 4
+      show_source: false
 
 ::: litestar_vite.inertia.error
     options:
       heading_level: 4
+      show_source: false
 
 ::: litestar_vite.inertia.clear_history
     options:
       heading_level: 4
+      show_source: false
 
 ---
 
@@ -202,24 +211,30 @@ API reference for the Inertia.js v2 plugin, request/response primitives, deferre
 ::: litestar_vite.inertia.precognition.precognition
     options:
       heading_level: 4
+      show_source: false
 
 ::: litestar_vite.inertia.PrecognitionResponse
     options:
       heading_level: 4
       members: false
+      show_source: false
 
 ::: litestar_vite.inertia.create_precognition_exception_handler
     options:
       heading_level: 4
+      show_source: false
 
 ::: litestar_vite.inertia.normalize_validation_errors
     options:
       heading_level: 4
+      show_source: false
 
 ::: litestar_vite.inertia.create_inertia_exception_response
     options:
       heading_level: 4
+      show_source: false
 
 ::: litestar_vite.inertia.exception_to_http_response
     options:
       heading_level: 4
+      show_source: false

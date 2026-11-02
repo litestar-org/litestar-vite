@@ -1,10 +1,10 @@
 # Migrating to v0.32
 
-`litestar-vite` `v0.32.0` unifies the SSR and fragment IPC transport layer, upgrades the minimum Vite peer dependency to **Vite 7+**, and consolidates AsyncAPI 3.0 schema ownership on `litestar-asyncapi`.
+Litestar Vite v0.32.0 unifies the SSR and fragment IPC transport layer, upgrades the minimum Vite peer dependency to **Vite 7+**, and consolidates AsyncAPI 3.0 schema ownership on `litestar-asyncapi`.
 
 ---
 
-## 1. Lockstep Python & npm Version Upgrade
+## Lockstep Python & npm Version Upgrade
 
 Always upgrade the Python `litestar-vite` package and the npm `litestar-vite-plugin` package together so `.litestar.json` bridge contracts match:
 
@@ -24,25 +24,25 @@ Always upgrade the Python `litestar-vite` package and the npm `litestar-vite-plu
 
 ---
 
-## 2. `InertiaSSRConfig` Transport Simplification
+## SSR Transport Simplification
 
-Prior to `0.32.0`, Inertia SSR spawned a standalone HTTP server (`node ssr.js` listening on port `13714`) and polled a `/health` endpoint. In `0.32.0`, SSR uses two zero-configuration IPC transports:
+Prior to 0.32.0, Inertia SSR spawned a standalone HTTP server (`node ssr.js` listening on port `13714`) and polled a `/health` endpoint. In 0.32.0, SSR uses two zero-configuration IPC transports:
 
 - **Development (`dev_mode=True`)**: `TCPStreamIPCTransport` connects directly to Vite's `/__litestar_ssr__` endpoint (`ModuleRunner`). No separate SSR server port or build is required in development.
-- **Production (`dev_mode=False`)**: `StdioIPCTransport` (or `WasmIPCTransport`) streams newline-delimited JSON over `stdin`/`stdout` pipes to a managed worker pool.
+- **Production (`dev_mode=False`)**: `StdioIPCTransport` streams newline-delimited JSON over `stdin`/`stdout` pipes to a managed worker subprocess.
 
-### Removed `InertiaSSRConfig` Fields
+### Removed SSR Configuration Fields
 
-| Pre-`0.32` Field | `0.32.0` Replacement |
+| Pre-0.32 Field | 0.32.0 Replacement |
 | --- | --- |
-| `InertiaSSRConfig(url="http://127.0.0.1:13714/render")` | **Removed** — Dev uses Vite's hotfile (`/__litestar_ssr__`); production uses `StdioIPCTransport` (`RuntimeConfig.ssr_command`). |
-| `InertiaSSRConfig(auto_start=True)` | **Removed** — Worker lifecycle is managed automatically by `VitePlugin.lifespan()`. |
+| `InertiaSSRConfig(url="http://127.0.0.1:13714/render")` | **Removed** — Dev uses Vite's hotfile (`/__litestar_ssr__`); production uses `StdioIPCTransport` (`InertiaSSRConfig.command` / `RuntimeConfig.ssr_command`). |
+| `InertiaSSRConfig(auto_start=True)` | **Removed** — Worker lifecycle is managed automatically by `InertiaPlugin.lifespan()`. |
 | `InertiaSSRConfig(health_check=True)` | **Removed** — `SSRCircuitBreaker` tracks worker health per IPC call without HTTP polling. |
-| `InertiaSSRConfig(enabled=True, entry=..., bundle=..., timeout=5.0)` | **Supported** — Configure `enabled`, `entry`, `bundle`, `timeout`, and `max_Concurrency`. |
+| `InertiaSSRConfig(enabled=True, timeout=2.0, fallback_to_client=True)` | **Supported** — Configure `enabled`, `timeout`, `target_selector`, `command`, `cwd`, `fallback_to_client`, and `circuit_breaker_*`. |
 
 ---
 
-## 3. Dual-Mode SSR Entrypoint (`resources/ssr.tsx` / `resources/ssr.ts`)
+## Dual-Mode SSR Entrypoint
 
 Update your SSR entrypoint so it both exports `default function render(page)` (consumed by Vite's `ModuleRunner` in development) and calls `startSsrWorker({ render })` (consumed by `StdioIPCTransport` in production):
 
@@ -70,9 +70,9 @@ startSsrWorker({ render });
 
 ---
 
-## 4. AsyncAPI Channel Codegen (`litestar-asyncapi`)
+## AsyncAPI Channel Codegen
 
-In `0.32.0`, `TypeGenConfig(generate_channels=True)` requires a registered `litestar_asyncapi.AsyncAPIPlugin` on your `Litestar` application (`uv add "litestar-vite[asyncapi]"`):
+In 0.32.0, `TypeGenConfig(generate_channels=True)` requires a registered `litestar_asyncapi.AsyncAPIPlugin` on your `Litestar` application (`uv add "litestar-vite[asyncapi]"`):
 
 - `litestar-asyncapi` owns AsyncAPI 3.0 schema extraction across WebSockets, `ChannelsPlugin`, and SSE routes.
 - `litestar_vite.codegen` normalizes the exported `asyncapi.json` document (`normalize_asyncapi_document`) and generates `src/generated/channels.ts`.

@@ -3,15 +3,15 @@ title: Dev Proxy & .litestar.json Bridge
 description: How Litestar and Vite 7+ coordinate via .litestar.json, the hot file, and the single-port AnyIO HTTP/WebSocket proxy.
 ---
 
-# Dev Proxy & `.litestar.json` Bridge
+# Dev Proxy & Runtime Bridge
 
-Running two separate servers during development (`localhost:8000` for Python and `localhost:5173` for Vite) traditionally introduces CORS configuration drift, split cookie origins, and broken WebSocket HMR paths behind reverse proxies. `litestar-vite` eliminates two-port friction with a **single-port AnyIO streaming proxy** and a deterministic **`.litestar.json` configuration bridge**.
+Running two separate servers during development (`localhost:8000` for Python and `localhost:5173` for Vite) traditionally introduces CORS configuration drift, split cookie origins, and broken WebSocket HMR paths behind reverse proxies. Litestar Vite eliminates two-port friction with a **single-port AnyIO streaming proxy** and a deterministic **`.litestar.json` configuration bridge**.
 
 --8<-- "tools/docs/includes/diagram-dev-proxy.html"
 
 ---
 
-## The `.litestar.json` Handshake
+## The Runtime Bridge Handshake
 
 Python (`ViteConfig`) is the single source of truth for asset paths, ports, executors, and type-generation flags.
 
@@ -21,7 +21,7 @@ Python (`ViteConfig`) is the single source of truth for asset paths, ports, exec
 
 ---
 
-## Single-Port AnyIO Streaming Proxy (`ViteProxyMiddleware`)
+## Single-Port AnyIO Streaming Proxy
 
 When `runtime.dev_mode=True` and `proxy_mode="vite"` (the default), browser clients connect **exclusively** to the Litestar port (`http://127.0.0.1:8000`):
 
@@ -32,11 +32,11 @@ When `runtime.dev_mode=True` and `proxy_mode="vite"` (the default), browser clie
 
 ---
 
-## Production Static Serving & Granian `StaticPlacement.NATIVE`
+## Production Static Serving & Granian Native Placement
 
 When `dev_mode=False`, `ViteProxyMiddleware` is not mounted. Instead, `VitePlugin` registers static file serving for `bundle_dir` and `static_dir` with two Router-level hooks:
 
 | Hook Class | Responsibility | Why Attached at Router Level |
 | :--- | :--- | :--- |
-| `_StaticBeforeRequestHook` | Returns `404 Not Found` for build metadata files (`manifest.json`, `.vite/manifest.json`, `ssr-manifest.json`, `hot`). | Keeps `StaticFilesConfig.has_asgi_overrides()` equal to `False` so `litestar-granian` can serve static files directly inside Rust (`StaticPlacement.NATIVE`). |
+| `_StaticBeforeRequestHook` | Returns 404 Not Found for build metadata files (`manifest.json`, `.vite/manifest.json`, `ssr-manifest.json`, `hot`). | Keeps `StaticFilesConfig.has_asgi_overrides()` equal to `False` so `litestar-granian` can serve static files directly inside Rust (`StaticPlacement.NATIVE`). |
 | `_StaticAfterRequestHook` | Sets `Cache-Control: public, max-age=31536000, immutable` on hashed bundle paths (`/static/assets/*`). | Picklable slotted callable class (`__slots__`) that survives `copy.deepcopy(router)` during Litestar route registration. |

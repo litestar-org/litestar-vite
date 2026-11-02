@@ -53,43 +53,43 @@
     <!-- Left Column: Development Mode -->
     <rect x="20" y="20" width="425" height="310" rx="14" fill="var(--lv-card)" stroke="var(--lv-blue)" stroke-width="2" />
     <text x="232" y="50" text-anchor="middle" fill="var(--lv-text)" font-size="15" font-weight="700">Development Mode (dev_mode=True)</text>
-    <text x="232" y="70" text-anchor="middle" fill="var(--lv-blue)" font-size="11" font-family="monospace">Hot-file discovery • Live Vite 7+ ESM &amp; HMR</text>
+    <text x="232" y="70" text-anchor="middle" fill="var(--lv-blue)" font-size="11" font-family="monospace">Hot-file discovery • Live Vite ESM &amp; HMR</text>
 
     <rect x="45" y="90" width="375" height="58" rx="8" fill="var(--lv-surface)" stroke="var(--lv-border)" />
-    <text x="232" y="114" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">1. ViteAssetLoader (Hot-File Mode)</text>
-    <text x="232" y="134" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">Reads public/hot → injects @vite/client + entry module tags</text>
+    <text x="232" y="114" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">ViteAssetLoader (Hot-File Mode)</text>
+    <text x="232" y="134" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">Reads public/hot → injects @vite/client</text>
 
     <line class="lv-stream-dev" x1="232" y1="148" x2="232" y2="172" stroke="var(--lv-blue)" stroke-width="2.5" />
 
     <rect x="45" y="172" width="375" height="62" rx="8" fill="var(--lv-surface)" stroke="var(--lv-blue)" />
-    <text x="232" y="196" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">2. ViteProxyMiddleware (Single-Port :8000)</text>
-    <text x="232" y="216" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">Streams /static/* &amp; /static/vite-hmr to Vite (:5173)</text>
+    <text x="232" y="196" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">ViteProxyMiddleware (Single-Port :8000)</text>
+    <text x="232" y="216" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">Streams assets &amp; /vite-hmr to Vite (:5173)</text>
 
     <line class="lv-stream-dev" x1="232" y1="234" x2="232" y2="256" stroke="var(--lv-blue)" stroke-width="2.5" />
 
     <rect x="45" y="256" width="375" height="56" rx="8" fill="var(--lv-surface)" stroke="var(--lv-border)" />
-    <text x="232" y="280" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">3. Dev SSR &amp; Fragments (TCPStreamIPCTransport)</text>
+    <text x="232" y="280" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">Dev SSR &amp; Fragments (TCPStreamIPCTransport)</text>
     <text x="232" y="298" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">POST /__litestar_ssr__ → Vite ServerModuleRunner</text>
 
     <!-- Right Column: Production Mode -->
     <rect x="475" y="20" width="425" height="310" rx="14" fill="var(--lv-card)" stroke="var(--lv-emerald)" stroke-width="2" />
     <text x="687" y="50" text-anchor="middle" fill="var(--lv-text)" font-size="15" font-weight="700">Production Mode (dev_mode=False)</text>
-    <text x="687" y="70" text-anchor="middle" fill="var(--lv-emerald)" font-size="11" font-family="monospace">Zero Node Dev Server • Immutable Hashed Bundles</text>
+    <text x="687" y="70" text-anchor="middle" fill="var(--lv-emerald)" font-size="11" font-family="monospace">Zero Dev Server • Immutable Hashed Bundles</text>
 
     <rect x="500" y="90" width="375" height="58" rx="8" fill="var(--lv-surface)" stroke="var(--lv-border)" />
-    <text x="687" y="114" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">1. ViteAssetLoader (Manifest Mode)</text>
-    <text x="687" y="134" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">Parses manifest.json → modulepreload + hashed CSS/JS</text>
+    <text x="687" y="114" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">ViteAssetLoader (Manifest Mode)</text>
+    <text x="687" y="134" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">Parses manifest.json → hashed CSS/JS tags</text>
 
     <line class="lv-stream-prod" x1="687" y1="148" x2="687" y2="172" stroke="var(--lv-emerald)" stroke-width="2.5" />
 
     <rect x="500" y="172" width="375" height="62" rx="8" fill="var(--lv-surface)" stroke="var(--lv-emerald)" />
-    <text x="687" y="196" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">2. Static Serving (StaticPlacement.NATIVE)</text>
-    <text x="687" y="216" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">max-age=31536000, immutable • blocks manifest.json/hot</text>
+    <text x="687" y="196" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">Static Serving (StaticPlacement.NATIVE)</text>
+    <text x="687" y="216" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">Immutable caching + metadata blocking</text>
 
     <line class="lv-stream-prod" x1="687" y1="234" x2="687" y2="256" stroke="var(--lv-emerald)" stroke-width="2.5" />
 
     <rect x="500" y="256" width="375" height="56" rx="8" fill="var(--lv-surface)" stroke="var(--lv-border)" />
-    <text x="687" y="280" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">3. Prod SSR Worker (StdioIPCTransport / QuickJS)</text>
+    <text x="687" y="280" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">Prod SSR Worker (StdioIPCTransport)</text>
     <text x="687" y="298" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">NDJSON stdin/stdout pool + SSRCircuitBreaker</text>
   </svg>
 </div>

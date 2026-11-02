@@ -4,7 +4,7 @@ Setting `ViteConfig(mode="hybrid")` (or `mode="inertia"`) enables Inertia suppor
 
 ---
 
-## `InertiaConfig` & `InertiaTypeGenConfig`
+## Inertia Configuration
 
 ```python title="app.py"
 from litestar import Litestar
@@ -49,9 +49,9 @@ app = Litestar(
 | `use_script_element` | `True` | Emit initial page JSON inside `<script type="application/json" id="app_page" data-page="app">` instead of an HTML-escaped `data-page` attribute. |
 | `app_selector` | `"#app"` | CSS ID selector for the root mount container (`#app`, `#root`). |
 | `encrypt_history` | `False` | Globally enable browser `window.history.state` encryption via Web Crypto. |
-| `precognition` | `False` | Register the Laravel Precognition validation exception handler (`422` / `204`). |
-| `redirect_unauthorized_to` | `None` | Automatically redirect unauthenticated (`401`) Inertia requests to this path. |
-| `redirect_404` | `None` | Automatically redirect `404 Not Found` Inertia requests to this path. |
+| `precognition` | `False` | Register the Laravel Precognition validation exception handler (422 / 204). |
+| `redirect_unauthorized_to` | `None` | Automatically redirect unauthenticated (401) Inertia requests to this path. |
+| `redirect_404` | `None` | Automatically redirect 404 Not Found Inertia requests to this path. |
 | `extra_static_page_props` | `{}` | Static key-value dictionary merged into every Inertia response's `props`. |
 | `extra_session_page_props` | `set()` | Session keys automatically read from `request.session` and merged into `props`. |
 | `shared_page_prop_types` | `{}` | Mapping of shared prop keys to Python types (`{"auth": AuthProp}`) for `page-props.ts` codegen. |
@@ -59,7 +59,7 @@ app = Litestar(
 
 ---
 
-## Vite Plugin Boundary (`litestar-vite-plugin` vs `@inertiajs/vite`)
+## Vite Plugin Boundary
 
 In Litestar Vite projects, **`litestar-vite-plugin` is the sole Vite bridge owner**. Do **not** install `@inertiajs/vite` alongside `litestar-vite-plugin`:
 
@@ -113,7 +113,7 @@ Inertia works in two HTML shell modes:
 
 ---
 
-## Script-Element Initial Page Bootstrap (`use_script_element=True`)
+## Script-Element Initial Page Bootstrap
 
 By default, `InertiaConfig(use_script_element=True)` serializes initial page props into `<script type="application/json" id="app_page" data-page="app">{...}</script><div id="app"></div>` rather than an HTML-escaped `data-page="&quot;...&quot;"` attribute. This cuts initial HTML payload size by ~30% and avoids HTML entity decoding overhead.
 
@@ -163,12 +163,12 @@ By default, `InertiaConfig(use_script_element=True)` serializes initial page pro
     });
     ```
 
-> [!NOTE]
-> If you prefer the legacy `data-page="..."` attribute on `<div id="app">`, set `InertiaConfig(use_script_element=False)`.
+!!! note
+    If you prefer the legacy `data-page="..."` attribute on `<div id="app">`, set `InertiaConfig(use_script_element=False)`.
 
 ---
 
-## Custom Mount Selector (`app_selector`) & Multiple Root Templates
+## Custom Mount Selector & Multiple Root Templates
 
 - **Custom Mount Container**: If your frontend mounts to `#root` instead of `#app`, set `InertiaConfig(app_selector="#root")`. Litestar automatically emits `<script type="application/json" id="root_page" data-page="root">` and `<div id="root"></div>`.
 - **Per-Route Template Override**: Pass `template_name="admin.html.j2"` to `InertiaResponse(..., template_name="admin.html.j2")` when specific route groups need a distinct HTML shell.

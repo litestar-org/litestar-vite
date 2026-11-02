@@ -5,7 +5,7 @@ description: Visual overview of how Litestar (Python ASGI) and Vite 7+ coordinat
 
 # Architecture Overview
 
-`litestar-vite` bridges two runtimes with distinct responsibilities:
+Litestar Vite bridges two runtimes with distinct responsibilities:
 
 - **Litestar (Python ASGI)** owns routing, dependency injection, authentication guards, OpenAPI/AsyncAPI schema metadata, CSRF protection, and HTML shell or JSON serialization.
 - **Vite 7+ (JavaScript / TypeScript)** owns ES module transformation, Hot Module Replacement (HMR), CSS/Tailwind pipelines, SSR module execution (`RunnableDevEnvironment`), and production Rollup/Rolldown bundling.

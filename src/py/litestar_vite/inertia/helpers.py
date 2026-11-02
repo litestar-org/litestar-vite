@@ -134,15 +134,15 @@ def defer(
     Returns:
         A DeferredProp instance.
 
-    Example::
-
+    Example:
+        ```python
         defer("permissions", lambda: Permission.all())
 
         defer("teams", lambda: Team.all(), group="attributes")
         defer("projects", lambda: Project.all(), group="attributes")
 
-        # Chain with .once() for lazy + cached behavior
         defer("stats", lambda: compute_expensive_stats()).once()
+        ```
     """
     return DeferredProp[str, T](key=key, value=callback, group=group)
 
@@ -170,8 +170,8 @@ def once(key: str, value_or_callable: "T | Callable[..., T | Coroutine[Any, Any,
     Returns:
         An OnceProp instance.
 
-    Example::
-
+    Example:
+        ```python
         from litestar_vite.inertia import once, InertiaResponse
 
         @get("/dashboard", component="Dashboard")
@@ -181,9 +181,10 @@ def once(key: str, value_or_callable: "T | Callable[..., T | Coroutine[Any, Any,
                 "settings": once("settings", lambda: Settings.for_user(user_id)),
                 "feature_flags": once("feature_flags", get_feature_flags()),
             })
+        ```
 
     See Also:
-        - `defer`: For deferred props that support ``.once()`` chaining
+        - `defer`: For deferred props that support `.once()` chaining
         - Inertia.js once props: https://inertiajs.com/partial-reloads#once
     """
     return OnceProp[str, T](key=key, value=value_or_callable)
@@ -194,7 +195,7 @@ def optional(key: str, callback: "Callable[..., T | Coroutine[Any, Any, T]]") ->
 
     Optional props are NEVER included in initial page loads or standard
     partial reloads. They're only sent when the client explicitly requests
-    them via ``only: ['prop_name']`` in a partial reload.
+    them via `only: ['prop_name']` in a partial reload.
 
     This is designed for use with Inertia's WhenVisible component, which
     triggers a partial reload requesting specific props when an element
@@ -210,8 +211,8 @@ def optional(key: str, callback: "Callable[..., T | Coroutine[Any, Any, T]]") ->
     Returns:
         An OptionalProp instance.
 
-    Example::
-
+    Example:
+        ```python
         from litestar.params import FromPath
         from litestar_vite.inertia import optional, InertiaResponse
 
@@ -220,19 +221,21 @@ def optional(key: str, callback: "Callable[..., T | Coroutine[Any, Any, T]]") ->
             post = await Post.get(post_id)
             return InertiaResponse({
                 "post": post,
-                # Only loaded when WhenVisible triggers
                 "comments": optional("comments", lambda: Comment.for_post(post_id)),
                 "related_posts": optional("related_posts", lambda: Post.related(post_id)),
             })
+        ```
 
-    Frontend usage with WhenVisible::
+        Frontend usage with `WhenVisible`:
 
+        ```vue
         <WhenVisible data="comments" :params="{ only: ['comments'] }">
             <template #fallback>
                 <LoadingSpinner />
             </template>
             <CommentList :comments="comments" />
         </WhenVisible>
+        ```
 
     See Also:
         - Inertia.js WhenVisible: https://inertiajs.com/load-when-visible
@@ -259,19 +262,18 @@ def always(key: str, value: "T") -> "AlwaysProp[str, T]":
     Returns:
         An AlwaysProp instance.
 
-    Example::
-
+    Example:
+        ```python
         from litestar_vite.inertia import always, lazy, InertiaResponse
 
         @get("/dashboard", component="Dashboard")
         async def dashboard(request: Request) -> InertiaResponse:
             return InertiaResponse({
-                # Always sent, even during partial reloads for other props
                 "auth": always("auth", {"user": request.user, "can": permissions}),
-                # Only sent when explicitly requested
                 "analytics": lazy("analytics", get_analytics),
                 "reports": lazy("reports", get_reports),
             })
+        ```
 
     See Also:
         - `lazy`: For props excluded from initial load
@@ -314,8 +316,8 @@ def only(*keys: str) -> PropFilter:
     Returns:
         A PropFilter configured to include only the specified keys.
 
-    Example::
-
+    Example:
+        ```python
         from litestar_vite.inertia import only, InertiaResponse
 
         @get("/users", component="Users")
@@ -331,10 +333,11 @@ def only(*keys: str) -> PropFilter:
                 },
                 prop_filter=only("users"),
             )
+        ```
 
     Note:
         This is a server-side helper. The client should use Inertia's
-        ``router.reload({ only: ['users'] })`` for client-initiated filtering.
+        `router.reload({ only: ['users'] })` for client-initiated filtering.
     """
     return PropFilter(include=set(keys))
 
@@ -351,8 +354,8 @@ def except_(*keys: str) -> PropFilter:
     Returns:
         A PropFilter configured to exclude the specified keys.
 
-    Example::
-
+    Example:
+        ```python
         from litestar_vite.inertia import except_, InertiaResponse
 
         @get("/users", component="Users")
@@ -368,10 +371,11 @@ def except_(*keys: str) -> PropFilter:
                 },
                 prop_filter=except_("stats"),
             )
+        ```
 
     Note:
-        The function is named ``except_`` with a trailing underscore to avoid
-        conflicting with Python's ``except`` keyword.
+        The function is named `except_` with a trailing underscore to avoid
+        conflicting with Python's `except` keyword.
     """
     return PropFilter(exclude=set(keys))
 
@@ -452,15 +456,13 @@ def merge(
     Returns:
         A MergeProp instance.
 
-    Example::
-
+    Example:
+        ```python
         merge("posts", new_posts)
-
         merge("messages", new_messages, strategy="prepend")
-
         merge("user_data", updates, strategy="deep")
-
         merge("posts", updated_posts, match_on="id")
+        ```
     """
     return MergeProp[str, T](key=key, value=value, strategy=strategy, match_on=match_on)
 
@@ -482,8 +484,8 @@ def scroll_props(
     Returns:
         A ScrollPropsConfig instance for use in InertiaResponse.
 
-    Example::
-
+    Example:
+        ```python
         from litestar.params import FromQuery
         from litestar_vite.inertia import scroll_props, InertiaResponse
 
@@ -498,6 +500,7 @@ def scroll_props(
                     next_page=page + 1 if posts.has_more else None,
                 ),
             )
+        ```
     """
     return ScrollPropsConfig(
         page_name=page_name, current_page=current_page, previous_page=previous_page, next_page=next_page
@@ -528,10 +531,10 @@ def extract_merge_props(props: "Mapping[str, Any]") -> "tuple[list[str], list[st
     Returns:
         A tuple of (merge_props, prepend_props, deep_merge_props, match_props_on)
         where each list contains the prop keys for that strategy, and match_props_on
-        is a flat list of property paths such as ``items.id``.
+        is a flat list of property paths such as `items.id`.
 
-    Example::
-
+    Example:
+        ```python
         props = {
             "users": [...],
             "posts": merge("posts", new_posts),
@@ -540,13 +543,14 @@ def extract_merge_props(props: "Mapping[str, Any]") -> "tuple[list[str], list[st
             "items": merge("items", items, match_on="id"),
         }
         merge_props, prepend_props, deep_merge_props, match_props_on = extract_merge_props(props)
+        ```
 
         The returned values then contain:
 
-        - merge_props: ["posts", "items"]
-        - prepend_props: ["messages"]
-        - deep_merge_props: ["data"]
-        - match_props_on: ["items.id"]
+        - `merge_props`: `["posts", "items"]`
+        - `prepend_props`: `["messages"]`
+        - `deep_merge_props`: `["data"]`
+        - `match_props_on`: `["items.id"]`
     """
     merge_list: "list[str]" = []
     prepend_list: "list[str]" = []
@@ -653,10 +657,10 @@ class DeferredProp(Generic[PropKeyT, T]):
         Returns:
             A new DeferredProp with is_once=True.
 
-        Example::
-
-            # Combine defer with once for lazy + cached behavior
+        Example:
+            ```python
             defer("stats", lambda: compute_expensive_stats()).once()
+            ```
         """
         return DeferredProp[PropKeyT, T](key=self._key, value=self._value, group=self._group, is_once=True)
 
@@ -950,8 +954,8 @@ def extract_deferred_props(props: "Mapping[str, Any]") -> "dict[str, list[str]]"
         A dict mapping group names to lists of prop keys in that group.
         Empty dict if no deferred props found.
 
-    Example::
-
+    Example:
+        ```python
         props = {
             "users": [...],
             "teams": defer("teams", get_teams, group="attributes"),
@@ -959,8 +963,9 @@ def extract_deferred_props(props: "Mapping[str, Any]") -> "dict[str, list[str]]"
             "permissions": defer("permissions", get_permissions),
         }
         result = extract_deferred_props(props)
+        ```
 
-        The result is {"default": ["permissions"], "attributes": ["teams", "projects"]}.
+        The result is `{"default": ["permissions"], "attributes": ["teams", "projects"]}`.
     """
     groups: "dict[str, list[str]]" = {}
 
@@ -993,16 +998,17 @@ def extract_once_props(
         A list of prop keys that should be cached client-side.
         Empty list if no once props found.
 
-    Example::
-
+    Example:
+        ```python
         props = {
             "user": current_user,
             "settings": once("settings", get_settings),
             "stats": defer("stats", get_stats).once(),
         }
         result = extract_once_props(props)
+        ```
 
-        The result is ["settings", "stats"].
+        The result is `["settings", "stats"]`.
     """
     return [key for key, _ in _extract_once_prop_entries(props, partial_data, partial_except)]
 
@@ -1525,14 +1531,15 @@ def flash(connection: "ASGIConnection[Any, Any, Any, Any]", message: "str", cate
     Returns:
         True when the flash message was staged for the current request.
 
-    Example::
-
+    Example:
+        ```python
         from litestar_vite.inertia import flash
 
         @post("/create")
         async def create_item(request: Request) -> InertiaResponse:
             flash(request, "Item created successfully!", "success")
             return InertiaResponse(...)
+        ```
     """
     stage_flash(connection, message, category)
     return True
@@ -1551,8 +1558,8 @@ def clear_history(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
     Args:
         connection: The ASGI connection (Request).
 
-    Example::
-
+    Example:
+        ```python
         from litestar_vite.inertia import clear_history
 
         @post("/logout")
@@ -1560,6 +1567,7 @@ def clear_history(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
             request.session.clear()
             clear_history(request)
             return InertiaRedirect(request, redirect_to="/login")
+        ```
     """
     stage_clear_history(connection)
 
@@ -1608,12 +1616,13 @@ def extract_pagination_scroll_props(value: "Any", page_param: str = "page") -> "
         A tuple of (items, scroll_props) where scroll_props is None if
         value is not a pagination container.
 
-    Example::
-
+    Example:
+        ```python
         items, scroll = extract_pagination_scroll_props(pagination)
+        ```
 
-        For OffsetPagination with limit=10, offset=20, total=50 the resulting scroll
-        props are: ScrollPropsConfig(current_page=3, previous_page=2, next_page=4).
+        For `OffsetPagination` with `limit=10, offset=20, total=50` the resulting scroll
+        props are `ScrollPropsConfig(current_page=3, previous_page=2, next_page=4)`.
     """
     if not is_pagination_container(value):
         return value, None
@@ -1652,27 +1661,28 @@ def pagination_to_dict(value: "Any") -> dict[str, Any]:
 
     Dynamically extracts known pagination attributes from any pagination
     container class. This supports custom pagination implementations as
-    long as they have an ``items`` attribute and standard pagination metadata.
+    long as they have an `items` attribute and standard pagination metadata.
 
-    The function checks for common pagination attributes like ``total``,
-    ``limit``, ``offset`` (for offset pagination), ``page_size``, ``current_page``,
-    ``total_pages`` (for classic pagination), and cursor-based attributes.
+    The function checks for common pagination attributes like `total`,
+    `limit`, `offset` (for offset pagination), `page_size`, `current_page`,
+    `total_pages` (for classic pagination), and cursor-based attributes.
     Any found attributes are included in the result dict with camelCase keys.
 
     Args:
-        value: A pagination container with ``items`` and metadata attributes.
+        value: A pagination container with `items` and metadata attributes.
 
     Returns:
-        A dict with ``items`` and any found pagination metadata (camelCase keys).
+        A dict with `items` and any found pagination metadata (camelCase keys).
 
-    Example::
-
+    Example:
+        ```python
         from litestar.pagination import OffsetPagination
 
         pagination = OffsetPagination(items=[1, 2, 3], limit=10, offset=0, total=50)
         result = pagination_to_dict(pagination)
+        ```
 
-        The result contains {"items": [1, 2, 3], "total": 50, "limit": 10, "offset": 0}.
+        The result contains `{"items": [1, 2, 3], "total": 50, "limit": 10, "offset": 0}`.
 
     Note:
         This function is used internally by InertiaResponse to preserve

@@ -4,9 +4,9 @@ This guide covers CSRF protection with `cookie_httponly=True`, encrypting sensit
 
 ---
 
-## 1. CSRF Protection (`CSRFConfig`)
+## CSRF Protection
 
-Litestar's `CSRFConfig` protects state-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`). `litestar-vite` supports `CSRFConfig(cookie_httponly=True)` out of the box by injecting the CSRF token into `props.csrf_token` (in Inertia mode) and `window.__LITESTAR_CSRF__` (in SPA mode) so JavaScript never needs to read `document.cookie`:
+Litestar's `CSRFConfig` protects state-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`). Litestar Vite supports `CSRFConfig(cookie_httponly=True)` out of the box by injecting the CSRF token into `props.csrf_token` (in Inertia mode) and `window.__LITESTAR_CSRF__` (in SPA mode) so JavaScript never needs to read `document.cookie`:
 
 ```python title="app.py"
 from litestar import Litestar
@@ -26,7 +26,7 @@ app = Litestar(
 )
 ```
 
-### Automatic CSRF Header Injection (`csrfHeaders` / `csrfFetch`)
+### Automatic CSRF Header Injection
 
 Import `csrfHeaders`, `getCsrfToken`, or `csrfFetch` from `litestar-vite-plugin/helpers` and configure Inertia's `visitOptions` so every non-GET visit includes the `X-CSRF-Token` header automatically:
 
@@ -58,7 +58,7 @@ async function pingAction() {
 
 ---
 
-## 2. History Encryption (`encrypt_history` & `clear_history`)
+## History Encryption
 
 By default, Inertia caches each visited page's `PageProps` inside the browser's `window.history.state` so pressing the **Back** button restores the page instantaneously. If your application displays sensitive data (financial records, PII, medical charts) on shared computers, enable **History Encryption** so cached state is encrypted with AES-GCM via the browser's Web Crypto API and wiped upon logout:
 
@@ -90,11 +90,11 @@ def logout_user(request: Request[Any, Any, Any]) -> InertiaRedirect:
 
 ---
 
-## 3. Asset Versioning & Rolling Deployments (`X-Inertia-Version`)
+## Asset Versioning & Rolling Deployments
 
 In a single-page app, users can keep a browser tab open for hours or days. When you deploy a new frontend bundle:
 
 1. `ViteAssetLoader.version_id` computes a deterministic SHA-256 digest of your `manifest.json` (in production) or `"1.0"` (in development).
 2. Every Inertia visit sends `X-Inertia-Version: <version_id>`.
-3. If a `GET` request arrives with an outdated `X-Inertia-Version`, `InertiaMiddleware` responds with `409 Conflict` and `X-Inertia-Location: <request.url>`.
-4. The Inertia client intercepts the `409` response and transparently performs a full `window.location` reload so the browser downloads the newly deployed JS/CSS bundles.
+3. If a `GET` request arrives with an outdated `X-Inertia-Version`, `InertiaMiddleware` responds with 409 Conflict and `X-Inertia-Location: <request.url>`.
+4. The Inertia client intercepts the 409 response and transparently performs a full `window.location` reload so the browser downloads the newly deployed JS/CSS bundles.

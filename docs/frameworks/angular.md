@@ -7,7 +7,7 @@ Litestar supports two integration approaches for Angular applications:
 
 ---
 
-## Comparison: Vite (`analogjs`) vs Angular CLI
+## Comparison: Vite vs Angular CLI
 
 | Feature | Option 1: Vite (`@analogjs/vite-plugin-angular`) | Option 2: Angular CLI (`@angular/build`) |
 | --- | --- | --- |
@@ -20,7 +20,7 @@ Litestar supports two integration approaches for Angular applications:
 
 ---
 
-## Option 1: Vite-Based Angular (`mode="spa"`)
+## Vite-Based Angular
 
 ### Quick Start
 
@@ -88,7 +88,7 @@ litestar run --reload
     });
     ```
 
-### Standalone Component with `HttpClient` and `route()`
+### Standalone Component with `HttpClient` and `route`
 
 ```typescript title="src/app/books.component.ts"
 import { Component, inject, type OnInit } from "@angular/core";
@@ -124,7 +124,7 @@ export class BooksComponent implements OnInit {
 
 ---
 
-## Option 2: Angular CLI (`mode="external"`)
+## Angular CLI
 
 When using Angular CLI (`@angular/build:application` and `@angular/build:dev-server`), configure `mode="external"` and `ExternalDevServer` so `litestar run` starts `ng serve` and proxies non-API traffic automatically:
 

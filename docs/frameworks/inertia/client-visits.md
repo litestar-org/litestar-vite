@@ -4,11 +4,11 @@ Inertia provides built-in client hooks for periodic background polling (`usePoll
 
 ---
 
-## 1. Periodic Polling (`usePoll`)
+## Periodic Polling
 
 Use `usePoll(intervalMs, requestOptions, pollOptions)` to refresh specific props on an interval. By default, Inertia throttles polling automatically when the browser tab is in the background (`keepAlive: false`) and cleans up the timer when the component unmounts:
 
-=== "React (`@inertiajs/react`)"
+=== "React"
 
     <!-- docs-example: skip -->
     ```tsx title="resources/pages/System/Status.tsx"
@@ -31,7 +31,7 @@ Use `usePoll(intervalMs, requestOptions, pollOptions)` to refresh specific props
     }
     ```
 
-=== "Vue 3 (`@inertiajs/vue3`)"
+=== "Vue 3"
 
     <!-- docs-example: skip -->
     ```vue title="resources/pages/System/Status.vue"
@@ -56,12 +56,12 @@ Use `usePoll(intervalMs, requestOptions, pollOptions)` to refresh specific props
     </template>
     ```
 
-> [!TIP]
-> On the server, wrap props targeted by `usePoll(..., { only: ["metrics"] })` in `lazy("metrics", load_metrics)` or keep unrelated heavy props in `once()` so each 5-second poll executes only the lightweight metrics query.
+!!! tip
+    On the server, wrap props targeted by `usePoll(..., { only: ["metrics"] })` in `lazy("metrics", load_metrics)` or keep unrelated heavy props in `once()` so each 5-second poll executes only the lightweight metrics query.
 
 ---
 
-## 2. Link Prefetching (`prefetch`)
+## Link Prefetching
 
 Add `prefetch` to `<Link>` components to warm the client cache before the user clicks:
 
@@ -70,17 +70,17 @@ Add `prefetch` to `<Link>` components to warm the client cache before the user c
 | **Hover (Default)** | `<Link href="/users" prefetch>` or `prefetch="hover"` | Prefetches after the user hovers over the link for >75ms. |
 | **Mount** | `<Link href="/dashboard" prefetch="mount">` | Prefetches immediately when the link mounts into the DOM. |
 | **Click (Mouse Down)** | `<Link href="/reports" prefetch="click">` | Starts fetching on `mousedown` before `mouseup` completes. |
-| **Custom Cache TTL** | `<Link href="/users" prefetch cacheFor="1m">` | Controls how long the prefetched `PageProps` remain fresh (default `30s`). |
+| **Custom Cache TTL** | `<Link href="/users" prefetch cacheFor="1m">` | Controls how long the prefetched `PageProps` remain fresh (default 30s). |
 
 You can also prefetch programmatically via `router.prefetch(route("users.index"), { method: "get" }, { cacheFor: "30s" })` or invalidate cached pages after a mutation with `router.flushAll()`.
 
 ---
 
-## 3. Remembering Local State (`useRemember`)
+## Remembering Local State
 
 When a user types into a search filter or switches tabs and then clicks a link and presses the browser **Back** button, standard component state resets. `useRemember` automatically serializes local state into `window.history.state` and restores it on history navigation:
 
-=== "React (`@inertiajs/react`)"
+=== "React"
 
     <!-- docs-example: skip -->
     ```tsx title="resources/pages/Orders/FilterBar.tsx"
@@ -102,7 +102,7 @@ When a user types into a search filter or switches tabs and then clicks a link a
     }
     ```
 
-=== "Vue 3 (`@inertiajs/vue3`)"
+=== "Vue 3"
 
     <!-- docs-example: skip -->
     ```vue title="resources/pages/Orders/FilterBar.vue"
@@ -120,6 +120,6 @@ When a user types into a search filter or switches tabs and then clicks a link a
     </template>
     ```
 
-### Remembering `useForm` State
+### Remembering Form State
 
 Pass a unique storage key as the first argument to `useForm("CreateUserForm", { name: "", email: "" })` to automatically remember unsaved form inputs and validation errors across Back/Forward history navigation.

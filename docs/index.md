@@ -1,6 +1,10 @@
-# Litestar Vite
+---
+title: Overview
+hide:
+  - navigation
+---
 
-<div align="center">
+<div class="lv-home-hero" align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/banner-inline-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="assets/banner-inline-light.svg">
@@ -23,45 +27,45 @@ Litestar Vite adapts to your frontend architecture through a single `ViteConfig(
 
 <div class="grid cards" markdown>
 
--   :material-react: **Single-Page Application (`mode="spa"`)**
+-   **Single-Page Application (`mode="spa"`)**
 
     ---
 
     Litestar serves your JSON/OpenAPI routes and transforms `index.html` with Vite asset tags for React, Vue, Svelte, or Angular SPAs.
 
-    [:octicons-arrow-right-24: Quick Start: SPA](getting-started/quick-start-spa.md)
+    [→ Quick Start: SPA](getting-started/quick-start-spa.md)
 
--   :material-layers-triple-outline: **Inertia.js v2 Hybrid (`mode="hybrid"`)**
+-   **Inertia.js v2 Hybrid (`mode="hybrid"`)**
 
     ---
 
     Build React, Vue, or Svelte single-page apps without writing a client API layer. Return Python dicts or `msgspec.Struct` models directly as typed `PageProps`.
 
-    [:octicons-arrow-right-24: Quick Start: Inertia v2](getting-started/quick-start-inertia.md)
+    [→ Quick Start: Inertia v2](getting-started/quick-start-inertia.md)
 
--   :material-file-code-outline: **Jinja2 + Islands (`mode="template"`)**
+-   **Jinja2 + Islands (`mode="template"`)**
 
     ---
 
     Server-rendered Jinja2 templates enhanced with Vite HMR, `<litestar-island>` partial hydration, and `ComponentResponse` fragments for HTMX swaps.
 
-    [:octicons-arrow-right-24: Quick Start: Templates & Islands](getting-started/quick-start-templates.md)
+    [→ Quick Start: Templates & Islands](getting-started/quick-start-templates.md)
 
--   :material-web: **Meta-Frameworks (`mode="framework"`)**
+-   **Meta-Frameworks (`mode="framework"`)**
 
     ---
 
     Run Astro, Nuxt, or SvelteKit behind Litestar's reverse proxy with automatic OpenAPI SDK, route helper, and AsyncAPI channel generation.
 
-    [:octicons-arrow-right-24: Meta-Frameworks Guide](frameworks/meta-frameworks.md)
+    [→ Astro](frameworks/astro.md) · [Nuxt](frameworks/nuxt.md) · [SvelteKit](frameworks/sveltekit.md)
 
 </div>
 
 ---
 
-## 60-Second Quick Start
+## Installation and Setup
 
-### 1. Install the Python and Vite Packages
+### Install the Python and Vite Packages
 
 === "uv"
 
@@ -107,18 +111,25 @@ Install the paired Vite 7+ plugin in your frontend workspace:
     bun add -d litestar-vite-plugin
     ```
 
-### 2. Register `VitePlugin` on Your Litestar App
+### Register the Plugin on Your Litestar App
 
 ```python title="docs/examples/getting_started/spa_app.py"
 --8<-- "docs/examples/getting_started/spa_app.py"
 ```
 
-### 3. Scaffold and Run on a Single Port
+### Scaffold and Run on a Single Port
 
-```bash
-litestar assets init --template react
-litestar assets install
-litestar run --reload
+<!-- termynal -->
+
+```console
+$ litestar assets init --template react
+✓ Created vite.config.ts, package.json, tsconfig.json
+$ litestar assets install
+---> 100%
+✓ Frontend dependencies installed
+$ litestar run --reload
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Vite dev server started on http://127.0.0.1:5173 (proxied via :8000)
 ```
 
 When `litestar run --reload` starts:
@@ -136,6 +147,6 @@ When `litestar run --reload` starts:
 | [**Getting Started**](getting-started/index.md) | Installation, CLI scaffolding (`litestar assets init`), and end-to-end walkthroughs for SPA, Inertia v2, and Jinja2 + Islands |
 | [**Core Concepts**](learn/index.md) | The four operating modes, layered `ViteConfig` sub-configs, build-time Static Props, Islands & HTMX fragments, Dev/Prod SSR, and production CDN/Granian deployment |
 | [**Frameworks & Inertia**](frameworks/index.md) | Deep dive into Inertia.js v2 (`defer`, `merge`, `once`, shared props, Precognition), React/Vue/Svelte setup, and Astro/Nuxt/SvelteKit integration |
-| [**TypeGen & Realtime**](typegen/index.md) | Zero-drift OpenAPI SDK generation (`@hey-api/openapi-ts`), type-safe `route()` / `wsRoute()` URL builders, and AsyncAPI WebSocket channel typing |
+| [**TypeGen & Realtime**](typegen/index.md) | Zero-drift OpenAPI SDK generation (`@hey-api/openapi-ts`), type-safe `route()` / `toRoute()` URL builders, and AsyncAPI WebSocket channel typing |
 | [**Architecture**](architecture/index.md) | Interactive animated SVG/CSS diagrams of the Single-Port AnyIO Proxy, Operating Modes, Inertia v2 Lifecycle, SSR IPC, and TypeGen Pipeline |
 | [**Reference**](reference/index.md) | Complete Python API (`litestar_vite`), TypeScript 18-subpath API (`litestar-vite-plugin`), `litestar assets` CLI reference, and wire contracts |

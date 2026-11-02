@@ -45,11 +45,11 @@
   </style>
   <svg viewBox="0 0 920 340" role="img" aria-labelledby="lv-tg-title lv-tg-desc">
     <title id="lv-tg-title">End-to-End OpenAPI, AsyncAPI, and Route Type Generation Pipeline</title>
-    <desc id="lv-tg-desc">Four-stage type generation pipeline: 1. Python Litestar introspection (_openapi.py, _asyncapi.py, _routes.py, _inertia.py), 2. Deterministic write_if_changed JSON artifacts (openapi.json, asyncapi.json, routes.json, inertia-pages.json), 3. Vite createLitestarTypeGenPlugin (@hey-api/openapi-ts and TypeScript emitters), and 4. Frontend typed consumption (route(), wsRoute(), createTypedChannels(), FormInput, PagePropsFor).</desc>
+    <desc id="lv-tg-desc">Four-stage type generation pipeline: 1. Python Litestar introspection (_openapi.py, _asyncapi.py, _routes.py, _inertia.py), 2. Deterministic write_if_changed JSON artifacts (openapi.json, asyncapi.json, routes.json, inertia-pages.json), 3. Vite createLitestarTypeGenPlugin (@hey-api/openapi-ts and TypeScript emitters), and 4. Frontend typed consumption (route(), toRoute(), createTypedChannels(), FormInput, PagePropsFor).</desc>
 
     <!-- Stage 1: Python Introspection -->
     <rect x="16" y="25" width="200" height="290" rx="12" fill="var(--lv-card)" stroke="var(--lv-amber)" stroke-width="2" />
-    <text x="116" y="54" text-anchor="middle" fill="var(--lv-text)" font-size="13.5" font-weight="700">1. Litestar Introspection</text>
+    <text x="116" y="54" text-anchor="middle" fill="var(--lv-text)" font-size="13.5" font-weight="700">Litestar Introspection</text>
     <text x="116" y="74" text-anchor="middle" fill="var(--lv-amber)" font-size="11" font-family="monospace">export_integration_assets()</text>
     <rect x="30" y="92" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
     <text x="116" y="118" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">codegen/_openapi.py</text>
@@ -62,7 +62,7 @@
 
     <!-- Stage 2: Deterministic JSON Artifacts -->
     <rect x="252" y="25" width="200" height="290" rx="12" fill="var(--lv-card)" stroke="var(--lv-blue)" stroke-width="2" />
-    <text x="352" y="54" text-anchor="middle" fill="var(--lv-text)" font-size="13.5" font-weight="700">2. JSON Schema Artifacts</text>
+    <text x="352" y="54" text-anchor="middle" fill="var(--lv-text)" font-size="13.5" font-weight="700">JSON Schema Artifacts</text>
     <text x="352" y="74" text-anchor="middle" fill="var(--lv-blue)" font-size="11" font-family="monospace">write_if_changed (SHA-256)</text>
     <rect x="266" y="92" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
     <text x="352" y="118" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">openapi.json</text>
@@ -75,7 +75,7 @@
 
     <!-- Stage 3: Vite TypeGen Plugin -->
     <rect x="488" y="25" width="200" height="290" rx="12" fill="var(--lv-card)" stroke="var(--lv-violet)" stroke-width="2" />
-    <text x="588" y="54" text-anchor="middle" fill="var(--lv-text)" font-size="13.5" font-weight="700">3. Vite TypeGen Plugin</text>
+    <text x="588" y="54" text-anchor="middle" fill="var(--lv-text)" font-size="13.5" font-weight="700">Vite TypeGen Plugin</text>
     <text x="588" y="74" text-anchor="middle" fill="var(--lv-violet)" font-size="11" font-family="monospace">Debounced HMR Watcher</text>
     <rect x="502" y="92" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
     <text x="588" y="118" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">@hey-api/openapi-ts</text>
@@ -88,12 +88,12 @@
 
     <!-- Stage 4: Generated TypeScript SDK -->
     <rect x="724" y="25" width="180" height="290" rx="12" fill="var(--lv-card)" stroke="var(--lv-emerald)" stroke-width="2" />
-    <text x="814" y="54" text-anchor="middle" fill="var(--lv-text)" font-size="13.5" font-weight="700">4. Typed Frontend</text>
+    <text x="814" y="54" text-anchor="middle" fill="var(--lv-text)" font-size="13.5" font-weight="700">Typed Frontend</text>
     <text x="814" y="74" text-anchor="middle" fill="var(--lv-emerald)" font-size="11" font-family="monospace">src/generated/*</text>
     <rect x="736" y="92" width="156" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
     <text x="814" y="118" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">api/types.gen.ts + sdk</text>
     <rect x="736" y="146" width="156" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
-    <text x="814" y="172" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">route() • wsRoute()</text>
+    <text x="814" y="172" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">route() • toRoute()</text>
     <rect x="736" y="200" width="156" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
     <text x="814" y="226" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">PagePropsFor&lt;C&gt;</text>
     <rect x="736" y="254" width="156" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />

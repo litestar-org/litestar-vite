@@ -1,12 +1,12 @@
 # Contributing & Development Setup
 
-This guide covers local polyglot workspace setup, verification commands, and architectural conventions for contributors working on `litestar-vite` (Python) and `litestar-vite-plugin` (TypeScript).
+This guide covers local polyglot workspace setup, verification commands, and architectural conventions for contributors working on Litestar Vite (Python) and `litestar-vite-plugin` (TypeScript).
 
 ---
 
 ## Prerequisites
 
-- **Python**: `3.10` or newer managed with [`uv`](https://docs.astral.sh/uv/)
+- **Python**: 3.10 or newer managed with [`uv`](https://docs.astral.sh/uv/)
 - **Node.js**: `20+` (or `22+` LTS) with `npm`
 - **Vite**: `7.0.0+` (enforced across all runtime and test suites)
 

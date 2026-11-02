@@ -6,27 +6,27 @@ Because a polyglot Python + Vite stack spans `app.py`, `.litestar.json`, `vite.c
 
 ---
 
-## Running `litestar assets doctor`
+## Running the Doctor Command
 
 ```bash
 litestar assets doctor
 ```
 
-To automatically repair fixable issues (such as stale `.litestar.json` bridges or missing generated directories):
+To automatically repair fixable issues (such as stale `.litestar.json` bridges or mismatched `vite.config.ts` settings) without interactive prompts:
 
 ```bash
-litestar assets doctor --fix
+litestar assets doctor --fix --no-prompt
 ```
 
-For CI pipelines, emit machine-readable JSON:
+For CI pipelines, run `--check` with `--runtime-checks` to exit with status `1` if any health check fails:
 
 ```bash
-litestar assets doctor --json
+litestar assets doctor --check --runtime-checks
 ```
 
 ---
 
-## What `ViteDoctor` Checks
+## Diagnostic Checks
 
 | Check | What It Verifies | Common Fix |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ litestar assets doctor --json
 
 ## Common Symptoms & Solutions
 
-### `ManifestNotFoundError` on Startup
+### Missing Manifest on Startup
 
 **Cause**: `dev_mode=False` (the default when running `litestar run` without `--reload` or `--debug`), and `litestar assets build` has not been run yet.
 
@@ -53,7 +53,7 @@ litestar assets doctor --json
 - For local development: run `litestar run --reload` (which auto-enables `dev_mode=True`) or set `VITE_DEV_MODE=true`.
 - For production: run `litestar assets build` before starting the server.
 
-### Inertia Initial Page Renders a Blank `#app`
+### Blank Initial Inertia Page
 
 **Cause**: `InertiaConfig.use_script_element` defaults to `True` (emitting `<script type="application/json" data-page="app">`), while `@inertiajs/*` v2 defaults to reading the legacy `data-page` HTML attribute unless `useScriptElementForInitialPage: true` is set.
 

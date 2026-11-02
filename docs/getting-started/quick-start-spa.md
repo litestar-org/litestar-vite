@@ -1,10 +1,10 @@
-# Quick Start: Single-Page Application (`mode="spa"`)
+# Quick Start: Single-Page Application
 
 In **SPA mode** (`mode="spa"`), Litestar owns your JSON API routes and serves a transformed `index.html` shell for all unmatched non-API GET routes via `AppHandler`. Your frontend router (`react-router`, `vue-router`, or TanStack Router) handles client-side navigation while `TypeGenConfig` generates a fully typed TypeScript SDK from Litestar's OpenAPI schema.
 
 ---
 
-## 1. Install Dependencies
+## Install Dependencies
 
 === "uv"
 
@@ -52,7 +52,7 @@ And in your frontend workspace:
 
 ---
 
-## 2. Configure Litestar (`app.py`)
+## Configure Litestar
 
 Register `VitePlugin` with `mode="spa"` and enable `TypeGenConfig` so Litestar exports `openapi.json` and `routes.json` on startup:
 
@@ -62,7 +62,7 @@ Register `VitePlugin` with `mode="spa"` and enable `TypeGenConfig` so Litestar e
 
 ---
 
-## 3. Configure Vite (`vite.config.ts`)
+## Configure Vite
 
 Point `litestar-vite-plugin` at your application entrypoint (`src/main.tsx` or `src/main.ts`). All path, port, and typegen settings are automatically synchronized from `.litestar.json`:
 
@@ -83,7 +83,7 @@ export default defineConfig({
 
 ---
 
-## 4. Create `index.html` and Run
+## Create the HTML Shell and Run
 
 Place `index.html` in your project root (or `resource_dir`). In `mode="spa"`, `AppHandler` automatically injects `@vite/client` (and the React Fast Refresh preamble when `is_react=True`) in development, and swaps in hashed `manifest.json` bundle tags in production:
 

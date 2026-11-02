@@ -34,10 +34,10 @@ def create_project(request: Request[Any, Any, Any], data: Annotated[CreateProjec
     share(request, "currentUser", AuthenticatedUser(id=7, email="ada@example.com", role="admin"))
     if data.slug == "reserved":
         error(request, "slug", "The 'reserved' slug is unavailable.")
-        flash(request, "error", "Please choose a different project slug.")
+        flash(request, "Please choose a different project slug.", category="error")
         return {"created": False}
 
-    flash(request, "success", f"Project '{data.name}' created.")
+    flash(request, f"Project '{data.name}' created.", category="success")
     return {"created": True, "slug": data.slug}
 
 

@@ -4,7 +4,7 @@ API reference for `litestar_vite.codegen`, `litestar_vite.scaffolding`, `litesta
 
 ---
 
-## Unified Asset & Schema Export (`litestar_vite.codegen`)
+## Unified Asset & Schema Export
 
 ::: litestar_vite.codegen.ExportResult
     options:
@@ -92,7 +92,7 @@ API reference for `litestar_vite.codegen`, `litestar_vite.scaffolding`, `litesta
 
 ---
 
-## Project Scaffolding (`litestar_vite.scaffolding`)
+## Project Scaffolding
 
 ::: litestar_vite.scaffolding.FrameworkTemplate
     options:
@@ -112,7 +112,7 @@ API reference for `litestar_vite.codegen`, `litestar_vite.scaffolding`, `litesta
 
 ---
 
-## Diagnostics (`litestar_vite.doctor`) & CDN Deploy (`litestar_vite.deploy`)
+## Diagnostics (`litestar_vite.doctor`) & CDN Deploy
 
 ::: litestar_vite.doctor.ViteDoctor
     options:

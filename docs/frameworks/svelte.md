@@ -149,7 +149,7 @@ Svelte 5 components use `$state`, `$derived`, `$effect`, and `$props()` alongsid
 
 ---
 
-## Realtime Stores (`litestar-vite-plugin/svelte`)
+## Realtime Stores
 
 `litestar-vite-plugin/svelte` exports Svelte-compatible readable stores (`createEventStreamStore` and `createQueueEventStreamStore`) that automatically connect on first subscriber (`$store`) and close when the last subscriber unsubscribes:
 

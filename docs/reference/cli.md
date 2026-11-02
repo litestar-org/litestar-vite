@@ -37,7 +37,7 @@ litestar assets init [OPTIONS]
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `--template` | `Choice("react" \| "react-router" \| "react-tanstack" \| "react-inertia" \| "react-inertia-jinja" \| "vue" \| "vue-inertia" \| "vue-inertia-ssr" \| "vue-inertia-jinja" \| "vue-inertia-jinja-ssr" \| "svelte" \| "svelte-inertia" \| "svelte-inertia-jinja" \| "sveltekit" \| "nuxt" \| "astro" \| "htmx" \| "jinja-htmx" \| "htmx-no-jinja" \| "angular" \| "angular-cli")` | `None` | Frontend framework template to use. Inertia variants available: react-inertia, vue-inertia, svelte-inertia. |
+| `--template` | `Choice` | `None` | Frontend framework template to use. Inertia variants available: react-inertia, vue-inertia, svelte-inertia. (Choices: `react`, `react-router`, `react-tanstack`, `react-inertia`, `react-inertia-jinja`, `vue`, `vue-inertia`, `vue-inertia-ssr`, `vue-inertia-jinja`, `vue-inertia-jinja-ssr`, `svelte`, `svelte-inertia`, `svelte-inertia-jinja`, `sveltekit`, `nuxt`, `astro`, `htmx`, `jinja-htmx`, `htmx-no-jinja`, `angular`, `angular-cli`) |
 | `--root-path` | `Path` | `None` | The path for the initial the Vite application.  This is the equivalent to the top-level folder in a normal Vue or React application.. |
 | `--frontend-dir` | `text` | `"."` | Optional subdirectory under root to place the generated frontend (e.g., 'web'). |
 | `--bundle-path` | `Path` | `None` | The path for the built Vite assets.  This is the where the output of `npm run build` will write files. |

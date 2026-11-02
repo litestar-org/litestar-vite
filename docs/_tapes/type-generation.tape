@@ -1,57 +1,70 @@
-# VHS tape for recording type generation demo
-# Run with: vhs docs/_tapes/type-generation.tape
-# Output: docs/assets/demos/type-generation.gif
+# Type Generation Demo
+# Demonstrates: litestar assets generate-types with hey-api/openapi-ts
+# Uses: examples/react-inertia (has TypeGenConfig enabled)
 
 Output docs/assets/demos/type-generation.gif
 
-Set FontSize 15
-Set Width 950
-Set Height 550
-Set Theme "Dracula"
+Set Shell "bash"
+Set FontSize 14
+Set Width 1000
+Set Height 600
+Set Theme "Catppuccin Mocha"
 Set Padding 20
-Set TypingSpeed 40ms
+Set TypingSpeed 50ms
 
-# Setup
-Hide
-Type "cd examples/react-inertia && clear"
-Enter
-Sleep 500ms
-Show
-
-Type "# Automatic TypeScript Type Generation with Litestar Vite"
+Type "# Litestar Vite - TypeScript Type Generation"
 Enter
 Sleep 1s
 
-# Show the Litestar routes
-Type "# 1. Backend defines typed routes with Litestar:"
+Hide
+Type "source .venv/bin/activate"
 Enter
 Sleep 500ms
-Type "head -35 app.py"
+Type "cd examples/react-inertia"
 Enter
-Sleep 3s
+Sleep 500ms
+# Clean up any existing generated files for a fresh demo
+Type "rm -rf resources/generated 2>/dev/null || true"
+Enter
+Sleep 300ms
+Show
 
-# Generate types
-Type "# 2. Generate TypeScript types from OpenAPI, AsyncAPI, and routes:"
+Type "# Generate TypeScript types from your Litestar API"
 Enter
 Sleep 500ms
-Type "litestar assets generate-types"
+
+Type "litestar --app app:app assets generate-types"
 Enter
 Sleep 4s
 
-# Show generated files
-Type "# 3. Generated files include routes.ts, schemas.ts, and API SDK:"
+Type "# Let's see what was generated:"
 Enter
 Sleep 500ms
-Type "ls -la src/generated/"
+
+Type "tree resources/generated"
 Enter
 Sleep 2s
 
-# Show route helper
-Type "# 4. Type-safe route() helper with autocomplete:"
+Type "# Type-safe API client with full IntelliSense!"
 Enter
 Sleep 500ms
-Type "head -40 src/generated/routes.ts"
-Enter
-Sleep 4s
 
+Type "head -30 resources/generated/api/sdk.gen.ts"
+Enter
+Sleep 3s
+
+Type "# Page props are typed too (Inertia + HTMX helpers)"
+Enter
+Sleep 500ms
+
+Type "head -30 resources/generated/page-props.ts"
+Enter
+Sleep 3s
+
+Type "# Routes are exported for type-safe navigation"
+Enter
+Sleep 500ms
+
+Type "head -20 resources/generated/routes.ts"
+Enter
 Sleep 2s

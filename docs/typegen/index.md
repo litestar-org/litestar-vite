@@ -2,7 +2,7 @@
 
 Maintaining duplicate data models, API URL strings, and WebSocket payload types across Python and TypeScript is one of the largest sources of bugs in full-stack applications.
 
-When `ViteConfig(types=True)` (or an explicit [`TypeGenConfig`](../reference/plugin-and-config.md#litestar_vite.config.TypeGenConfig)) is enabled, `litestar-vite` exports canonical JSON schemas from Litestar on startup and drives `litestar-vite-plugin` to generate strongly typed TypeScript modules in `src/generated/`.
+When `ViteConfig(types=True)` (or an explicit [`TypeGenConfig`](../reference/plugin-and-config.md#litestar_vite.config.TypeGenConfig)) is enabled, Litestar Vite exports canonical JSON schemas from Litestar on startup and drives `litestar-vite-plugin` to generate strongly typed TypeScript modules in `src/generated/`.
 
 --8<-- "tools/docs/includes/diagram-typegen-pipeline.html"
 
@@ -10,34 +10,36 @@ When `ViteConfig(types=True)` (or an explicit [`TypeGenConfig`](../reference/plu
 
 ## Generated Artifacts Summary
 
-| Python Source | Intermediate JSON (`write_if_changed`) | Generated TypeScript Output | What You Import in Frontend Code |
-| --- | --- | --- | --- |
-| Litestar OpenAPI (`_openapi.py`) | `src/generated/openapi.json` | `src/generated/api/` (`@hey-api/openapi-ts`) + `src/generated/schemas.ts` | Typed SDK functions, `FormInput<op>`, `FormResponse<op>`, `SuccessResponse<op>` |
-| Litestar Router (`_routes.py`) | `src/generated/routes.json` | `src/generated/routes.ts` | `route("users:detail", { user_id: 42 })`, `wsRoute(...)`, `RouteName` |
-| Inertia Handlers (`_inertia.py`) | `src/generated/inertia-pages.json` | `src/generated/page-props.ts` + `inertia.d.ts` | `PagePropsFor<"Users/Show">`, `SharedPageProps`, `FlashMessages` |
-| `ViteConfig.static_props` | `.litestar.json` (`staticProps`) | `src/generated/static-props.ts` | `import props from "virtual:litestar-static-props"` |
-| `AsyncAPIPlugin` (`_asyncapi.py`) | `src/generated/asyncapi.json` | `src/generated/channels.ts` | `createTypedChannels(CHANNEL_METADATA)`, `useEventStream()`, `useQueueEventStream()` |
+All intermediate schemas and generated TypeScript files are written under `TypeGenConfig.output` (`src/generated/` by default):
+
+| Litestar Source | Generated Output | Frontend Exports |
+| --- | --- | --- |
+| OpenAPI Schema | `openapi.json` → `api/` & `schemas.ts` | Typed SDK functions, `FormInput`, `FormResponse`, `SuccessResponse` |
+| Router Metadata | `routes.json` → `routes.ts` | `route()`, `toRoute()`, `isCurrentRoute()`, `RouteName` |
+| Inertia Handlers | `inertia-pages.json` → `page-props.ts` & `inertia.d.ts` | `PagePropsFor`, `SharedPageProps`, `FlashMessages` |
+| Static Props | `.litestar.json` → `static-props.ts` | `virtual:litestar-static-props` |
+| AsyncAPI Plugin | `asyncapi.json` → `channels.ts` | `createTypedChannels()`, `useEventStream()`, `useQueueEventStream()` |
 
 ---
 
-## `TypeGenConfig` Options Reference
+## Configuration Options
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `output` | `Path("src/generated")` | Output directory for exported JSON schemas and generated TypeScript files. |
 | `generate_sdk` | `True` | Export `openapi.json` and run `@hey-api/openapi-ts` to generate `api/`. |
-| `generate_routes` | `True` | Export `routes.json` and generate `routes.ts` (`route()` / `wsRoute()`). |
+| `generate_routes` | `True` | Export `routes.json` and generate `routes.ts` route helpers. |
 | `generate_page_props` | `True` | Export `inertia-pages.json` and generate `page-props.ts` when Inertia is active. |
-| `generate_schemas` | `True` | Generate ergonomic `schemas.ts` helpers (`FormInput`, `FormResponse`, `SuccessResponse`). |
+| `generate_schemas` | `True` | Generate ergonomic `schemas.ts` form and response type helpers. |
 | `generate_channels` | `False` | Export `asyncapi.json` and generate `channels.ts` (requires `litestar-asyncapi`). |
-| `generate_zod` | `False` | Generate Zod validation schemas alongside the `@hey-api/openapi-ts` client SDK. |
+| `generate_zod` | `False` | Generate Zod validation schemas alongside the OpenAPI client SDK. |
 | `global_route` | `False` | Emit a `global.d.ts` ambient declaration exposing `window.route` globally. |
 | `fallback_type` | `"unknown"` | Fallback TypeScript type (`"unknown"` or `"any"`) for untyped handler props. |
 | `type_import_paths` | `{}` | Map custom Python class names to TypeScript import paths in `page-props.ts`. |
 
 ---
 
-## CLI Workflow (`generate-types` & `export-routes`)
+## CLI Workflow
 
 In CI pipelines or before running `tsc --noEmit`, run `litestar assets generate-types` to export all JSON schemas and execute TypeScript code generation without starting the HTTP server:
 
@@ -54,7 +56,7 @@ $ litestar assets export-routes --only api,users
 
 ---
 
-## SHA-256 `write_if_changed` Determinism
+## Deterministic Artifact Writes
 
 Every intermediate JSON and generated TypeScript file passes through [`write_if_changed()`](../reference/tooling-and-codegen.md#litestar_vite.codegen.write_if_changed) and [`encode_deterministic_json()`](../reference/tooling-and-codegen.md#litestar_vite.codegen.encode_deterministic_json):
 
@@ -66,7 +68,7 @@ Every intermediate JSON and generated TypeScript file passes through [`write_if_
 
 ## Explore TypeGen & Realtime Guides
 
-- [**OpenAPI TypeScript SDK & Schema Helpers (`schemas.ts`)**](openapi-sdk.md)
-- [**Typed Routes (`route()` & `wsRoute()`)**](routes.md)
-- [**AsyncAPI Channels, WebSockets & SSE (`channels.ts`)**](realtime-channels.md)
-- [**Browser & Framework Event Streams (`useEventStream`, `<litestar-stream>`)**](event-streams.md)
+- [**OpenAPI TypeScript SDK & Schema Helpers**](openapi-sdk.md)
+- [**Typed Routes**](routes.md)
+- [**AsyncAPI Channels, WebSockets & SSE**](realtime-channels.md)
+- [**Browser & Framework Event Streams**](event-streams.md)

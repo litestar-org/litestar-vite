@@ -125,7 +125,7 @@ my-project/
 
 ---
 
-## React Fast Refresh Preamble (`is_react`)
+## React Fast Refresh Preamble
 
 Unlike Vue and Svelte, `@vitejs/plugin-react` requires an inline `<script type="module">` Fast Refresh preamble (`/@react-refresh`) in `<head>` before any `.tsx` or `.jsx` module executes in development:
 
@@ -136,7 +136,7 @@ Unlike Vue and Svelte, `@vitejs/plugin-react` requires an inline `<script type="
 
 ## Consuming Generated Types & Routes
 
-With `types=True` (or `TypeGenConfig()`), `litestar-vite` generates both `routes.ts` and the `@hey-api/openapi-ts` client SDK under `src/generated/`:
+With `types=True` (or `TypeGenConfig()`), Litestar Vite generates both `routes.ts` and the `@hey-api/openapi-ts` client SDK under `src/generated/`:
 
 ```tsx title="src/App.tsx"
 import { useEffect, useState } from "react";
@@ -165,7 +165,7 @@ export function App() {
 
 ---
 
-## Realtime & Event Stream Hooks (`litestar-vite-plugin/react`)
+## Realtime & Event Stream Hooks
 
 Import `useEventStream` or `useQueueEventStream` from `litestar-vite-plugin/react` to subscribe to Server-Sent Events or Litestar Channels in React components with automatic reconnection and cleanup on unmount:
 

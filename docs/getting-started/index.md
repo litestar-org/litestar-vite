@@ -2,12 +2,12 @@
 
 Litestar Vite pairs two packages that work together across the `.litestar.json` contract:
 
-- **`litestar-vite`** (Python): The Litestar plugin (`VitePlugin`), configuration models (`ViteConfig`), AnyIO dev proxy (`ViteProxyMiddleware`), Inertia v2 protocol engine, fragment renderer, and `litestar assets` CLI.
+- **Litestar Vite** (Python): The Litestar plugin (`VitePlugin`), configuration models (`ViteConfig`), AnyIO dev proxy (`ViteProxyMiddleware`), Inertia v2 protocol engine, fragment renderer, and `litestar assets` CLI.
 - **`litestar-vite-plugin`** (TypeScript): The Vite 7+ plugin that reads `.litestar.json`, writes `<bundle_dir>/hot`, runs `@hey-api/openapi-ts` and AsyncAPI codegen, and registers the dev SSR / fragment RPC middleware (`/__litestar_ssr__`).
 
 ---
 
-## 1. Installation
+## Installation
 
 Install the Python package in your backend environment:
 
@@ -35,8 +35,8 @@ Install the Python package in your backend environment:
     poetry add litestar-vite
     ```
 
-> [!TIP]
-> If you use Jinja2 templates (`mode="template"` or Jinja-based root templates), install the `jinja` extra (`uv add "litestar-vite[jinja]"`).
+!!! tip
+    If you use Jinja2 templates (`mode="template"` or Jinja-based root templates), install the `jinja` extra (`uv add "litestar-vite[jinja]"`).
 
 Install the Vite plugin in your frontend directory (`package.json`):
 
@@ -60,7 +60,7 @@ Install the Vite plugin in your frontend directory (`package.json`):
 
 ---
 
-## 2. Scaffolding with `litestar assets init`
+## Scaffolding a New Frontend
 
 The fastest way to bootstrap a new frontend workspace is `litestar assets init`, which generates `package.json`, `vite.config.ts`, `tsconfig.json`, and framework entrypoints aligned with your `ViteConfig`:
 
@@ -96,7 +96,7 @@ INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 
 ---
 
-## 3. Pick Your Quick-Start Walkthrough
+## Pick Your Quick-Start Walkthrough
 
 Choose the walkthrough that matches your architecture:
 

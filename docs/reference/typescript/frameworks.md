@@ -1,11 +1,11 @@
 ---
 title: Framework Bindings & Meta-Frameworks
-description: TypeScript API reference for React, Vue, Svelte, Astro, SvelteKit, Nuxt, dev-ssr, and ssr-worker subpaths.
+description: TypeScript API reference for React, Vue, Svelte, Astro, SvelteKit, and Nuxt subpaths.
 ---
 
 # Framework Bindings & Meta-Frameworks
 
-Framework-idiomatic reactive stream bindings (`litestar-vite-plugin/react`, `/vue`, `/svelte`), meta-framework Vite/Nitro integrations (`litestar-vite-plugin/astro`, `/sveltekit`, `/nuxt`), and SSR execution transports (`litestar-vite-plugin/dev-ssr`, `/ssr-worker`).
+Framework-idiomatic reactive stream bindings (`litestar-vite-plugin/react`, `/vue`, `/svelte`) and meta-framework Vite/Nitro integrations (`litestar-vite-plugin/astro`, `/sveltekit`, `/nuxt`).
 
 | Subpath | Import Specifier | Source Entrypoint | Exports |
 | :--- | :--- | :--- | :--- |
@@ -15,8 +15,6 @@ Framework-idiomatic reactive stream bindings (`litestar-vite-plugin/react`, `/vu
 | `./astro` | `litestar-vite-plugin/astro` | `src/js/src/astro.ts` | `AstroConfigPartial`, `AddressInfo`, `AstroIntegration`, `AstroIntegrationLogger`, `AstroTypesConfig`, `LitestarAstroConfig`, +1 more |
 | `./sveltekit` | `litestar-vite-plugin/sveltekit` | `src/js/src/sveltekit.ts` | `SvelteKitTypesConfig`, `LitestarSvelteKitConfig`, `litestarSvelteKit` |
 | `./nuxt` | `litestar-vite-plugin/nuxt` | `src/js/src/nuxt.ts` | `NuxtModuleFunction`, `ListenInfo`, `NuxtContext`, `NuxtTypesConfig`, `LitestarNuxtConfig`, `litestarModule` |
-| `./dev-ssr` | `litestar-vite-plugin/dev-ssr` | `src/js/src/dev-ssr.ts` | `litestarViteSsrPlugin` |
-| `./ssr-worker` | `litestar-vite-plugin/ssr-worker` | `src/js/src/ssr-worker.ts` | `SsrWorkerOptions`, `IPCRequest`, `dispatchSsrRequest`, `startSsrWorker` |
 
 ## `litestar-vite-plugin/react`
 
@@ -43,8 +41,8 @@ export interface EventStreamState<TFrame>
 | Property | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `healthy` | `boolean` | — | — |
-| `lastEvent` | `TFrame \| null` | — | — |
-| `lastGap` | `StreamGap \| null` | — | — |
+| `lastEvent` | <code>TFrame &#124; null</code> | — | — |
+| `lastGap` | <code>StreamGap &#124; null</code> | — | — |
 | `events` | `TFrame[]` | — | — |
 
 #### `ReactEventStreamOptions`
@@ -112,8 +110,8 @@ export interface VueEventStreamState<TFrame>
 | Property | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `healthy` | `Ref<boolean>` | — | — |
-| `lastEvent` | `ShallowRef<TFrame \| null>` | — | — |
-| `lastGap` | `ShallowRef<StreamGap \| null>` | — | — |
+| `lastEvent` | <code>ShallowRef&lt;TFrame &#124; null&gt;</code> | — | — |
+| `lastGap` | <code>ShallowRef&lt;StreamGap &#124; null&gt;</code> | — | — |
 | `events` | `ShallowRef<TFrame[]>` | — | — |
 
 #### `VueEventStreamOptions`
@@ -181,8 +179,8 @@ export interface EventStreamStoreState<TFrame>
 | Property | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `healthy` | `boolean` | — | — |
-| `lastEvent` | `TFrame \| null` | — | — |
-| `lastGap` | `StreamGap \| null` | — | — |
+| `lastEvent` | <code>TFrame &#124; null</code> | — | — |
+| `lastGap` | <code>StreamGap &#124; null</code> | — | — |
 | `events` | `TFrame[]` | — | — |
 
 #### `SvelteEventStreamOptions`
@@ -237,7 +235,7 @@ Astro 5 integration for Litestar-Vite.
 | `AddressInfo` | `interface` | AddressInfo from Node.js net module. |
 | `AstroIntegration` | `interface` | Exported `interface` from `src/js/src/astro.ts`. |
 | `AstroIntegrationLogger` | `interface` | Astro integration logger interface. |
-| `AstroTypesConfig` | `type` | Configuration for TypeScript type generation. |
+| `AstroTypesConfig` | `type` | Configuration for TypeScript type generation. Same fields as [`TypesConfig`](index.md#typesconfig). |
 | `LitestarAstroConfig` | `type` | Configuration options for the Litestar integration. |
 | `litestarAstro` | `default function` | Litestar integration for Astro. |
 
@@ -299,27 +297,7 @@ Astro integration logger interface.
 export type AstroTypesConfig = TypesConfigShape
 ```
 
-Configuration for TypeScript type generation.
-
-| Property | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `enabled?` | `boolean` | — | — |
-| `output?` | `string` | — | — |
-| `openapiPath?` | `string` | — | — |
-| `routesPath?` | `string` | — | — |
-| `pagePropsPath?` | `string` | — | — |
-| `schemasTsPath?` | `string` | — | — |
-| `asyncapiPath?` | `string` | — | — |
-| `channelsTsPath?` | `string` | — | — |
-| `generateZod?` | `boolean` | — | — |
-| `generateSdk?` | `boolean` | — | — |
-| `generateRoutes?` | `boolean` | — | — |
-| `generatePageProps?` | `boolean` | — | — |
-| `generateSchemas?` | `boolean` | — | — |
-| `generateChannels?` | `boolean` | — | — |
-| `globalRoute?` | `boolean` | — | — |
-| `failOnError?` | `boolean` | — | — |
-| `debounce?` | `number` | — | — |
+Configuration for TypeScript type generation. Same fields as [`TypesConfig`](index.md#typesconfig).
 
 #### `LitestarAstroConfig`
 
@@ -333,14 +311,14 @@ Configuration options for the Litestar integration.
 | :--- | :--- | :--- | :--- |
 | `apiProxy?` | `string` | — | — |
 | `apiPrefix?` | `string` | — | — |
-| `types?` | `boolean \| "auto" \| TypesConfigShape` | — | — |
+| `types?` | <code>boolean &#124; "auto" &#124; TypesConfigShape</code> | — | — |
 | `verbose?` | `boolean` | — | — |
 | `executor?` | `IntegrationExecutor` | — | — |
 
 #### `litestarAstro`
 
 ```ts
-export default function litestarAstro(userConfig: LitestarAstroConfig =
+export default function litestarAstro(userConfig: LitestarAstroConfig = {}): AstroIntegration
 ```
 
 Litestar integration for Astro.
@@ -353,7 +331,7 @@ SvelteKit integration for Litestar-Vite.
 
 | Export | Kind | Description |
 | :--- | :--- | :--- |
-| `SvelteKitTypesConfig` | `type` | Configuration for TypeScript type generation. |
+| `SvelteKitTypesConfig` | `type` | Configuration for TypeScript type generation. Same fields as [`TypesConfig`](index.md#typesconfig). |
 | `LitestarSvelteKitConfig` | `type` | Configuration options for the Litestar integration. |
 | `litestarSvelteKit` | `function` | Litestar integration plugin for SvelteKit. |
 
@@ -363,27 +341,7 @@ SvelteKit integration for Litestar-Vite.
 export type SvelteKitTypesConfig = TypesConfigShape
 ```
 
-Configuration for TypeScript type generation.
-
-| Property | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `enabled?` | `boolean` | — | — |
-| `output?` | `string` | — | — |
-| `openapiPath?` | `string` | — | — |
-| `routesPath?` | `string` | — | — |
-| `pagePropsPath?` | `string` | — | — |
-| `schemasTsPath?` | `string` | — | — |
-| `asyncapiPath?` | `string` | — | — |
-| `channelsTsPath?` | `string` | — | — |
-| `generateZod?` | `boolean` | — | — |
-| `generateSdk?` | `boolean` | — | — |
-| `generateRoutes?` | `boolean` | — | — |
-| `generatePageProps?` | `boolean` | — | — |
-| `generateSchemas?` | `boolean` | — | — |
-| `generateChannels?` | `boolean` | — | — |
-| `globalRoute?` | `boolean` | — | — |
-| `failOnError?` | `boolean` | — | — |
-| `debounce?` | `number` | — | — |
+Configuration for TypeScript type generation. Same fields as [`TypesConfig`](index.md#typesconfig).
 
 #### `LitestarSvelteKitConfig`
 
@@ -397,14 +355,14 @@ Configuration options for the Litestar integration.
 | :--- | :--- | :--- | :--- |
 | `apiProxy?` | `string` | — | — |
 | `apiPrefix?` | `string` | — | — |
-| `types?` | `boolean \| "auto" \| TypesConfigShape` | — | — |
+| `types?` | <code>boolean &#124; "auto" &#124; TypesConfigShape</code> | — | — |
 | `verbose?` | `boolean` | — | — |
 | `executor?` | `IntegrationExecutor` | — | — |
 
 #### `litestarSvelteKit`
 
 ```ts
-export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig =
+export function litestarSvelteKit(userConfig: LitestarSvelteKitConfig = {}): any[]
 ```
 
 Litestar integration plugin for SvelteKit.
@@ -420,7 +378,7 @@ Nuxt 4 module for Litestar-Vite.
 | `NuxtModuleFunction` | `interface` | Nuxt module definition for Litestar integration. |
 | `ListenInfo` | `interface` | Exported `interface` from `src/js/src/nuxt.ts`. |
 | `NuxtContext` | `interface` | Exported `interface` from `src/js/src/nuxt.ts`. |
-| `NuxtTypesConfig` | `type` | Configuration for TypeScript type generation. |
+| `NuxtTypesConfig` | `type` | Configuration for TypeScript type generation. Same fields as [`TypesConfig`](index.md#typesconfig). |
 | `LitestarNuxtConfig` | `type` | Configuration options for the Litestar integration. |
 | `litestarModule` | `const` | Exported `const` from `src/js/src/nuxt.ts`. |
 
@@ -459,7 +417,7 @@ export interface NuxtContext
 | Property | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `options` | `object` | — | — |
-| `hook?` | `(name: string, fn: (...args: unknown[]) => void \| Promise<void>) => void` | — | — |
+| `hook?` | <code>(name: string, fn: (...args: unknown[]) =&gt; void &#124; Promise&lt;void&gt;) =&gt; void</code> | — | — |
 
 #### `NuxtTypesConfig`
 
@@ -467,27 +425,7 @@ export interface NuxtContext
 export type NuxtTypesConfig = TypesConfigShape
 ```
 
-Configuration for TypeScript type generation.
-
-| Property | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `enabled?` | `boolean` | — | — |
-| `output?` | `string` | — | — |
-| `openapiPath?` | `string` | — | — |
-| `routesPath?` | `string` | — | — |
-| `pagePropsPath?` | `string` | — | — |
-| `schemasTsPath?` | `string` | — | — |
-| `asyncapiPath?` | `string` | — | — |
-| `channelsTsPath?` | `string` | — | — |
-| `generateZod?` | `boolean` | — | — |
-| `generateSdk?` | `boolean` | — | — |
-| `generateRoutes?` | `boolean` | — | — |
-| `generatePageProps?` | `boolean` | — | — |
-| `generateSchemas?` | `boolean` | — | — |
-| `generateChannels?` | `boolean` | — | — |
-| `globalRoute?` | `boolean` | — | — |
-| `failOnError?` | `boolean` | — | — |
-| `debounce?` | `number` | — | — |
+Configuration for TypeScript type generation. Same fields as [`TypesConfig`](index.md#typesconfig).
 
 #### `LitestarNuxtConfig`
 
@@ -501,7 +439,7 @@ Configuration options for the Litestar integration.
 | :--- | :--- | :--- | :--- |
 | `apiProxy?` | `string` | — | — |
 | `apiPrefix?` | `string` | — | — |
-| `types?` | `boolean \| "auto" \| TypesConfigShape` | — | — |
+| `types?` | <code>boolean &#124; "auto" &#124; TypesConfigShape</code> | — | — |
 | `verbose?` | `boolean` | — | — |
 | `executor?` | `IntegrationExecutor` | — | — |
 
@@ -510,68 +448,3 @@ Configuration options for the Litestar integration.
 ```ts
 export const litestarModule: NuxtModuleFunction
 ```
-
-## `litestar-vite-plugin/dev-ssr`
-
-**Package Subpath**: `./dev-ssr` · **Types**: `./dist/js/dev-ssr.d.ts` · **Source**: `src/js/src/dev-ssr.ts`
-
-| Export | Kind | Description |
-| :--- | :--- | :--- |
-| `litestarViteSsrPlugin` | `function` | Exported `function` from `src/js/src/dev-ssr.ts`. |
-
-#### `litestarViteSsrPlugin`
-
-```ts
-export function litestarViteSsrPlugin(options: DevSsrOptions =
-```
-
-## `litestar-vite-plugin/ssr-worker`
-
-**Package Subpath**: `./ssr-worker` · **Types**: `./dist/js/ssr-worker.d.ts` · **Source**: `src/js/src/ssr-worker.ts`
-
-| Export | Kind | Description |
-| :--- | :--- | :--- |
-| `SsrWorkerOptions` | `interface` | Exported `interface` from `src/js/src/ssr-worker.ts`. |
-| `IPCRequest` | `interface` | Exported `interface` from `src/js/src/ssr-worker.ts`. |
-| `dispatchSsrRequest` | `function` | Dispatch one request, preserving rendering errors for the transport's fallback policy. |
-| `startSsrWorker` | `function` | Start the shared newline-delimited JSON RPC worker for an application's SSR entry. |
-
-#### `SsrWorkerOptions`
-
-```ts
-export interface SsrWorkerOptions
-```
-
-| Property | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `render?` | `(page: any) => unknown \| Promise<unknown>` | — | — |
-| `renderFragment?` | `(params: Record<string, unknown>) => unknown \| Promise<unknown>` | — | — |
-
-#### `IPCRequest`
-
-```ts
-export interface IPCRequest
-```
-
-| Property | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `id?` | `number \| string` | — | — |
-| `method?` | `string` | — | — |
-| `params?` | `Record<string, unknown>` | — | — |
-| `payload?` | `Record<string, unknown>` | — | — |
-
-#### `dispatchSsrRequest`
-
-```ts
-export async function dispatchSsrRequest(request: IPCRequest, options: SsrWorkerOptions =
-```
-
-Dispatch one request, preserving rendering errors for the transport's fallback policy.
-
-#### `startSsrWorker`
-
-```ts
-export function startSsrWorker(options: SsrWorkerOptions =
-```
-
-Start the shared newline-delimited JSON RPC worker for an application's SSR entry.

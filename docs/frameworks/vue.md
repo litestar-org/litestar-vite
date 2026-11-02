@@ -156,7 +156,7 @@ onMounted(async () => {
 
 ---
 
-## Realtime Composables (`litestar-vite-plugin/vue`)
+## Realtime Composables
 
 `litestar-vite-plugin/vue` exports Vue 3 Composition API composables (`useEventStream` and `useQueueEventStream`) returning reactive `Readonly<Ref<...>>` handles that automatically close when the enclosing component unmounts:
 

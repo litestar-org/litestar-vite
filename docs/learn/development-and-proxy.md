@@ -1,6 +1,6 @@
 # Development Server & Single-Port Proxy
 
-During local development (`dev_mode=True`), `litestar-vite` manages the Vite child process inside Litestar's ASGI lifespan and streams all Vite module requests and HMR WebSockets through your single Litestar port (`http://127.0.0.1:8000`).
+During local development (`dev_mode=True`), Litestar Vite manages the Vite child process inside Litestar's ASGI lifespan and streams all Vite module requests and HMR WebSockets through your single Litestar port (`http://127.0.0.1:8000`).
 
 <!-- termynal -->
 
@@ -14,7 +14,7 @@ INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 
 ---
 
-## 1. Lifespan Process Supervision & Crash Recovery
+## Lifespan Process Supervision & Crash Recovery
 
 When `RuntimeConfig(start_dev_server=True)` (the default when `dev_mode=True`), `VitePlugin.lifespan()` spawns and supervises the Vite dev server automatically:
 
@@ -28,7 +28,7 @@ If you prefer running `npm run dev` (or `litestar assets serve`) in a separate t
 
 ---
 
-## 2. Proxy Modes: `proxy_mode="vite"` vs `proxy_mode="proxy"`
+## Proxy Modes
 
 `RuntimeConfig.proxy_mode` (or the `VITE_PROXY_MODE` environment variable) controls which paths `ViteProxyMiddleware` forwards to the Vite dev server:
 
@@ -40,7 +40,7 @@ If you prefer running `npm run dev` (or `litestar assets serve`) in a separate t
 
 ---
 
-## 3. Protecting Backend Prefix Routes (`extra_route_prefixes`)
+## Protecting Backend Prefix Routes
 
 In `mode="spa"` (which registers a catch-all `/{path:path}` route for client-side routing) and `proxy_mode="proxy"`, `RuntimeConfig(extra_route_prefixes=...)` ensures backend-only prefixes never fall through to the SPA shell or meta-framework proxy when a specific URL 404s:
 
@@ -56,11 +56,11 @@ config = ViteConfig(
 )
 ```
 
-With `extra_route_prefixes` configured, a request to `/api/nonexistent` returns a proper Litestar `404 Not Found` JSON response instead of serving `index.html`.
+With `extra_route_prefixes` configured, a request to `/api/nonexistent` returns a proper Litestar 404 Not Found JSON response instead of serving `index.html`.
 
 ---
 
-## 4. Same-Origin Guarantee in Development
+## Same-Origin Guarantee in Development
 
 Because the browser only ever communicates with `http://127.0.0.1:8000` (both for HTML/API requests and `/static/vite-hmr` WebSocket upgrades):
 

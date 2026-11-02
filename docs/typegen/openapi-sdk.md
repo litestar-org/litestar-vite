@@ -1,10 +1,10 @@
 # OpenAPI TypeScript SDK & Schema Helpers
 
-When `TypeGenConfig(generate_sdk=True)` is active, `litestar-vite` exports Litestar's OpenAPI 3.1 schema to `src/generated/openapi.json` and runs [`@hey-api/openapi-ts`](https://heyapi.dev) inside `litestar-vite-plugin` to generate a complete, tree-shakeable TypeScript client SDK under `src/generated/api/`.
+When `TypeGenConfig(generate_sdk=True)` is active, Litestar Vite exports Litestar's OpenAPI 3.1 schema to `src/generated/openapi.json` and runs [`@hey-api/openapi-ts`](https://heyapi.dev) inside `litestar-vite-plugin` to generate a complete, tree-shakeable TypeScript client SDK under `src/generated/api/`.
 
 ---
 
-## 1. Python Configuration (`TypeGenConfig`)
+## Python Configuration
 
 ```python title="docs/examples/typegen/openapi_and_routes.py"
 --8<-- "docs/examples/typegen/openapi_and_routes.py"
@@ -12,7 +12,7 @@ When `TypeGenConfig(generate_sdk=True)` is active, `litestar-vite` exports Lites
 
 ---
 
-## 2. Ergonomic Schema Type Helpers (`schemas.ts`)
+## Ergonomic Schema Type Helpers
 
 Raw `@hey-api/openapi-ts` types require indexing into generated operation request/response unions. To make forms and API responses effortless, `TypeGenConfig(generate_schemas=True)` generates `src/generated/schemas.ts` with high-level utility types keyed by operation or route name:
 
@@ -20,8 +20,8 @@ Raw `@hey-api/openapi-ts` types require indexing into generated operation reques
 | --- | --- | --- |
 | **`FormInput<K>`** | Request body payload type for operation `K` | `type CreateCustomerForm = FormInput<"customers:create">;` |
 | **`FormResponse<K, Status>`** | Response body type for operation `K` and HTTP status code | `type ValidationErr = FormResponse<"customers:create", 422>;` |
-| **`SuccessResponse<K>`** | `200` / `201` success response payload for operation `K` | `type CustomerList = SuccessResponse<"customers:list">;` |
-| **`ErrorResponse<K>`** | Union of error response payloads (`400`, `422`, `500`) for operation `K` | `type CreateCustomerError = ErrorResponse<"customers:create">;` |
+| **`SuccessResponse<K>`** | 200 / `201` success response payload for operation `K` | `type CustomerList = SuccessResponse<"customers:list">;` |
+| **`ErrorResponse<K>`** | Union of error response payloads (400, 422, 500) for operation `K` | `type CreateCustomerError = ErrorResponse<"customers:create">;` |
 | **`PathParams<K>`** | Path parameter object for operation `K` | `type CustomerPath = PathParams<"customers:detail">;` |
 | **`QueryParams<K>`** | Query string parameter object for operation `K` | `type CustomerQuery = QueryParams<"customers:list">;` |
 
@@ -40,7 +40,7 @@ export async function fetchEnterpriseCustomers(_draft?: NewCustomerInput): Promi
 
 ---
 
-## 3. Runtime Zod Schema Generation (`generate_zod=True`)
+## Runtime Zod Schema Generation
 
 Set `TypeGenConfig(generate_zod=True)` when you want `@hey-api/openapi-ts` to emit runtime [Zod](https://zod.dev) validation schemas alongside static TypeScript interfaces — ideal for client-side form validation with React Hook Form, TanStack Form, or VeeValidate:
 
@@ -57,7 +57,7 @@ config = ViteConfig(
 
 ---
 
-## 4. Customizing `@hey-api/openapi-ts` (`openapi-ts.config.ts`)
+## Customizing the OpenAPI Generator
 
 If your project includes an `openapi-ts.config.ts` file in the root directory, `litestar-vite-plugin` respects your custom plugins, client selection (`@hey-api/client-fetch`), and formatting rules while keeping `input` and `output` synchronized with `.litestar.json`:
 
@@ -82,7 +82,7 @@ export default defineConfig({
 
 ---
 
-## 5. Generating Types from the CLI (`litestar assets generate-types`)
+## Generating Types from the CLI
 
 In CI pipelines or before running `tsc --noEmit`, run `litestar assets generate-types` to export all JSON schemas and execute `@hey-api/openapi-ts` without starting the HTTP server:
 

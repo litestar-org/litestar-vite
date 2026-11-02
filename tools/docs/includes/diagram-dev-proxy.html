@@ -72,11 +72,10 @@
 
     <!-- Browser Node -->
     <rect x="20" y="95" width="165" height="145" rx="12" fill="var(--lv-card)" stroke="var(--lv-blue)" stroke-width="2" />
-    <text x="102" y="126" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Browser Client</text>
-    <text x="102" y="148" text-anchor="middle" fill="var(--lv-blue)" font-size="12" font-family="monospace">http://127.0.0.1:8000</text>
-    <text x="102" y="176" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Single Origin (No CORS)</text>
-    <text x="102" y="196" text-anchor="middle" fill="var(--lv-muted)" font-size="11">GET /api/* • GET /static/*</text>
-    <text x="102" y="216" text-anchor="middle" fill="var(--lv-emerald)" font-size="11" font-family="monospace">WS /static/vite-hmr</text>
+    <text x="102" y="132" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Browser</text>
+    <text x="102" y="156" text-anchor="middle" fill="var(--lv-blue)" font-size="12" font-family="monospace">http://127.0.0.1:8000</text>
+    <text x="102" y="184" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Single Origin (No CORS)</text>
+    <text x="102" y="206" text-anchor="middle" fill="var(--lv-emerald)" font-size="11" font-family="monospace">/api/* &amp; /vite-hmr</text>
 
     <!-- Litestar ASGI Server Box -->
     <rect x="255" y="30" width="335" height="230" rx="14" fill="var(--lv-card)" stroke="var(--lv-amber)" stroke-width="2" />
@@ -84,31 +83,30 @@
 
     <!-- Python API & Page Routes -->
     <rect x="280" y="76" width="285" height="68" rx="8" fill="var(--lv-surface)" stroke="var(--lv-border)" stroke-width="1.5" />
-    <text x="422" y="100" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">Python Route Handlers &amp; InertiaPlugin</text>
-    <text x="422" y="120" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">/api/* • Inertia PageProps • Jinja Templates</text>
+    <text x="422" y="102" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">Route Handlers</text>
+    <text x="422" y="124" text-anchor="middle" fill="var(--lv-muted)" font-size="11.5">JSON APIs, Inertia &amp; Templates</text>
 
     <!-- ViteProxyMiddleware -->
     <rect x="280" y="162" width="285" height="80" rx="8" fill="var(--lv-surface)" stroke="var(--lv-blue)" stroke-width="1.8" />
-    <text x="422" y="186" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="700">ViteProxyMiddleware</text>
-    <text x="422" y="206" text-anchor="middle" fill="var(--lv-blue)" font-size="11" font-family="monospace">anyio.connect_tcp (HTTP/1.1 streaming)</text>
-    <text x="422" y="224" text-anchor="middle" fill="var(--lv-emerald)" font-size="11" font-family="monospace">wsproto WebSocket tunnel (/vite-hmr)</text>
+    <text x="422" y="190" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="700">ViteProxyMiddleware</text>
+    <text x="422" y="212" text-anchor="middle" fill="var(--lv-blue)" font-size="11.5" font-family="monospace">anyio.connect_tcp + WebSocket</text>
 
     <!-- Vite 7+ Dev Server Box -->
     <rect x="665" y="55" width="235" height="195" rx="14" fill="var(--lv-card)" stroke="var(--lv-violet)" stroke-width="2" />
     <circle class="lv-pulse" cx="876" cy="78" r="6" fill="var(--lv-emerald)" />
-    <text x="782" y="83" text-anchor="middle" fill="var(--lv-text)" font-size="15" font-weight="700">Vite 7+ Dev Server</text>
-    <text x="782" y="103" text-anchor="middle" fill="var(--lv-violet)" font-size="12" font-family="monospace">127.0.0.1:5173 (Internal)</text>
+    <text x="782" y="83" text-anchor="middle" fill="var(--lv-text)" font-size="15" font-weight="700">Vite Dev Server</text>
+    <text x="782" y="103" text-anchor="middle" fill="var(--lv-violet)" font-size="12" font-family="monospace">127.0.0.1:5173</text>
     <rect x="685" y="118" width="195" height="52" rx="7" fill="var(--lv-surface)" stroke="var(--lv-border)" />
     <text x="782" y="140" text-anchor="middle" fill="var(--lv-text)" font-size="12" font-weight="600">litestar-vite-plugin</text>
-    <text x="782" y="158" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Transform • @vite/client • HMR</text>
+    <text x="782" y="158" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Asset Transform &amp; HMR</text>
     <rect x="685" y="182" width="195" height="52" rx="7" fill="var(--lv-surface)" stroke="var(--lv-border)" />
-    <text x="782" y="204" text-anchor="middle" fill="var(--lv-text)" font-size="12" font-weight="600">RunnableDevEnvironment</text>
+    <text x="782" y="204" text-anchor="middle" fill="var(--lv-text)" font-size="12" font-weight="600">Dev SSR Runner</text>
     <text x="782" y="222" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">POST /__litestar_ssr__</text>
 
     <!-- Bridge Files Bar -->
     <rect x="255" y="285" width="645" height="54" rx="10" fill="var(--lv-card)" stroke="var(--lv-border)" stroke-width="1.5" />
-    <text x="577" y="308" text-anchor="middle" fill="var(--lv-text)" font-size="12" font-weight="700">Zero-Duplicate Process Bridge (Disk Handshake)</text>
-    <text x="577" y="326" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">Python writes .litestar.json (BridgeSchema)  ⇄  Vite writes public/hot (ephemeral target URL)</text>
+    <text x="577" y="308" text-anchor="middle" fill="var(--lv-text)" font-size="12" font-weight="700">Runtime Handshake</text>
+    <text x="577" y="326" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">.litestar.json  ⇄  hot file</text>
 
     <!-- Animated Edges: Browser <-> Litestar -->
     <line class="lv-flow-http" x1="185" y1="142" x2="255" y2="112" stroke="var(--lv-amber)" stroke-width="2.5" />

@@ -4,11 +4,9 @@ API reference for `ViteAssetLoader`, Jinja template helpers, `AppHandler`, `Vite
 
 ---
 
-## Asset Loader & Template Callables (`litestar_vite.loader`)
+## Asset Loader & Template Callables
 
 ::: litestar_vite.loader.ViteAssetLoader
-    options:
-      heading_level: 4
 
 ::: litestar_vite.loader.render_hmr_client
     options:
@@ -28,27 +26,19 @@ API reference for `ViteAssetLoader`, Jinja template helpers, `AppHandler`, `Vite
 
 ---
 
-## SPA Handler & Single-Port Dev Proxy (`litestar_vite.handler` & `litestar_vite.plugin`)
+## SPA Handler & Single-Port Dev Proxy
 
 ::: litestar_vite.handler.AppHandler
-    options:
-      heading_level: 4
 
 ::: litestar_vite.plugin.ViteProxyMiddleware
-    options:
-      heading_level: 4
 
 ---
 
 ## Static File Serving & Granian Native Placement
 
 ::: litestar_vite.plugin.StaticPlacement
-    options:
-      heading_level: 4
 
 ::: litestar_vite.plugin.StaticServerConfig
-    options:
-      heading_level: 4
 
 ::: litestar_vite.plugin.StaticServerMount
     options:
@@ -60,11 +50,9 @@ API reference for `ViteAssetLoader`, Jinja template helpers, `AppHandler`, `Vite
 
 ---
 
-## JavaScript Runtime Executors (`litestar_vite.executor`)
+## JavaScript Runtime Executors
 
 ::: litestar_vite.executor.JSExecutor
-    options:
-      heading_level: 4
 
 ::: litestar_vite.executor.NodeExecutor
     options:
@@ -92,7 +80,7 @@ API reference for `ViteAssetLoader`, Jinja template helpers, `AppHandler`, `Vite
 
 ---
 
-## Exceptions Hierarchy (`litestar_vite.exceptions`)
+## Exceptions Hierarchy
 
 ::: litestar_vite.exceptions.LitestarViteError
     options:
@@ -123,5 +111,41 @@ API reference for `ViteAssetLoader`, Jinja template helpers, `AppHandler`, `Vite
       heading_level: 4
 
 ::: litestar_vite.exceptions.ViteProcessError
+    options:
+      heading_level: 4
+
+---
+
+## HTML Transform Helpers
+
+::: litestar_vite.html_transform.inject_head_html
+    options:
+      heading_level: 4
+
+::: litestar_vite.html_transform.inject_head_script
+    options:
+      heading_level: 4
+
+::: litestar_vite.html_transform.inject_inertia_ssr_tags
+    options:
+      heading_level: 4
+
+::: litestar_vite.html_transform.inject_page_script
+    options:
+      heading_level: 4
+
+::: litestar_vite.html_transform.inject_vite_dev_scripts
+    options:
+      heading_level: 4
+
+::: litestar_vite.html_transform.replace_element_outer_html
+    options:
+      heading_level: 4
+
+::: litestar_vite.html_transform.set_data_attribute
+    options:
+      heading_level: 4
+
+::: litestar_vite.html_transform.transform_asset_urls
     options:
       heading_level: 4

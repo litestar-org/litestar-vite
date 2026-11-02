@@ -15,13 +15,13 @@ Every full-stack Python + JavaScript application must answer four architectural 
 
 ## Comparison Matrix
 
-| Dimension | `mode="spa"` | `mode="hybrid"` (`"inertia"`) | `mode="template"` (`"htmx"`) | `mode="framework"` (`"ssr"` / `"ssg"`) | `mode="external"` |
+| Dimension | `spa` | `hybrid` (`inertia`) | `template` (`htmx`) | `framework` (`ssr` / `ssg`) | `external` |
 | --- | --- | --- | --- | --- | --- |
-| **HTML Shell Owner** | `index.html` served & transformed by `AppHandler` | `index.html` (or Jinja `root_template`) transformed by `InertiaPlugin` | Litestar `JinjaTemplateEngine` (`*.html.j2`) | Meta-framework server (`:4321` / `:3000` / `:5173`) | External CLI dev server (`ng serve`) |
-| **Router Owner** | Client router (`react-router`, `vue-router`, TanStack Router) | Litestar `@get(..., component="...")` + Inertia client router | Litestar `@get(...)` returning `Template` or `ComponentResponse` | Meta-framework file router; Litestar serves `/api/*` | Angular / external router |
-| **Asset Tag Injection** | Automatic via `transform_html_scripts()` on `index.html` | Automatic via `transform_html_scripts()` + `<script data-page="app">` | Explicit `{{ vite_hmr() }}` and `{{ vite('...') }}` in Jinja | Handled by the meta-framework Vite pipeline | Handled by external bundler |
-| **Dev Proxy Mode** | `proxy_mode="vite"` (allowlist: Vite assets + HMR) | `proxy_mode="vite"` (allowlist: Vite assets + HMR) | `proxy_mode="vite"` (allowlist: Vite assets + HMR) | `proxy_mode="proxy"` (denylist: proxies all non-API routes) | `proxy_mode="proxy"` to `ExternalDevServer.target` |
-| **Primary Data Contract** | `@hey-api/openapi-ts` SDK + `route()` | Inertia `PageProps` (`page-props.ts`) + `route()` | Jinja context + `<litestar-island>` / `ComponentResponse` | `@hey-api/openapi-ts` SDK + `route()` | `@hey-api/openapi-ts` SDK + `route()` |
+| **HTML Shell** | `index.html` transformed by `AppHandler` | `index.html` or Jinja transformed by `InertiaPlugin` | Litestar Jinja2 templates | Meta-framework server | External CLI dev server |
+| **Router** | Client router (React Router, Vue Router, TanStack) | Litestar route handlers + Inertia client router | Litestar route handlers (`Template` / `ComponentResponse`) | Meta-framework file router; Litestar serves `/api/*` | Angular or external router |
+| **Asset Tags** | Automatic HTML script transform | Automatic transform + `data-page` JSON script | Explicit `vite_hmr()` and `vite()` in Jinja | Meta-framework Vite pipeline | External bundler |
+| **Dev Proxy** | `proxy_mode="vite"` (Vite assets + HMR) | `proxy_mode="vite"` (Vite assets + HMR) | `proxy_mode="vite"` (Vite assets + HMR) | `proxy_mode="proxy"` (all non-API routes) | `proxy_mode="proxy"` to external target |
+| **Data Contract** | OpenAPI SDK + `route()` | Inertia `PageProps` + `route()` | Jinja context + `<litestar-island>` | OpenAPI SDK + `route()` | OpenAPI SDK + `route()` |
 
 ---
 
@@ -54,5 +54,5 @@ When `ViteConfig.mode` is omitted (`mode=None`), `ViteConfig.__post_init__` reso
 3. If `Litestar(template_config=...)` is registered without Inertia -> **`mode="template"`**.
 4. If an `index.html` exists in `root_dir`, `resource_dir`, or `public_dir` -> **`mode="spa"`**.
 
-> [!TIP]
-> Always set `mode` explicitly (`mode="spa"`, `mode="hybrid"`, `mode="template"`, `mode="framework"`, or `mode="external"`) in production applications so your intent is self-documenting and validated at startup.
+!!! tip
+    Always set `mode` explicitly (`mode="spa"`, `mode="hybrid"`, `mode="template"`, `mode="framework"`, or `mode="external"`) in production applications so your intent is self-documenting and validated at startup.

@@ -4,7 +4,7 @@ Inertia's `useForm` and `router` automatically detect `File` or `Blob` objects a
 
 ---
 
-## 1. Handling `UploadFile` in Litestar
+## Handling File Uploads in Litestar
 
 Use Litestar's `RequestEncodingType.MULTI_PART` and `UploadFile` (or `list[UploadFile]`) inside a `msgspec.Struct` or dataclass to accept single or multiple file uploads alongside regular form fields:
 
@@ -47,11 +47,11 @@ async def update_avatar(
 
 ---
 
-## 2. Frontend File Inputs, Previews & Progress Bars
+## Frontend File Inputs, Previews & Progress Bars
 
 `form.progress` provides `{ percentage, loaded, total }` while a multipart upload is in flight:
 
-=== "React (`@inertiajs/react`)"
+=== "React"
 
     ```tsx title="resources/pages/Profile/AvatarForm.tsx"
     import { type ChangeEvent, type FormEvent, useState } from "react";
@@ -103,7 +103,7 @@ async def update_avatar(
     }
     ```
 
-=== "Vue 3 (`@inertiajs/vue3`)"
+=== "Vue 3"
 
     ```vue title="resources/pages/Profile/AvatarForm.vue"
     <script setup lang="ts">
@@ -150,6 +150,6 @@ async def update_avatar(
 
 ---
 
-## 3. Multipart Updates with `PUT` / `PATCH`
+## Multipart Updates with PUT and PATCH
 
 When updating a resource that includes a file upload, prefer `POST` (or pass `_method: "put"` if using method spoofing) with `forceFormData: true` so the browser encodes the payload as `multipart/form-data`.

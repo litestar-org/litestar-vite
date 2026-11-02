@@ -4,15 +4,11 @@ API reference for UI component fragments (`litestar_vite.fragments`) and the Ser
 
 ---
 
-## UI Component Fragments & Islands (`litestar_vite.fragments`)
+## UI Component Fragments & Islands
 
 ::: litestar_vite.fragments.FragmentEngine
-    options:
-      heading_level: 4
 
 ::: litestar_vite.fragments.ComponentResponse
-    options:
-      heading_level: 4
 
 ::: litestar_vite.fragments.vite_fragment
     options:
@@ -24,19 +20,13 @@ API reference for UI component fragments (`litestar_vite.fragments`) and the Ser
 
 ---
 
-## SSR IPC Transports (`litestar_vite.ipc`)
+## SSR IPC Transports
 
 ::: litestar_vite.ipc.BaseIPCTransport
-    options:
-      heading_level: 4
 
 ::: litestar_vite.ipc.StdioIPCTransport
-    options:
-      heading_level: 4
 
 ::: litestar_vite.ipc.TCPStreamIPCTransport
-    options:
-      heading_level: 4
 
 ::: litestar_vite.ipc.IPCRequest
     options:
@@ -51,8 +41,6 @@ API reference for UI component fragments (`litestar_vite.fragments`) and the Ser
 ## Circuit Breaker & IPC Exceptions
 
 ::: litestar_vite.ipc.SSRCircuitBreaker
-    options:
-      heading_level: 4
 
 ::: litestar_vite.ipc.CircuitState
     options:
