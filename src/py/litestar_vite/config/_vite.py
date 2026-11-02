@@ -10,18 +10,9 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkabl
 from litestar.exceptions import SerializationException
 from litestar.serialization import decode_json
 
-from litestar_vite.config._constants import (  # pyright: ignore[reportPrivateUsage]
-    FSSPEC_INSTALLED,
-    JINJA_INSTALLED,
-    TRUE_VALUES,
-    empty_dict_factory,
-)
+from litestar_vite.config._constants import FSSPEC_INSTALLED, JINJA_INSTALLED, TRUE_VALUES, empty_dict_factory  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._deploy import DeployConfig  # pyright: ignore[reportPrivateUsage]
-from litestar_vite.config._inertia import (  # pyright: ignore[reportPrivateUsage]
-    InertiaConfig,
-    InertiaSSRConfig,
-    InertiaTypeGenConfig,
-)
+from litestar_vite.config._inertia import InertiaConfig, InertiaSSRConfig, InertiaTypeGenConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._paths import PathConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._runtime import ExternalDevServer, RuntimeConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._spa import LoggingConfig, SPAConfig  # pyright: ignore[reportPrivateUsage]
@@ -73,27 +64,10 @@ def _package_json_has_react_plugin(package_json_path: str, stat_mtime_ns: int, s
 
 @runtime_checkable
 class PaginationContainer(Protocol):
-    """Protocol for pagination containers that can be unwrapped for Inertia scroll.
-
-    Any type that has `items` and pagination metadata can implement this protocol.
-    The response will extract items and calculate scroll_props automatically.
-
-    Built-in support:
-    - litestar.pagination.OffsetPagination
-    - litestar.pagination.ClassicPagination
-    - advanced_alchemy.service.OffsetPagination
-
-    Custom types can implement this protocol::
-
-        @dataclass
-        class MyPagination:
-            items: list[T]
-            total: int
-            limit: int
-            offset: int
-    """
+    """Protocol for pagination containers (`OffsetPagination`, `ClassicPagination`) unwrapped for Inertia scroll."""
 
     items: "Sequence[Any]"
+    """Paginated sequence of item records extracted for the response."""
 
 
 def _to_root_path(root_dir: Path, path: Path) -> Path:
@@ -111,153 +85,40 @@ def _to_root_path(root_dir: Path, path: Path) -> Path:
 
 @dataclass
 class ViteConfig:
-    """Root Vite configuration.
-
-    This is the main configuration class that combines all sub-configurations.
-    Supports shortcuts for common configurations:
-
-    - dev_mode: Shortcut for runtime.dev_mode
-    - types=True or TypeGenConfig(): Enable type generation (presence = enabled)
-    - inertia=True or InertiaConfig(): Enable Inertia.js (presence = enabled)
-
-    Mode auto-detection:
-
-    - If mode is not explicitly set:
-
-      - If Inertia is enabled and index.html exists -> Hybrid mode
-      - If Inertia is enabled without index.html -> Template mode
-      - Checks for index.html in common locations -> SPA mode
-      - Checks if Jinja2 template engine is configured -> Template mode
-      - Otherwise defaults to SPA mode
-
-    Dev-mode auto-enable:
-
-    - If mode="spa" and no built assets are found in bundle_dir, dev_mode is
-      enabled automatically (unless VITE_AUTO_DEV_MODE=False).
-
-    - Explicit mode parameter overrides auto-detection
-
-    Attributes:
-        mode: Serving mode. Four canonical values plus five aliases that normalize to
-            canonical values at ``__post_init__`` (so downstream code only ever switches
-            on canonical values).
-
-            Canonical (4):
-                - "spa": Litestar serves a single index.html catch-all; client-side router
-                  owns navigation.
-                - "hybrid": Litestar serves a prebuilt index.html with Vite scripts injected;
-                  user defines per-page handlers that return Inertia data.
-                - "template": Litestar serves per-route HTML. With Jinja2 + JinjaTemplateEngine
-                  TemplateConfig, ``vite``/``vite_hmr``/``vite_static``/``vite_routes`` callables
-                  are auto-registered. Without Jinja, return raw HTML strings or use a different
-                  template engine (Mako, Chameleon). HTMX flows use this mode.
-                - "framework": External dev server (Astro/Nuxt/SvelteKit/Angular CLI) owns HTML;
-                  Litestar proxies non-API routes via ``SSRProxyMiddleware``. Combine with
-                  ``runtime.external_dev_server=ExternalDevServer(...)`` for non-Vite tools.
-
-            Aliases (auto-translated at construction):
-                - "inertia" → "hybrid"
-                - "htmx" → "template"
-                - "ssr" / "ssg" → "framework"
-                - "external" → "framework" (requires ``runtime.external_dev_server``)
-
-            Auto-detected if not set.
-        paths: File system paths configuration.
-        runtime: Runtime execution settings.
-        types: Type generation settings (True/TypeGenConfig enables, False/None disables).
-        inertia: Inertia.js settings (True/InertiaConfig enables, False/None disables).
-        spa: SPA transformation settings (True enables with defaults, False disables).
-        logging: Logging configuration (True enables with defaults, None uses defaults).
-        dev_mode: Convenience shortcut for runtime.dev_mode.
-        base_url: Base URL for the app entry point.
-        deploy: Deployment configuration for CDN publishing.
-        enabled: Whether VitePlugin actively wires serving routes and lifespans.
-    """
+    """Root configuration combining operating mode, paths, runtime, Inertia, SPA, typegen, and deployment settings."""
 
     mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'inertia', 'framework', 'ssr', 'ssg', 'external'] | None" = None
+    """Serving mode (`'spa'`, `'template'`, `'hybrid'`, or `'framework'`; aliases `'inertia'`, `'htmx'`, `'ssr'`, `'ssg'`, `'external'` normalize at init)."""
     paths: PathConfig = field(default_factory=PathConfig)
+    """Filesystem and URL path configuration (`root`, `bundle_dir`, `resource_dir`, `static_dir`, `asset_url`)."""
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
+    """Runtime execution, single-port proxy, and JS executor configuration."""
     types: "TypeGenConfig | bool | None" = None
+    """Type generation configuration (`True` for default `TypeGenConfig()`, `False`/`None` to disable)."""
     inertia: "InertiaConfig | bool | None" = None
+    """Inertia.js v2 configuration (`True` for default `InertiaConfig()`, `False`/`None` to disable)."""
     spa: "SPAConfig | bool | None" = None
+    """SPA HTML transformation settings (`True` for default `SPAConfig()`, `False` to disable)."""
     logging: "LoggingConfig | bool | None" = None
+    """Console output and banner logging settings (`True`/`None` for default `LoggingConfig()`)."""
     dev_mode: bool = False
+    """Shortcut flag that sets `runtime.dev_mode = True` when enabled."""
     base_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
+    """Base URL prefix for the application entrypoint (`VITE_BASE_URL`)."""
     deploy: "DeployConfig | bool" = False
+    """CDN deployment configuration (`True` for default `DeployConfig()`, `False` to disable)."""
     enabled: "bool | None" = None
-    """Whether the plugin actively serves assets/routes.
-
-    - ``None`` (default): auto-detect; serving apps behave as before and known non-serving
-      invocations such as ``litestar assets ...`` are inert.
-    - ``True``: force active; inference cannot disable the plugin.
-    - ``False``: fully inert; skip asset/route wiring, static routers, SPA handlers,
-      and Vite lifespans while leaving CLI/config access available.
-
-    When unset, ``VITE_ENABLED`` is consulted. An explicit constructor value wins over
-    the environment variable.
-    """
+    """Whether `VitePlugin` actively wires serving routes and lifespans (`None` auto-detects and skips non-serving CLI runs)."""
     static_props: "dict[str, Any]" = field(default_factory=empty_dict_factory)
-    """Static data to pass to the JavaScript application via the bridge file.
-
-    This data is written to ``.litestar.json`` and accessible via the
-    ``virtual:litestar-static-props`` module in JavaScript.
-
-    Warning:
-        Do not include sensitive data (API keys, secrets, passwords).
-        This data is written to disk and included in the client-side JavaScript
-        bundle, visible to all users.
-
-    Example::
-
-        ViteConfig(
-            static_props={
-                "appName": "My App",
-                "version": "1.0.0",
-                "features": {"darkMode": True},
-            }
-        )
-
-    TypeScript usage::
-
-        import staticProps from 'virtual:litestar-static-props'
-        console.log(staticProps.appName)
-
-        // Or with named imports (tree-shakeable)
-        import { appName, version } from 'virtual:litestar-static-props'
-    """
+    """Public build-time dictionary written to `.litestar.json` and exposed via `virtual:litestar-static-props`."""
     guards: "Sequence[Guard] | None" = None  # pyright: ignore[reportUnknownVariableType]
-    """Custom guards for the SPA catch-all route.
-
-    When set, these guards are applied to the SPA handler route that serves the
-    SPA index.html (mode="spa"/"framework" with spa_handler=True).
-    """
+    """Litestar route guards applied to the `AppHandler` catch-all SPA route."""
     exclude_static_from_auth: bool = True
-    """Exclude static file routes from authentication.
-
-    When True (default), static file routes are served with
-    opt={"exclude_from_auth": True}, which tells auth middleware to skip
-    authentication for asset requests. Set to False to omit that opt so auth
-    middleware treats asset requests like any other route.
-    """
+    """Set `opt={'exclude_from_auth': True}` on static asset routes so auth middleware skips static files."""
     spa_path: "str | None" = None
-    """Path where the SPA handler serves index.html.
-
-    Controls where AppHandler registers its catch-all routes.
-
-    - Default: "/" (root)
-    - Non-root (e.g. "/web/"): optionally set `include_root_spa_paths=True` to
-      also serve at "/" and "/{path:path}".
-    """
+    """Route path where `AppHandler` registers its catch-all SPA handler (`'/'` by default)."""
     include_root_spa_paths: bool = False
-    """Also register SPA routes at root when spa_path is non-root.
-
-    When True and spa_path is set to a non-root path (e.g., "/web/"),
-    the SPA handler will also serve at "/" and "/{path:path}" in addition
-    to the spa_path routes.
-
-    This is useful for Angular apps with --base-href /web/ that also
-    want to serve the SPA from the root path for convenience.
-    """
+    """Also register root `'/'` and `'/{path:path}'` SPA routes when `spa_path` is set to a non-root prefix."""
 
     _executor_instance: "JSExecutor | None" = field(default=None, repr=False)
     _mode_auto_detected: bool = field(default=False, repr=False)

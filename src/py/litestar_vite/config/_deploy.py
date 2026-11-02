@@ -11,27 +11,22 @@ __all__ = ("DeployConfig",)
 
 @dataclass
 class DeployConfig:
-    """CDN deployment configuration.
-
-    Attributes:
-        enabled: Enable deployment features.
-        storage_backend: fsspec URL for the target location (e.g., ``gcs://bucket/path``).
-        storage_options: Provider options forwarded to ``fsspec`` (credentials, region, etc.).
-        asset_url: Public URL prefix where deployed assets will be served (e.g., ``https://cdn.example.com/assets/``).
-            When set and deployment is enabled, this value is written to ``.litestar.json`` as ``deployAssetUrl`` and
-            used by the Vite plugin as the ``base`` during ``vite build``. It does not replace ``PathConfig.asset_url``.
-        delete_orphaned: Remove remote files not present in the local bundle.
-        include_manifest: Upload ``manifest.json`` alongside assets.
-        content_types: Optional content-type overrides keyed by file extension.
-    """
+    """CDN deployment configuration for uploading built Vite bundles via `fsspec`."""
 
     enabled: bool = True
+    """Enable CDN deployment features."""
     storage_backend: "str | None" = field(default_factory=lambda: os.getenv("VITE_DEPLOY_STORAGE"))
+    """`fsspec` storage URL for the target location (for example, `gcs://bucket/path`)."""
     storage_options: dict[str, Any] = field(default_factory=default_storage_options)
+    """Provider options forwarded to `fsspec` (credentials, region, endpoint)."""
     asset_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_DEPLOY_ASSET_URL"))
+    """Public CDN URL prefix written to `.litestar.json` as `deployAssetUrl` during `vite build`."""
     delete_orphaned: bool = field(default_factory=lambda: os.getenv("VITE_DEPLOY_DELETE", "true") in TRUE_VALUES)
+    """Remove remote files not present in the local bundle during sync."""
     include_manifest: bool = True
+    """Upload `manifest.json` alongside built assets."""
     content_types: dict[str, str] = field(default_factory=default_content_types)
+    """Optional content-type overrides keyed by file extension."""
 
     def __post_init__(self) -> None:
         """Apply environment fallbacks."""

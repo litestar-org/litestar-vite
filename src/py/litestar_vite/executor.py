@@ -191,6 +191,7 @@ class CommandExecutor(JSExecutor):
     update_latest_flag: ClassVar[str] = "--latest"
 
     def install(self, cwd: Path) -> None:
+        """Install frontend dependencies in `cwd` using the configured package manager."""
         executable = self._resolve_executable()
         command = [executable, "install"]
         process = subprocess.run(command, cwd=cwd, shell=False, check=False)
@@ -198,6 +199,7 @@ class CommandExecutor(JSExecutor):
             raise ViteExecutionError(command, process.returncode, "package install failed")
 
     def update(self, cwd: Path, *, latest: bool = False) -> None:
+        """Update frontend dependencies in `cwd`."""
         executable = self._resolve_executable()
         command = [executable, self.update_command]
         if latest and self.update_latest_flag:
@@ -207,12 +209,14 @@ class CommandExecutor(JSExecutor):
             raise ViteExecutionError(command, process.returncode, "package update failed")
 
     def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
+        """Start a long-running JavaScript subprocess in `cwd` and return its `Popen` handle."""
         executable = self._resolve_executable()
         args = self._apply_silent_flag(args)
         command = _normalize_command(executable, args, binary_name=self.bin_name)
         return subprocess.Popen(command, **_popen_server_kwargs(cwd))
 
     def execute(self, args: list[str], cwd: Path) -> None:
+        """Execute a JavaScript command synchronously in `cwd` and raise `ViteExecutionError` on failure."""
         executable = self._resolve_executable()
         args = self._apply_silent_flag(args)
         command = _normalize_command(executable, args, binary_name=self.bin_name)
@@ -248,7 +252,7 @@ class DenoExecutor(CommandExecutor):
     update_latest_flag: ClassVar[str] = ""
 
     def install(self, cwd: Path) -> None:
-        pass
+        """No-op install hook for Deno projects without traditional package installation."""
 
     def update(self, cwd: Path, *, latest: bool = False) -> None:
         """Deno doesn't have traditional package management."""
@@ -339,6 +343,7 @@ class NodeenvExecutor(JSExecutor):
             raise ViteExecutionError(command, process.returncode, "package install failed")
 
     def update(self, cwd: Path, *, latest: bool = False) -> None:
+        """Run `npm update` inside the active `nodeenv` virtual environment."""
         npm_path = self._find_npm_in_venv()
         command = [npm_path, "update"]
         if latest:
@@ -348,12 +353,14 @@ class NodeenvExecutor(JSExecutor):
             raise ViteExecutionError(command, process.returncode, "package update failed")
 
     def run(self, args: list[str], cwd: Path) -> "subprocess.Popen[Any]":
+        """Start a long-running `npm` subprocess inside the `nodeenv` environment."""
         npm_path = self._find_npm_in_venv()
         args = self._apply_silent_flag(args)
         command = _normalize_command(npm_path, args, binary_name="npm")
         return subprocess.Popen(command, **_popen_server_kwargs(cwd))
 
     def execute(self, args: list[str], cwd: Path) -> None:
+        """Execute an `npm` command synchronously inside the `nodeenv` environment."""
         npm_path = self._find_npm_in_venv()
         args = self._apply_silent_flag(args)
         command = _normalize_command(npm_path, args, binary_name="npm")

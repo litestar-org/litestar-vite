@@ -12,125 +12,46 @@ __all__ = ("TypeGenConfig",)
 
 @dataclass
 class TypeGenConfig:
-    """Type generation settings.
-
-    Presence of this config enables type generation. Use ``types=None`` or
-    ``types=False`` in ViteConfig to disable.
-
-    Attributes:
-        output: Output directory for generated types.
-        openapi_path: Path to export OpenAPI schema.
-        routes_path: Path to export routes metadata (JSON format).
-        routes_ts_path: Path to export typed routes TypeScript file.
-        generate_zod: Generate Zod schemas from OpenAPI.
-        generate_sdk: Generate SDK client from OpenAPI.
-        generate_routes: Generate typed routes.ts file (Ziggy-style).
-        generate_page_props: Generate Inertia page props TypeScript file.
-            Auto-enabled when both types and inertia are configured.
-        generate_schemas: Generate schemas.ts with ergonomic form/response type helpers.
-            Creates helper types like FormInput<'api:login'> and FormResponse<'api:login', 201>
-            that wrap hey-api generated types with cleaner DX.
-        page_props_path: Path to export page props metadata (JSON format).
-        schemas_ts_path: Path to export schemas TypeScript file.
-        global_route: Register route() function globally on window object.
-            When True, adds ``window.route = route`` to generated routes.ts,
-            providing global access without imports.
-        fail_on_error: Control whether frontend type generation failures are
-            blocking. ``None`` uses the JS plugin default: fail during build,
-            warn during serve.
-        fallback_type: Fallback value type for untyped containers in generated Inertia props.
-            Controls whether untyped dict/list become `unknown` (default) or `any`.
-        type_import_paths: Map schema/type names to TypeScript import paths for props types
-            that are not present in OpenAPI (e.g., internal/excluded schemas).
-    """
+    """Configuration for OpenAPI, AsyncAPI, route, and Inertia page-props TypeScript code generation."""
 
     output: Path = field(default_factory=lambda: Path("src/generated"))
+    """Output directory for generated schemas and TypeScript files."""
     openapi_path: "Path | None" = field(default=None)
+    """Path to export the deterministic `openapi.json` schema (`output / 'openapi.json'` when `None`)."""
     routes_path: "Path | None" = field(default=None)
+    """Path to export route metadata JSON (`output / 'routes.json'` when `None`)."""
     routes_ts_path: "Path | None" = field(default=None)
+    """Path to export the generated `routes.ts` module (`output / 'routes.ts'` when `None`)."""
     asyncapi_path: "Path | None" = field(default=None)
+    """Path to export the normalized `asyncapi.json` document (`output / 'asyncapi.json'` when `None`)."""
     generate_zod: bool = False
+    """Generate Zod validation schemas alongside OpenAPI TypeScript types."""
     generate_sdk: bool = True
+    """Generate the `@hey-api/openapi-ts` client SDK and types from `openapi.json`."""
     generate_routes: bool = True
+    """Generate the typed Ziggy-style `routes.ts` helper module."""
     generate_page_props: bool = True
+    """Generate `page-props.ts` mapping Inertia component names to Python handler prop types."""
     generate_channels: bool = True
+    """Generate `channels.ts` and `createTypedChannels()` from `asyncapi.json` when an AsyncAPI plugin is present."""
     channels_ts_path: "Path | None" = field(default=None)
+    """Path to export the generated `channels.ts` module (`output / 'channels.ts'` when `None`)."""
     generate_schemas: bool = True
-    """Generate schemas.ts with ergonomic form/response type helpers.
-
-    When True, generates a schemas.ts file that wraps hey-api generated types
-    with cleaner, more ergonomic type helpers:
-
-    .. code-block:: typescript
-
-        import { FormInput, FormResponse, SuccessResponse } from '@/generated/schemas'
-
-        // Type-safe form data using route names
-        type LoginForm = FormInput<'api:login'>  // { username: string; password: string }
-
-        // Type-safe responses by status code
-        type LoginSuccess = SuccessResponse<'api:login'>  // { access_token: string; ... }
-        type LoginError = FormResponse<'api:login', 400>  // { detail: string; ... }
-
-    Requires generate_sdk=True (hey-api types must be generated first).
-    """
+    """Generate `schemas.ts` with `FormInput`, `FormResponse`, and `SuccessResponse` type helpers."""
     schemas_ts_path: "Path | None" = field(default=None)
-    """Path to export schemas TypeScript file.
-
-    Defaults to output / "schemas.ts".
-    """
+    """Path to export the generated `schemas.ts` helper module (`output / 'schemas.ts'` when `None`)."""
     global_route: bool = False
-    """Register route() function globally on window object.
-
-    When True, the generated routes.ts will include code that registers
-    the type-safe route() function on ``window.route``, similar to Laravel's
-    Ziggy library. This allows using route() without imports:
-
-    .. code-block:: typescript
-
-        // With global_route=True, no import needed:
-        window.route('user-profile', { userId: 123 })
-
-        // TypeScript users should add to global.d.ts:
-        // declare const route: typeof import('@/generated/routes').route
-
-    Default is False to encourage explicit imports for better tree-shaking.
-    """
+    """Register the generated `route()` helper globally on `window.route`."""
     fail_on_error: "bool | None" = None
-    """Whether type generation failures should fail the Vite command.
-
-    ``None`` preserves the JS-side behavioral default: fail during production
-    builds and warn during dev server runs.
-    """
+    """Fail the Vite command when type generation errors occur (`None` fails in build and warns in dev)."""
     fallback_type: "Literal['unknown', 'any']" = "unknown"
+    """Fallback TypeScript value type (`'unknown'` or `'any'`) for untyped containers in generated props."""
     type_import_paths: dict[str, str] = field(default_factory=lambda: cast("dict[str, str]", {}))
-    """Map schema/type names to TypeScript import paths for Inertia props.
-
-    Use this for prop types that are not present in OpenAPI (e.g., internal schemas).
-    """
+    """Map of schema/type names to custom TypeScript import paths for types excluded from OpenAPI."""
     page_props_path: "Path | None" = field(default=None)
-    """Path to export page props metadata JSON.
-
-    The Vite plugin reads this file to generate page-props.ts.
-    Defaults to output / "inertia-pages.json".
-    """
+    """Path to export Inertia page metadata JSON (`output / 'inertia-pages.json'` when `None`)."""
     extra_commands: "Sequence[Sequence[str]]" = field(default_factory=lambda: cast("list[Sequence[str]]", []))
-    """Additional commands to run during type generation.
-
-    These run after metadata export but before the typegen CLI.
-    Useful for Vite plugins that have standalone code-generation CLIs
-    (e.g., TanStack Router's ``tsr generate``).
-
-    Each entry is ``[binary, *args]``.  The binary is resolved through
-    the project's JS executor (local ``node_modules/.bin`` first, then
-    the configured package runner such as npx, pnpm dlx, yarn dlx, etc.).
-
-    Example::
-
-        TypeGenConfig(
-            extra_commands=[["tsr", "generate"]],
-        )
-    """
+    """Additional CLI commands (`[binary, *args]`) executed via the JS runtime during type generation."""
 
     def __post_init__(self) -> None:
         """Normalize path types and compute defaults based on output directory."""

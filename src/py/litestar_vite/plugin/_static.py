@@ -44,8 +44,11 @@ class StaticServerMount:
     """Describe one static directory exposed to a native server."""
 
     route: str
+    """URL prefix mounted by the static file server (for example, `'/static'`)."""
     directory: Path
+    """Resolved filesystem directory containing static assets."""
     directory_index: str | None = None
+    """Optional index filename (such as `'index.html'`) served for directory requests."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,8 +61,11 @@ class StaticServerConfig:
     """
 
     placement: StaticPlacement = StaticPlacement.ASGI
+    """Static serving tier (`StaticPlacement.NATIVE` for Granian Rust or `StaticPlacement.ASGI` for Litestar)."""
     mounts: tuple[StaticServerMount, ...] = ()
+    """Ordered tuple of static directory mounts."""
     reason: str | None = None
+    """Diagnostic explanation when `placement` falls back to `StaticPlacement.ASGI`."""
 
     def __post_init__(self) -> None:
         """Enforce the placement invariants.
@@ -85,19 +91,29 @@ class StaticFilesConfig:
     """Configuration for static file serving.
 
     Field names must match keyword parameters of Litestar's ``create_static_files_router``;
-    :meth:`as_router_kwargs` forwards the set fields to it.
+    `as_router_kwargs()` forwards the set fields to it.
     """
 
     after_request: "AfterRequestHookHandler | None" = None
+    """Optional Litestar `after_request` hook handler applied to static asset responses."""
     after_response: "AfterResponseHookHandler | None" = None
+    """Optional Litestar `after_response` hook handler applied to static asset requests."""
     before_request: "BeforeRequestHookHandler | None" = None
+    """Optional Litestar `before_request` hook handler executed before static file lookup."""
     cache_control: "CacheControlHeader | None" = None
+    """Default `Cache-Control` header configuration for the static files router."""
     exception_handlers: "ExceptionHandlersMap | None" = None
+    """Custom exception handlers registered on the static files router."""
     guards: "list[Guard] | None" = None  # pyright: ignore[reportUnknownVariableType]
+    """Route guards applied to static asset requests."""
     middleware: "Sequence[Middleware] | None" = None
+    """ASGI middleware sequence applied to the static files router."""
     opt: "dict[str, Any] | None" = None
+    """Route `opt` metadata dictionary merged onto the static files router."""
     security: "Sequence[SecurityRequirement] | None" = None
+    """OpenAPI security requirements attached to the static files router."""
     tags: "Sequence[str] | None" = None
+    """OpenAPI tags attached to the static files router."""
 
     _NOT_ROUTER_KWARGS: "ClassVar[frozenset[str]]" = frozenset({"opt"})
     _METADATA_FIELDS: "ClassVar[frozenset[str]]" = frozenset({"opt", "security", "tags"})

@@ -1,3 +1,5 @@
+"""Inertia.js v2 prop wrappers (`lazy`, `defer`, `once`, `optional`, `always`, `merge`, `scroll_props`) and state helpers."""
+
 import inspect
 import warnings
 from collections import defaultdict
@@ -90,19 +92,9 @@ def lazy(
 
         >>> lazy("permissions", lambda: Permission.all())
 
-    .. warning:: **False Lazy Pitfall**
-
-        Be careful not to accidentally call the function when passing it.
-
-        Wrong::
-
-            lazy("data", expensive_fn())
-
-        Correct::
-
-            lazy("data", expensive_fn)
-
-        This is a Python evaluation order issue, not a framework limitation.
+    Warning:
+        **False Lazy Pitfall** — pass the callable reference (`lazy("data", expensive_fn)`)
+        rather than invoking it eagerly (`lazy("data", expensive_fn())`).
 
     Args:
         key: The key to store the value under in the props dict.
@@ -113,22 +105,8 @@ def lazy(
     Returns:
         StaticProp if value_or_callable is not callable, DeferredProp otherwise.
 
-    Example::
-
-        from litestar_vite.inertia import lazy, InertiaResponse
-
-        @get("/dashboard", component="Dashboard")
-        async def dashboard() -> InertiaResponse:
-            props = {
-                "user": current_user,
-                "user_count": lazy("user_count", 42),
-                "permissions": lazy("permissions", lambda: Permission.all()),
-                "notifications": lazy("notifications", fetch_notifications),
-            }
-            return InertiaResponse(props)
-
     See Also:
-        - :func:`defer`: For v2 grouped deferred props loaded after page render
+        - `defer`: For v2 grouped deferred props loaded after page render
         - Inertia.js partial reloads: https://inertiajs.com/partial-reloads
     """
     if value_or_callable is None:
@@ -205,7 +183,7 @@ def once(key: str, value_or_callable: "T | Callable[..., T | Coroutine[Any, Any,
             })
 
     See Also:
-        - :func:`defer`: For deferred props that support ``.once()`` chaining
+        - `defer`: For deferred props that support ``.once()`` chaining
         - Inertia.js once props: https://inertiajs.com/partial-reloads#once
     """
     return OnceProp[str, T](key=key, value=value_or_callable)
@@ -296,26 +274,20 @@ def always(key: str, value: "T") -> "AlwaysProp[str, T]":
             })
 
     See Also:
-        - :func:`lazy`: For props excluded from initial load
-        - :func:`optional`: For props only included when explicitly requested
+        - `lazy`: For props excluded from initial load
+        - `optional`: For props only included when explicitly requested
     """
     return AlwaysProp[str, T](key=key, value=value)
 
 
 @dataclass
 class PropFilter:
-    """Configuration for prop filtering during partial reloads.
-
-    Used with ``only()`` and ``except_()`` helpers to explicitly control
-    which props are sent during partial reload requests.
-
-    Attributes:
-        include: Set of prop keys to include (only send these).
-        exclude: Set of prop keys to exclude (send all except these).
-    """
+    """Configuration for prop filtering (`only` / `except_`) during partial reloads."""
 
     include: "set[str] | None" = None
+    """Set of prop keys to explicitly include in the response."""
     exclude: "set[str] | None" = None
+    """Set of prop keys to explicitly exclude from the response."""
 
     def should_include(self, key: str) -> bool:
         """Return True when a prop key should be included.
@@ -433,18 +405,22 @@ class MergeProp(Generic[PropKeyT, T]):
 
     @property
     def key(self) -> "PropKeyT":
+        """Return the prop key."""
         return self._key
 
     @property
     def value(self) -> "T":
+        """Return the prop value to merge."""
         return self._value
 
     @property
     def strategy(self) -> "Literal['append', 'prepend', 'deep']":
+        """Return the configured merge strategy (`'append'`, `'prepend'`, or `'deep'`)."""
         return self._strategy  # pyright: ignore[reportReturnType]
 
     @property
     def match_on(self) -> "list[str] | None":
+        """Return the optional list of property keys used to deduplicate merged items."""
         return self._match_on
 
 
@@ -619,9 +595,11 @@ class StaticProp(Generic[PropKeyT, StaticT]):
 
     @property
     def key(self) -> "PropKeyT":
+        """Return the prop key."""
         return self._key
 
     def render(self) -> "StaticT":
+        """Return the static prop value."""
         return self._result
 
 
@@ -653,6 +631,7 @@ class DeferredProp(Generic[PropKeyT, T]):
 
     @property
     def key(self) -> "PropKeyT":
+        """Return the prop key."""
         return self._key
 
     @property
@@ -682,6 +661,7 @@ class DeferredProp(Generic[PropKeyT, T]):
         return DeferredProp[PropKeyT, T](key=self._key, value=self._value, group=self._group, is_once=True)
 
     def render(self) -> "T | None":
+        """Evaluate and cache the deferred prop value synchronously."""
         if self._evaluated:
             return self._result
         if self._value is None or not callable(self._value):
@@ -699,7 +679,7 @@ class DeferredProp(Generic[PropKeyT, T]):
 
         No-op if already evaluated or if the callback is sync (``render()``
         handles those inline). Mutates ``_result``/``_evaluated`` in place so
-        the subsequent sync :meth:`render` short-circuits at the cache.
+        the subsequent sync `render` short-circuits at the cache.
         """
         if self._evaluated:
             return
@@ -738,6 +718,7 @@ class OnceProp(Generic[PropKeyT, T]):
 
     @property
     def key(self) -> "PropKeyT":
+        """Return the prop key."""
         return self._key
 
     def render(self) -> "T | None":
@@ -799,6 +780,7 @@ class OptionalProp(Generic[PropKeyT, T]):
 
     @property
     def key(self) -> "PropKeyT":
+        """Return the prop key."""
         return self._key
 
     def render(self) -> "T | None":
@@ -854,10 +836,12 @@ class AlwaysProp(Generic[PropKeyT, T]):
 
     @property
     def key(self) -> "PropKeyT":
+        """Return the prop key."""
         return self._key
 
     @property
     def value(self) -> "T":
+        """Return the eagerly evaluated prop value."""
         return self._value
 
     def render(self) -> "T":
@@ -1149,8 +1133,8 @@ def lazy_render(  # noqa: PLR0911
 
     For v2 protocol, partial_except takes precedence over partial_data.
 
-    Async-callback props must be pre-resolved by :func:`resolve_async_props`
-    before this function runs; otherwise their :meth:`render` will raise.
+    Async-callback props must be pre-resolved by `resolve_async_props`
+    before this function runs; otherwise their `render` will raise.
 
     Args:
         value: The value to filter
@@ -1224,7 +1208,7 @@ def has_unresolved_async_props(  # noqa: PLR0911
     """Return ``True`` if ``value`` (recursively) contains a prop that will be
     rendered for this request AND whose async callback hasn't been evaluated yet.
 
-    Mirrors :func:`should_render` filtering so out-of-scope props (an
+    Mirrors `should_render` filtering so out-of-scope props (an
     ``optional()`` on a full page load, a ``defer()`` not in ``partial_data``)
     don't count — preserving the laziness contract and preventing infinite
     re-deferral when ``InertiaResponse.to_asgi_response`` re-enters after
@@ -1273,12 +1257,12 @@ async def resolve_async_props(
 ) -> None:
     """Walk ``value`` and ``await`` async prop callbacks on the current loop.
 
-    Mirrors the filter logic of :func:`lazy_render` so we only evaluate props
+    Mirrors the filter logic of `lazy_render` so we only evaluate props
     that will actually be rendered for this request — preserving the laziness
     contract of ``defer()``/``optional()`` on full page loads.
 
-    Mutates :class:`DeferredProp`/:class:`OnceProp`/:class:`OptionalProp`
-    instances in place (see each class's :meth:`resolve_async`). Sync callbacks
+    Mutates `DeferredProp`, `OnceProp`, and `OptionalProp`
+    instances in place (see each class's `resolve_async`). Sync callbacks
     and already-evaluated props are left untouched.
 
     Args:

@@ -1,3 +1,5 @@
+"""Inertia.js v2 request wrapper (`InertiaRequest`) and parsed protocol header details (`InertiaDetails`)."""
+
 from functools import cached_property
 from typing import TYPE_CHECKING, cast
 from urllib.parse import unquote
@@ -21,7 +23,7 @@ class InertiaDetails:
     """InertiaDetails holds all the values sent by Inertia client in headers and provide convenient properties."""
 
     def __init__(self, request: "Request[UserT, AuthT, StateT]") -> None:
-        """Initialize :class:`InertiaDetails`"""
+        """Initialize `InertiaDetails`."""
         self.request = request
 
     def _get_header_value(self, name: "InertiaHeaders") -> "str | None":
@@ -237,7 +239,7 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
     __slots__ = ("inertia",)
 
     def __init__(self, scope: "Scope", receive: "Receive" = empty_receive, send: "Send" = empty_send) -> None:
-        """Initialize :class:`InertiaRequest`"""
+        """Initialize `InertiaRequest`."""
         super().__init__(scope=scope, receive=receive, send=send)
         self.inertia = InertiaDetails(self)
 

@@ -8,9 +8,7 @@ from typing import Any, cast
 
 from litestar import Litestar
 from litestar._openapi.datastructures import OpenAPIContext  # pyright: ignore[reportPrivateUsage]
-from litestar._openapi.parameters import (  # pyright: ignore[reportPrivateUsage,reportPrivateImportUsage]
-    create_parameters_for_handler,
-)
+from litestar._openapi.parameters import create_parameters_for_handler  # pyright: ignore[reportPrivateUsage,reportPrivateImportUsage]
 from litestar.handlers import HTTPRouteHandler
 from litestar.routes import HTTPRoute
 
@@ -114,15 +112,22 @@ def _route_param_type_from_schema(schema_dict: dict[str, Any], components_schema
 
 @dataclass
 class RouteMetadata:
-    """Metadata for a single route."""
+    """Extracted metadata for a single Litestar route exported to `routes.json` and `routes.ts`."""
 
     name: str
+    """Unique route name used by the Ziggy-style `route()` helper."""
     path: str
+    """Normalized URL path pattern with `{param}` placeholders."""
     methods: list[str]
+    """HTTP methods (`['GET', 'POST', ...]`) supported by the route."""
     method: str
+    """Primary HTTP method (`'get'`, `'post'`, etc.) for the route."""
     params: dict[str, str] = field(default_factory=str_dict_factory)
+    """Mapping of URL path parameter names to TypeScript type strings."""
     query_params: dict[str, str] = field(default_factory=str_dict_factory)
+    """Mapping of query parameter names to TypeScript type strings."""
     component: "str | None" = None
+    """Associated Inertia page component name when the route is an Inertia handler."""
 
 
 def extract_path_params(path: str) -> dict[str, str]:

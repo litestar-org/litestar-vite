@@ -1,3 +1,5 @@
+"""Litestar `InitPlugin` configuring Inertia.js v2 request/response classes, middleware, and SSR IPC."""
+
 import functools
 import inspect
 from collections.abc import Mapping
@@ -59,7 +61,7 @@ class InertiaPlugin(InitPlugin):
         """Lifespan to manage the shared SSR IPC transport and circuit breaker.
 
         Args:
-            app: The :class:`Litestar <litestar.app.Litestar>` instance.
+            app: The `Litestar` application instance.
 
         Yields:
             An asynchronous context manager.
@@ -118,10 +120,10 @@ class InertiaPlugin(InitPlugin):
         """Configure application for use with Vite.
 
         Args:
-            app_config: The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
+            app_config: The `AppConfig` instance.
 
         Returns:
-            The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
+            The `AppConfig` instance.
         """
         from litestar.exceptions import HTTPException, ValidationException
 

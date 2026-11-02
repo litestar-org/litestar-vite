@@ -9,27 +9,24 @@ __all__ = ("PathConfig",)
 
 @dataclass
 class PathConfig:
-    """File system paths configuration.
-
-    Attributes:
-        root: The root directory of the project. Defaults to current working directory.
-        bundle_dir: Location of compiled assets and manifest.json.
-        resource_dir: TypeScript/JavaScript source directory (equivalent to ./src in Vue/React).
-        static_dir: Static public assets directory (served as-is by Vite).
-        manifest_name: Name of the Vite manifest file.
-        hot_file: Name of the hot file indicating dev server URL.
-        asset_url: Base URL for static asset references (prepended to Vite output).
-        ssr_output_dir: SSR output directory (optional).
-    """
+    """File system and URL path configuration for Vite source, public, and bundle directories."""
 
     root: "str | Path" = field(default_factory=Path.cwd)
+    """Root directory of the frontend project, defaulting to the current working directory."""
     bundle_dir: "str | Path" = field(default_factory=lambda: Path("public"))
+    """Output directory for compiled production bundles and `manifest.json`."""
     resource_dir: "str | Path" = field(default_factory=lambda: Path("src"))
+    """TypeScript/JavaScript source directory containing entrypoints and components."""
     static_dir: "str | Path" = field(default_factory=lambda: Path("public"))
+    """Static public assets directory served as-is by Vite (`publicDir`)."""
     manifest_name: str = "manifest.json"
+    """Filename of the Vite build manifest inside `bundle_dir`."""
     hot_file: str = "hot"
+    """Filename inside `bundle_dir` storing the active Vite dev server URL."""
     asset_url: str = field(default_factory=lambda: os.getenv("ASSET_URL", "/static/"))
+    """Base URL prefix prepended to static and built asset references."""
     ssr_output_dir: "str | Path | None" = None
+    """Optional output directory for compiled server-side rendering (SSR) bundles."""
 
     def __post_init__(self) -> None:
         """Normalize path types to Path objects.

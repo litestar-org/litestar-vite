@@ -121,63 +121,40 @@ def _str_list_factory() -> list[str]:
 
 @dataclass
 class DeferredPropsConfig:
-    """Configuration for deferred props (v2 feature).
-
-    Deferred props are loaded lazily after the initial page render.
-    This allows for faster initial page loads by deferring non-critical data.
-    """
+    """Configuration for Inertia v2 deferred prop groups."""
 
     group: str = "default"
+    """Group name used to batch deferred prop requests after initial render."""
     props: list[str] = field(default_factory=_str_list_factory)
+    """List of prop keys belonging to this deferred group."""
 
 
 @dataclass
 class ScrollPropsConfig:
-    """Configuration for infinite scroll (v2 feature)."""
+    """Configuration for Inertia v2 infinite scroll pagination metadata."""
 
     page_name: str = "page"
+    """Query parameter name used to request a specific page."""
     previous_page: "int | None" = None
+    """Previous page number, or `None` when on the first page."""
     next_page: "int | None" = None
+    """Next page number, or `None` when on the last page."""
     current_page: int = 1
+    """Current 1-based page number."""
 
 
 @dataclass
 class ScrollPagination(Generic[T]):
-    """Pagination container optimized for infinite scroll.
-
-    A generic pagination type that works seamlessly with Inertia's infinite
-    scroll feature. Can be constructed directly or created from any pagination
-    container using ``create_from()``.
-
-    Attributes:
-        items: The paginated items for the current page.
-        total: Total number of items across all pages.
-        limit: Maximum items per page (page size).
-        offset: Number of items skipped from the start.
-
-    Example::
-
-        from litestar_vite.inertia.types import ScrollPagination
-
-        Direct construction::
-
-        @get("/users", component="Users", infinite_scroll=True)
-        async def list_users() -> ScrollPagination[User]:
-            users = await fetch_users(limit=10, offset=0)
-            return ScrollPagination(items=users, total=100, limit=10, offset=0)
-
-        From an existing pagination container::
-
-        @get("/posts", component="Posts", infinite_scroll=True)
-        async def list_posts() -> ScrollPagination[Post]:
-            pagination = await repo.list_paginated(limit=10, offset=0)
-            return ScrollPagination.create_from(pagination)
-    """
+    """Generic offset-normalized pagination container optimized for Inertia v2 infinite scroll."""
 
     items: list[T]
+    """Paginated items for the current page."""
     total: int
+    """Total number of items across all pages."""
     limit: int
+    """Maximum number of items per page."""
     offset: int
+    """Number of items skipped from the beginning of the dataset."""
 
     @classmethod
     def create_from(cls, pagination: Any) -> "ScrollPagination[T]":
@@ -256,51 +233,36 @@ def _extract_classic_pagination(pagination: Any, items: list[Any]) -> tuple[int,
 
 @dataclass
 class PageProps(Generic[T]):
-    """Inertia Page Props Type.
-
-    This represents the page object sent to the Inertia client.
-    See: https://inertiajs.com/the-protocol
-
-    Note: Field names use snake_case in Python but are serialized to camelCase
-    for the Inertia.js protocol using `to_inertia_dict()`.
-
-    Attributes:
-        component: JavaScript component name to render.
-        url: Current page URL.
-        version: Asset version identifier for cache busting.
-        props: Page data/props passed to the component.
-        encrypt_history: Whether to encrypt browser history state (v2).
-        clear_history: Whether to clear encrypted history state (v2).
-        merge_props: Props to append during navigation (v2).
-        prepend_props: Props to prepend during navigation (v2).
-        deep_merge_props: Props to deep merge during navigation (v2).
-        match_props_on: Property paths used for matching items during merge (v2).
-        deferred_props: Configuration for lazy-loaded props (v2).
-        scroll_props: Configuration for infinite scroll (v2).
-        flash: Flash messages as top-level property (v2.3+). Unlike props, flash
-            messages are NOT persisted in browser history state.
-    """
+    """Inertia v2 page object serialized to camelCase JSON via `to_dict()`."""
 
     component: str
+    """JavaScript page component name to render."""
     url: str
+    """Current request URL path and query string."""
     version: str
+    """Asset bundle version identifier used for `409 Conflict` cache busting."""
     props: dict[str, Any]
-
+    """Resolved dictionary of page and shared props passed to the frontend component."""
     encrypt_history: bool = False
+    """Whether the Inertia client should encrypt browser history state for this page."""
     clear_history: bool = False
-
+    """Whether the Inertia client should clear previously encrypted history state."""
     merge_props: "list[str] | None" = None
+    """Prop keys whose values should be appended during partial navigation."""
     prepend_props: "list[str] | None" = None
+    """Prop keys whose values should be prepended during partial navigation."""
     deep_merge_props: "list[str] | None" = None
+    """Prop keys whose nested dictionaries should be deep-merged during partial navigation."""
     match_props_on: "list[str] | None" = None
-
+    """Dotted property paths (such as `'items.id'`) used to deduplicate merged array items."""
     deferred_props: "dict[str, list[str]] | None" = None
-
+    """Mapping of deferred group names to lists of prop keys fetched after initial render."""
     once_props: "dict[str, dict[str, str | int | None]] | None" = None
-
+    """Metadata mapping for props resolved once and cached client-side across navigations."""
     scroll_props: "dict[str, ScrollPropsConfig] | None" = None
-
+    """Infinite scroll pagination metadata keyed by prop name."""
     flash: "dict[str, list[str]]" = field(default_factory=_empty_flash_factory)
+    """Top-level flash messages grouped by category (`v2.3+`, excluded from history state)."""
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to Inertia.js protocol format with camelCase keys.
@@ -317,14 +279,23 @@ class PageProps(Generic[T]):
 
 
 class InertiaHeaderType(TypedDict, total=False):
-    """Type for inertia_headers parameter in get_headers()."""
+    """TypedDict describing Inertia.js HTTP request/response header values."""
 
     enabled: "bool | None"
+    """Whether the `X-Inertia` protocol header is enabled (`'true'`)."""
     version: "str | None"
+    """Asset version string carried in the `X-Inertia-Version` header."""
     location: "str | None"
+    """External redirect URL carried in the `X-Inertia-Location` response header."""
     partial_data: "str | None"
+    """Comma-separated prop keys requested via `X-Inertia-Partial-Data`."""
     partial_component: "str | None"
+    """Component name specified in `X-Inertia-Partial-Component` for partial reloads."""
     partial_except: "str | None"
+    """Comma-separated prop keys excluded via `X-Inertia-Partial-Except`."""
     except_once_props: "str | None"
+    """Comma-separated cached once-prop keys omitted via `X-Inertia-Except-Once-Props`."""
     reset: "str | None"
+    """Comma-separated prop keys to reset on client navigation via `X-Inertia-Reset`."""
     error_bag: "str | None"
+    """Scoped validation error bag name sent in `X-Inertia-Error-Bag`."""

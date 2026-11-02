@@ -1,3 +1,5 @@
+"""ASGI middleware enforcing Inertia.js asset version checks and `409 Conflict` reloads."""
+
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 

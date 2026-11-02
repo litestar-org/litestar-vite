@@ -1,3 +1,5 @@
+"""Inertia.js v2 response (`InertiaResponse`) and redirect (`InertiaRedirect`, `InertiaBack`, `InertiaExternalRedirect`) classes."""
+
 import contextlib
 import itertools
 import logging
@@ -88,15 +90,13 @@ class InertiaResponse(Response[T]):
             template_str: A string representing the template, e.g. ``tmpl = "Hello <strong>World</strong>"``.
             component: The Inertia page component name. When omitted, the component
                 registered on the route handler (``request.inertia.route_component``) is used.
-            background: A :class:`BackgroundTask <.background_tasks.BackgroundTask>` instance or
-                :class:`BackgroundTasks <.background_tasks.BackgroundTasks>` to execute after the response is finished.
+            background: A `BackgroundTask` or `BackgroundTasks` instance to execute after the response finishes.
                 Defaults to ``None``.
             context: A dictionary of key/value pairs to be passed to the temple engine's render method.
-            cookies: A list of :class:`Cookie <.datastructures.Cookie>` instances to be set under the response
-                ``Set-Cookie`` header.
+            cookies: A list of `Cookie` instances to be set under the response ``Set-Cookie`` header.
             encoding: Content encoding
             headers: A string keyed dictionary of response headers. Header keys are insensitive.
-            media_type: A string or member of the :class:`MediaType <.enums.MediaType>` enum. If not set, Inertia JSON
+            media_type: A string or member of the `MediaType` enum. If not set, Inertia JSON
                 responses use ``application/json`` and HTML bootstrap responses use ``text/html``.
             status_code: A value for the response HTTP status code.
             type_encoders: A mapping of types to callables that transform them into types supported for serialization.
@@ -157,7 +157,7 @@ class InertiaResponse(Response[T]):
         """Create a context object for the template.
 
         Args:
-            request: A :class:`Request <.connection.Request>` instance.
+            request: A `Request` instance.
             page_props: A formatted object to return the inertia configuration.
             type_encoders: A mapping of types to callables that transform them into types supported for serialization.
 
@@ -419,7 +419,7 @@ class InertiaResponse(Response[T]):
     def _will_render_ssr(self, request: "Request[Any, Any, Any]", inertia_info: "_InertiaRequestInfo") -> bool:
         """Predict whether this response will hit the SSR HTTP server.
 
-        Used by the deferral gate in :meth:`to_asgi_response` to decide whether
+        Used by the deferral gate in `to_asgi_response` to decide whether
         async pre-pass is required. Conditions: Inertia is enabled, the request
         is NOT an Inertia JSON request, the plugin has SSR config, and the Vite
         plugin's render path can host the SSR fragment:
@@ -462,7 +462,7 @@ class InertiaResponse(Response[T]):
         Should run inside Litestar's ``_call_handler_function`` ``AsyncExitStack``
         frame so any yield-based DI dependencies (sqlspec asyncpg, advanced-alchemy,
         ...) are still alive when prop callbacks await them. The
-        :class:`~litestar_vite.inertia.plugin.InertiaPlugin` wraps each route
+        `InertiaPlugin` wraps each route
         handler at app init to call this method automatically; callers normally
         do not invoke it directly.
 
@@ -571,6 +571,7 @@ class InertiaResponse(Response[T]):
         status_code: "int | None" = None,
         type_encoders: "TypeEncodersMap | None" = None,
     ) -> "ASGIResponse":
+        """Serialize the `InertiaResponse` into an `ASGIResponse` (JSON for XHR or HTML/SSR for initial loads)."""
         inertia_info = _get_inertia_request_info(cast("Request[Any, Any, Any]", request))
 
         if not self._async_prepass_done:
@@ -808,6 +809,7 @@ class InertiaRedirect(Redirect):
         status_code: "int | None" = None,
         type_encoders: "TypeEncodersMap | None" = None,
     ) -> "ASGIResponse":
+        """Convert the `InertiaRedirect` into an `ASGIResponse`."""
         if self._uses_inertia_fragment_redirect:
             return Response.to_asgi_response(  # pyright: ignore[reportUnknownMemberType]
                 self,
@@ -877,13 +879,7 @@ class _InertiaRequestInfo:
 
 
 def _get_inertia_request_info(request: "Request[Any, Any, Any]") -> _InertiaRequestInfo:
-    """Return Inertia request state for both InertiaRequest and plain Request.
-
-    InertiaResponse is typically used together with InertiaMiddleware, which wraps
-    incoming requests in :class:`~litestar_vite.inertia.request.InertiaRequest`.
-
-    This helper preserves compatibility with plain :class:`litestar.Request` by
-    falling back to header parsing via :class:`~litestar_vite.inertia.request.InertiaDetails`.
+    """Return Inertia request state for both `InertiaRequest` and plain `Request`.
 
     Returns:
         Aggregated Inertia-related request flags and partial-render metadata.

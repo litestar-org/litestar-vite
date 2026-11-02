@@ -1204,7 +1204,7 @@ def create_ssr_ws_proxy_handler(
 
     Used in framework mode for hot-module-reload WebSocket connections. ``paths`` defaults
     to ``["/", "/{path:path}"]`` to catch every HMR endpoint the framework might use; the
-    HTTP catch-all from :func:`create_ssr_http_proxy_handler` ensures HTTP requests at the
+    HTTP catch-all from `create_ssr_http_proxy_handler` ensures HTTP requests at the
     same paths are dispatched to a real handler instead of returning 405.
 
     Args:

@@ -1,3 +1,5 @@
+"""Click CLI command group (`litestar assets`) for scaffolding, Vite dev/build, typegen, doctor, and deploy."""
+
 import contextlib
 import os
 import subprocess
@@ -8,12 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from click import Choice, Context, group, option
 from click import Path as ClickPath
-from litestar.cli._utils import (  # pyright: ignore[reportPrivateImportUsage]
-    LitestarCLIException,
-    LitestarEnv,
-    LitestarGroup,
-    console,
-)
+from litestar.cli._utils import LitestarCLIException, LitestarEnv, LitestarGroup, console  # pyright: ignore[reportPrivateImportUsage]
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 

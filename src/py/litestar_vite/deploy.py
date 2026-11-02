@@ -70,30 +70,40 @@ def _import_fsspec(storage_backend: "str | None") -> tuple[Any, Callable[..., tu
 
 @dataclass
 class FileInfo:
-    """Lightweight file metadata used for sync planning."""
+    """Lightweight file metadata used for CDN deployment sync planning."""
 
     path: str
+    """Relative file path within the bundle or remote storage directory."""
     size: int
+    """File size in bytes."""
     mtime: float
+    """Last-modified POSIX timestamp in seconds."""
 
 
 @dataclass
 class SyncPlan:
-    """Diff plan for deployment."""
+    """Computed differential upload and deletion plan for CDN deployment."""
 
     to_upload: list[str]
+    """Relative paths of local bundle files scheduled for upload."""
     to_delete: list[str]
+    """Relative paths of orphaned remote files scheduled for deletion."""
 
 
 @dataclass
 class SyncResult:
-    """Deployment result summary."""
+    """Summary of a completed or dry-run CDN deployment synchronization."""
 
     uploaded: list[str]
+    """Relative paths of files uploaded to remote storage."""
     deleted: list[str]
+    """Relative paths of orphaned files removed from remote storage."""
     uploaded_bytes: int
+    """Total bytes uploaded across all transferred files."""
     deleted_bytes: int
+    """Total bytes reclaimed from deleted remote files."""
     dry_run: bool
+    """Whether the synchronization ran in dry-run preview mode without mutating storage."""
 
 
 class ViteDeployer:

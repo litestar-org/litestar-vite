@@ -9,36 +9,18 @@ __all__ = ("LoggingConfig", "SPAConfig")
 
 @dataclass
 class SPAConfig:
-    """Configuration for SPA HTML transformations.
-
-    This configuration controls how the SPA HTML is transformed before serving,
-    including CSRF token injection.
-
-    Note:
-        Route metadata is now generated as TypeScript (routes.ts) at build time
-        instead of runtime injection. Use TypeGenConfig.generate_routes to enable.
-
-        For Inertia-specific settings like ``use_script_element``, see ``InertiaConfig``.
-
-    Attributes:
-        inject_csrf: Whether to inject CSRF token into HTML (as window.__LITESTAR_CSRF__).
-        csrf_var_name: Global variable name for CSRF token (e.g., window.__LITESTAR_CSRF__).
-        app_selector: CSS selector for the app root element (used for data attributes).
-        cache_transformed_html: Cache transformed HTML in production; disabled when inject_csrf=True because CSRF tokens are per-request.
-    """
+    """Configuration for SPA HTML transformations and CSRF token injection."""
 
     inject_csrf: bool = True
+    """Whether to inject the Litestar CSRF token into the HTML document."""
     csrf_var_name: str = "__LITESTAR_CSRF__"
+    """Global `window` variable name used when injecting the CSRF token."""
     app_selector: str = "#app"
+    """CSS selector for the application root element receiving data attributes."""
     cache_transformed_html: bool = True
+    """Cache transformed HTML in production when per-request `inject_csrf` is disabled."""
     cache_duration: int = 0
-    """HTTP cache duration in seconds for the SPA HTML response.
-
-    Defaults to 0 (no caching), which is recommended for SPAs to ensure
-    browsers always fetch the latest index.html after deployments.
-    Set to a positive value (e.g., 3600 for 1 hour) if you have a
-    cache-busting strategy in place.
-    """
+    """HTTP `Cache-Control: max-age` duration in seconds for SPA HTML responses."""
 
 
 def get_default_log_level() -> "Literal['quiet', 'normal', 'verbose']":
@@ -60,42 +42,15 @@ def get_default_log_level() -> "Literal['quiet', 'normal', 'verbose']":
 
 @dataclass
 class LoggingConfig:
-    """Logging configuration for console output.
-
-    Controls the verbosity and style of console output from both Python
-    and TypeScript (via .litestar.json bridge).
-
-    Attributes:
-        level: Logging verbosity level.
-            - "quiet": Minimal output (errors only)
-            - "normal": Standard operational messages (default)
-            - "verbose": Detailed debugging information
-            Can also be set via LITESTAR_VITE_LOG_LEVEL environment variable.
-            Precedence: explicit config > env var > default ("normal")
-        show_paths_absolute: Show absolute paths instead of relative paths.
-            Default False shows cleaner relative paths in output.
-        suppress_npm_output: Suppress npm/yarn/pnpm script echo lines.
-            When True, hides lines like "> dev" / "> vite" from output.
-        suppress_vite_banner: Suppress the Vite startup banner.
-            When True, only the LITESTAR banner is shown.
-        timestamps: Include timestamps in log messages.
-
-    Example:
-        Quiet mode for CI/CD::
-
-            ViteConfig(logging=LoggingConfig(level="quiet"))
-
-        Verbose debugging::
-
-            ViteConfig(logging=LoggingConfig(level="verbose", show_paths_absolute=True))
-
-        Environment variable::
-
-            export LITESTAR_VITE_LOG_LEVEL=quiet
-    """
+    """Logging configuration for Python and TypeScript console output."""
 
     level: "Literal['quiet', 'normal', 'verbose']" = field(default_factory=get_default_log_level)
+    """Console verbosity level (`'quiet'`, `'normal'`, or `'verbose'`), overridable via `LITESTAR_VITE_LOG_LEVEL`."""
     show_paths_absolute: bool = False
+    """Display absolute filesystem paths instead of workspace-relative paths in log output."""
     suppress_npm_output: bool = False
+    """Suppress package-manager script echo lines (`> dev` / `> vite`) from console output."""
     suppress_vite_banner: bool = False
+    """Suppress the Vite startup banner so only the Litestar startup banner is shown."""
     timestamps: bool = False
+    """Include timestamps in console log messages."""

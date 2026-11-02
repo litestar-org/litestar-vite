@@ -144,123 +144,70 @@ def resolve_proxy_mode() -> "Literal['vite', 'proxy'] | None":
 
 @dataclass
 class ExternalDevServer:
-    """Configuration for external (non-Vite) dev servers.
-
-    Use this when your frontend uses a framework with its own dev server
-    (Angular CLI, Next.js, Create React App, etc.) instead of Vite.
-
-    For SSR frameworks (Astro, Nuxt, SvelteKit) using Vite internally, leave
-    target as None - the proxy will read the dynamic port from the hotfile.
-
-    Attributes:
-        target: The URL of the external dev server (e.g., "http://localhost:4200").
-            If None, the proxy reads the target URL from the Vite hotfile.
-        command: Custom command to start the dev server (e.g., ["ng", "serve"]).
-            If None and start_dev_server=True, uses executor's default start command.
-        build_command: Custom command to build for production (e.g., ["ng", "build"]).
-            If None, uses executor's default build command (e.g., "npm run build").
-        http2: Enable HTTP/2 for proxy connections.
-        enabled: Whether the external proxy is enabled.
-    """
+    """Configuration for proxying to an external (non-Vite) development server."""
 
     target: "str | None" = None
+    """Target URL of the external dev server (for example, `'http://localhost:4200'`), or `None` to read the Vite hotfile."""
     command: "list[str] | None" = None
+    """Custom command argv used to start the external dev server."""
     build_command: "list[str] | None" = None
+    """Custom command argv used to build production assets for the external framework."""
     http2: bool = False
+    """Enable HTTP/2 for proxy connections to the external dev server."""
     enabled: bool = True
+    """Whether the external dev server proxy is enabled."""
 
 
 @dataclass
 class RuntimeConfig:
-    """Runtime execution settings.
-
-    Attributes:
-        dev_mode: Enable development mode with HMR/watch.
-        proxy_mode: Proxy handling mode (auto-derived from ``ViteConfig.mode`` when None):
-            - "vite": Proxy Vite assets only (allow list - SPA / hybrid / template modes)
-            - "proxy": Proxy everything except Litestar routes (deny list - framework mode)
-            - None: No proxy (auto-derived for production)
-        external_dev_server: Configuration for external dev server (used with proxy_mode="proxy").
-        host: Vite dev server host.
-        port: Vite dev server port.
-        protocol: Protocol for dev server (http/https).
-        executor: JavaScript runtime executor (node, bun, deno).
-        run_command: Custom command to run Vite dev server (auto-detect if None).
-        build_command: Custom command to build with Vite (auto-detect if None).
-        build_watch_command: Custom command for watch mode build.
-        serve_command: Custom command to run production server (for SSR frameworks).
-        install_command: Custom command to install dependencies.
-        is_react: Enable React Fast Refresh support.
-        health_check: Enable health check for dev server startup.
-        detect_nodeenv: Detect and use nodeenv in virtualenv (opt-in).
-        set_environment: Set Vite environment variables from config.
-        set_static_folders: Automatically configure static file serving.
-        csp_nonce: Content Security Policy nonce for inline scripts.
-        spa_handler: Auto-register catch-all SPA route when mode="spa".
-        http2: Enable HTTP/2 for proxy HTTP requests (better multiplexing).
-            WebSocket traffic (HMR) uses a separate connection and is unaffected.
-        extra_route_prefixes: Additional backend route prefixes excluded from SPA/proxy fallbacks.
-            Registered routes, the OpenAPI path, and the AsyncAPI documentation path (when an
-            AsyncAPI plugin is registered) are derived automatically. Use this only to reserve
-            an otherwise unclaimed prefix such as ``"/api"`` or ``"/docs"``.
-    """
+    """Runtime process management, dev proxy, and JavaScript executor settings."""
 
     dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
+    """Enable development mode with Vite HMR and watch processes."""
     proxy_mode: "Literal['vite', 'proxy'] | None" = field(default_factory=resolve_proxy_mode)
+    """Dev proxy routing mode (`'vite'` allowlist, `'proxy'` denylist for framework mode, or `None` in production)."""
     external_dev_server: "ExternalDevServer | str | None" = None
+    """External dev server configuration or target URL string used when `proxy_mode='proxy'`."""
     host: str = field(default_factory=lambda: os.getenv("VITE_HOST", "127.0.0.1"))
+    """Hostname or IP address where the Vite dev server binds."""
     port: int = field(default_factory=lambda: int(os.getenv("VITE_PORT", "5173")))
+    """TCP port where the Vite dev server listens."""
     protocol: Literal["http", "https"] = "http"
+    """Protocol (`'http'` or `'https'`) used by the Vite dev server."""
     executor: "Literal['node', 'bun', 'deno', 'yarn', 'pnpm'] | None" = None
+    """JavaScript runtime/package manager used to execute Vite commands (`'node'` when `None`)."""
     run_command: "list[str] | None" = None
+    """Custom command argv to start the Vite dev server (auto-derived from `executor` when `None`)."""
     build_command: "list[str] | None" = None
+    """Custom command argv to run a production Vite build (auto-derived from `executor` when `None`)."""
     build_watch_command: "list[str] | None" = None
+    """Custom command argv to run Vite in watch-build mode (auto-derived from `executor` when `None`)."""
     serve_command: "list[str] | None" = None
+    """Custom command argv to run the production SSR server (auto-derived from `executor` when `None`)."""
     install_command: "list[str] | None" = None
+    """Custom command argv to install frontend dependencies (auto-derived from `executor` when `None`)."""
     is_react: bool = False
+    """Inject the `@vitejs/plugin-react` Fast Refresh preamble in development HTML."""
     health_check: bool = field(default_factory=lambda: os.getenv("VITE_HEALTH_CHECK", "False") in TRUE_VALUES)
+    """Poll the Vite dev server for readiness before completing startup."""
     detect_nodeenv: bool = False
+    """Detect and run `nodeenv` inside the active Python virtual environment."""
     set_environment: bool = True
+    """Export resolved Vite settings (`VITE_PORT`, `VITE_HOST`, `ASSET_URL`) into process environment variables."""
     set_static_folders: bool = True
+    """Automatically mount static asset directories on the Litestar router."""
     csp_nonce: "str | None" = None
+    """Content Security Policy nonce applied to injected inline `<script>` and `<style>` tags."""
     spa_handler: bool = True
+    """Automatically register the `AppHandler` catch-all SPA route when `mode='spa'`."""
     http2: bool = True
+    """Enable HTTP/2 multiplexing for proxy HTTP requests."""
     start_dev_server: bool = True
+    """Automatically spawn and manage the Vite dev server subprocess during Litestar lifespan."""
     trusted_proxies: "list[str] | str | None" = field(default_factory=resolve_trusted_proxies)
-    """Trusted proxy hosts for X-Forwarded-* header processing.
-
-    When set, the ProxyHeadersMiddleware will read and apply X-Forwarded-Proto,
-    X-Forwarded-For, and X-Forwarded-Host headers only from requests originating
-    from these hosts.
-
-    Accepted values:
-        - None (default): Disabled - do not trust any proxy headers
-        - "*": Trust all proxies (use in controlled environments like Docker/Railway)
-        - List of IP addresses: ["127.0.0.1", "10.0.0.0/8"]
-        - Comma-separated string: "127.0.0.1, 10.0.0.0/8"
-
-    Supports:
-        - IPv4 addresses: "192.168.1.1"
-        - IPv6 addresses: "::1"
-        - CIDR notation: "10.0.0.0/8", "fd00::/8"
-        - Unix socket literals (for advanced setups)
-
-    Security Note:
-        Only enable this when your application is behind a trusted reverse proxy.
-        Never enable in environments where clients can directly connect to the app.
-        Using "*" should only be done in controlled environments where direct client
-        connections are blocked by network configuration.
-
-    Environment Variable: LITESTAR_TRUSTED_PROXIES
-    """
+    """Trusted proxy hosts/CIDRs (`'*'` or IP list) for `X-Forwarded-*` header processing (`LITESTAR_TRUSTED_PROXIES`)."""
     extra_route_prefixes: tuple[str, ...] = ()
-    """Additional backend route prefixes for dev proxy and SPA fallback exclusion.
-
-    Registered routes, the OpenAPI path, and the AsyncAPI documentation path (when an
-    AsyncAPI plugin is registered) are derived automatically. Use this deliberately
-    to reserve custom backend paths such as ``"/admin"`` or to re-add ``"/docs"`` when
-    your app serves documentation there.
-    """
+    """Additional backend route prefixes excluded from dev proxy forwarding and SPA catch-all routing."""
 
     def __post_init__(self) -> None:
         """Normalize runtime settings and apply derived defaults."""

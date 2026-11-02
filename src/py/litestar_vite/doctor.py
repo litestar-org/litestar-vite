@@ -134,39 +134,64 @@ def _rel_to_root(path: Path | None, root: Path) -> str:
 
 @dataclass
 class DoctorIssue:
-    """Represents a detected configuration issue."""
+    """Diagnostic issue detected by `ViteDoctor` when inspecting Python and Vite configuration."""
 
     check: str
+    """Name of the diagnostic check that raised the issue."""
     severity: Literal["error", "warning"]
+    """Issue severity (`'error'` or `'warning'`)."""
     message: str
+    """Human-readable explanation of the configuration mismatch or problem."""
     fix_hint: str
+    """Actionable remediation guidance for resolving the issue."""
     auto_fixable: bool = False
+    """Whether `litestar assets doctor --fix` can automatically patch this issue."""
     context: dict[str, Any] | None = None
+    """Optional structured context values used by automatic fixers."""
 
 
 @dataclass
 class ParsedViteConfig:
-    """Parsed values from vite.config.* file."""
+    """Static analysis snapshot extracted from a `vite.config.*` file."""
 
     path: Path
+    """Filesystem path to the inspected `vite.config.*` file."""
     content: str
+    """Raw UTF-8 source text of the Vite configuration file."""
     litestar_config_block: str | None = None
+    """Extracted argument block passed to the `litestar({...})` Vite plugin call."""
     has_litestar_config: bool = False
+    """Whether a `litestar(...)` plugin invocation was found in the file."""
     asset_url: str | None = None
+    """Configured `assetUrl` value parsed from `vite.config.*`, if explicitly set."""
     bundle_dir: str | None = None
+    """Configured `bundleDir` value parsed from `vite.config.*`, if explicitly set."""
     resource_dir: str | None = None
+    """Configured `resourceDir` value parsed from `vite.config.*`, if explicitly set."""
     static_dir: str | None = None
+    """Configured `staticDir` value parsed from `vite.config.*`, if explicitly set."""
     hot_file: str | None = None
+    """Configured `hotFile` value parsed from `vite.config.*`, if explicitly set."""
     inertia_mode: bool | None = None
+    """Explicit `inertia` boolean parsed from `vite.config.*`, if present."""
     types_setting: Literal["auto"] | bool | None = None
+    """Raw `types` option (`'auto'`, `True`, `False`, or `None`) parsed from `vite.config.*`."""
     inputs: list[str] = field(default_factory=_str_list_factory)
+    """Entrypoint paths configured in the `input` option of `litestar({...})`."""
     types_enabled: bool | None = None
+    """Whether TypeScript type generation is explicitly enabled in `vite.config.*`."""
     types_output: str | None = None
+    """Configured `types.output` directory parsed from `vite.config.*`."""
     types_openapi_path: str | None = None
+    """Configured `types.openapiPath` parsed from `vite.config.*`."""
     types_routes_path: str | None = None
+    """Configured `types.routesPath` parsed from `vite.config.*`."""
     types_generate_zod: bool | None = None
+    """Configured `types.generateZod` flag parsed from `vite.config.*`."""
     types_generate_sdk: bool | None = None
+    """Configured `types.generateSdk` flag parsed from `vite.config.*`."""
     server_origin: str | None = None
+    """Explicit `server.origin` URL parsed from `vite.config.*`, if present."""
 
 
 class ViteDoctor:
