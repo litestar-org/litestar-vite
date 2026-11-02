@@ -22,6 +22,11 @@ EXPECTED_T05_EXAMPLES: tuple[str, ...] = (
     "learn/islands_and_fragments.py",
     "learn/ssr_app.py",
     "learn/production_deploy.py",
+    "inertia/pages_and_responses.py",
+    "inertia/props_and_reloads.py",
+    "inertia/shared_and_flash.py",
+    "typegen/openapi_and_routes.py",
+    "typegen/asyncapi_channels.py",
 )
 
 EXPECTED_T05_GUIDES: tuple[str, ...] = (
@@ -40,6 +45,18 @@ EXPECTED_T05_GUIDES: tuple[str, ...] = (
     "docs/learn/ssr.md",
     "docs/learn/production-and-deploy.md",
     "docs/learn/doctor-and-troubleshooting.md",
+    "docs/frameworks/index.md",
+    "docs/frameworks/inertia/index.md",
+    "docs/frameworks/inertia/pages-and-responses.md",
+    "docs/frameworks/inertia/props-and-reloads.md",
+    "docs/frameworks/inertia/shared-data-and-precognition.md",
+    "docs/frameworks/inertia/ssr-and-helpers.md",
+    "docs/frameworks/react-vue-svelte.md",
+    "docs/frameworks/meta-frameworks.md",
+    "docs/typegen/index.md",
+    "docs/typegen/openapi-sdk.md",
+    "docs/typegen/routes.md",
+    "docs/typegen/realtime-channels.md",
 )
 
 
@@ -113,3 +130,11 @@ def test_readme_uses_brand_banner_and_links_to_contributing() -> None:
     assert "banner-inline-light.svg" in readme_text
     assert "docs/reference/contributing.md" in readme_text
     assert "/latest/" not in readme_text
+
+
+def test_inertia_and_typegen_guides_embed_animated_diagrams() -> None:
+    """Verify ``docs/frameworks/inertia/index.md`` and ``docs/typegen/index.md`` embed animated diagrams."""
+    inertia_index = (REPO_ROOT / "docs/frameworks/inertia/index.md").read_text(encoding="utf-8")
+    typegen_index = (REPO_ROOT / "docs/typegen/index.md").read_text(encoding="utf-8")
+    assert '--8<-- "tools/docs/includes/diagram-inertia-lifecycle.html"' in inertia_index
+    assert '--8<-- "tools/docs/includes/diagram-typegen-pipeline.html"' in typegen_index
