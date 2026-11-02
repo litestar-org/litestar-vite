@@ -330,6 +330,23 @@ docs-linkcheck-full: docs-linkcheck                ## Run full documentation lin
 .PHONY: docs-all
 docs-all: docs                                     ## Build and verify documentation
 
+.PHONY: docs-demos
+docs-demos:                                        ## Generate terminal demo GIFs using VHS (requires: brew install vhs)
+	@echo "${INFO} Generating documentation demo GIFs... 🎬"
+	@if ! command -v vhs >/dev/null 2>&1; then \
+		echo "${ERROR} VHS not found. Install with: brew install vhs"; \
+		echo "  See: https://github.com/charmbracelet/vhs"; \
+		exit 1; \
+	fi
+	@mkdir -p docs/assets/demos
+	@for tape in docs/_tapes/*.tape; do \
+		if [ -f "$$tape" ]; then \
+			echo "${INFO} Recording $$tape..."; \
+			vhs "$$tape" || echo "${WARN} Failed to record $$tape"; \
+		fi \
+	done
+	@echo "${OK} Demo GIFs generated in docs/assets/demos/ 🎬"
+
 # =============================================================================
 # Example Management
 # =============================================================================

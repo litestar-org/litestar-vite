@@ -10,12 +10,14 @@ Applications frequently need build-time or startup-time configuration constants 
 
 | Mechanism | Evaluation Time | Works In | Best For |
 | --- | --- | --- | --- |
-| **`ViteConfig.static_props`** | Startup / Build time | **All 4 modes** (`spa`, `hybrid`, `template`, `framework`) | Public feature flags, app name/version, public DSNs, static tier limits |
+| **`ViteConfig.static_props`** | Startup / Build time | **All modes** (`spa`, `hybrid`, `template`, `framework`) | Public feature flags, app name/version, public DSNs, static tier limits |
 | **`InertiaConfig.extra_static_page_props`** | Every Inertia HTTP response | `mode="hybrid"` only | Static page props consumed via Inertia `usePage().props` |
 | **`inertia.share(connection, key, val)`** | Per-request | `mode="hybrid"` only | Current authenticated user, request permissions, flash messages |
 
 > [!WARNING]
-> Never place secrets (database URLs, private API keys, signing secrets) in `static_props`. Values in `static_props` are bundled directly into client-side JavaScript.
+> **Build-Time & Startup-Only Boundary**:
+> 1. Never place secrets (database URLs, private API keys, signing secrets) in `static_props` — values are bundled into client-side JavaScript.
+> 2. `static_props` are written to `.litestar.json` at Python startup (`set_environment`) and `litestar assets generate-types`, and read by `litestar-vite-plugin` when Vite starts or runs `vite build`. For values that change per-request or at runtime without rebuilding assets, use an API endpoint or Inertia's `share()`.
 
 ---
 
@@ -45,3 +47,14 @@ export { staticProps };
 ```
 
 Both default import (`import staticProps from "virtual:litestar-static-props"`) and named top-level property imports (`import { appName, features } from "virtual:litestar-static-props"`) are supported out of the box by `litestar-vite-plugin`.
+
+---
+
+## 3. TypeScript Ambient Declaration (`env.d.ts`)
+
+If your `tsconfig.json` does not automatically include `src/generated/static-props.ts`, reference the built-in virtual module types in `src/env.d.ts` (or `src/vite-env.d.ts`):
+
+```typescript title="src/env.d.ts"
+/// <reference types="vite/client" />
+/// <reference types="litestar-vite-plugin/virtual" />
+```

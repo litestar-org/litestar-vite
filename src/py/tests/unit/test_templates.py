@@ -350,7 +350,8 @@ def test_inertia_jinja_templates_include_script_element_target() -> None:
 
 def test_inertia_docs_use_stable_script_element_bootstrap_path() -> None:
     """Ensure docs cover both the Inertia v2 and v3 script-element paths."""
-    ssr_helpers = (ROOT / "docs" / "frameworks" / "inertia" / "ssr-and-helpers.md").read_text()
+    ssr_helpers = (ROOT / "docs" / "frameworks" / "inertia" / "ssr-and-typescript.md").read_text()
+    config_templates = (ROOT / "docs" / "frameworks" / "inertia" / "configuration-and-templates.md").read_text()
     quickstart = (ROOT / "docs" / "getting-started" / "quick-start-inertia.md").read_text()
     doctor_docs = (ROOT / "docs" / "learn" / "doctor-and-troubleshooting.md").read_text()
     index_docs = (ROOT / "docs" / "frameworks" / "inertia" / "index.md").read_text()
@@ -360,6 +361,7 @@ def test_inertia_docs_use_stable_script_element_bootstrap_path() -> None:
     assert "Inertia v2" in ssr_helpers
     assert "Inertia v3" in ssr_helpers
     assert "useScriptElementForInitialPage: true" in ssr_helpers
+    assert "useScriptElementForInitialPage: true" in config_templates
     assert "useScriptElementForInitialPage: true" in quickstart
     assert "InertiaConfig.use_script_element" in doctor_docs
     assert "useScriptElementForInitialPage" in index_docs
@@ -394,7 +396,7 @@ def test_readme_and_llms_reference_docs_theme_structure() -> None:
 
 def test_inertia_ssr_docs_cover_entry_files_and_bootstrap_interaction() -> None:
     """Ensure SSR docs explain the SSR entrypoint and script-element interaction."""
-    ssr_helpers = (ROOT / "docs" / "frameworks" / "inertia" / "ssr-and-helpers.md").read_text()
+    ssr_helpers = (ROOT / "docs" / "frameworks" / "inertia" / "ssr-and-typescript.md").read_text()
     ssr_concepts = (ROOT / "docs" / "learn" / "ssr.md").read_text()
     combined_docs = f"{ssr_helpers}\n{ssr_concepts}"
 
@@ -427,8 +429,10 @@ def test_framework_docs_and_js_reference_current_domains_and_wording() -> None:
     """Ensure shared docs avoid stale framework URLs and version-marketing copy."""
     docs_index = (ROOT / "docs" / "index.md").read_text()
     frameworks_index = (ROOT / "docs" / "frameworks" / "index.md").read_text()
-    sveltekit_docs = (ROOT / "docs" / "frameworks" / "meta-frameworks.md").read_text()
-    nuxt_docs = (ROOT / "docs" / "frameworks" / "meta-frameworks.md").read_text()
+    sveltekit_docs = (ROOT / "docs" / "frameworks" / "sveltekit.md").read_text()
+    nuxt_docs = (ROOT / "docs" / "frameworks" / "nuxt.md").read_text()
+    angular_docs = (ROOT / "docs" / "frameworks" / "angular.md").read_text()
+    react_docs = (ROOT / "docs" / "frameworks" / "react.md").read_text()
     readme = (ROOT / "README.md").read_text()
     dev_server = (ROOT / "src" / "js" / "src" / "dev-server" / "index.html").read_text()
     js_index = (ROOT / "src" / "js" / "src" / "index.ts").read_text()
@@ -444,7 +448,7 @@ def test_framework_docs_and_js_reference_current_domains_and_wording() -> None:
     assert "kit.svelte.dev" not in sveltekit_docs
     assert "https://svelte.dev/docs/kit" in sveltekit_docs
 
-    for text in (frameworks_index, readme, nuxt_docs, nuxt_module):
+    for text in (frameworks_index, readme, nuxt_docs, angular_docs, react_docs, nuxt_module):
         assert "React 18+" not in text
         assert "Angular 18+" not in text
         assert "Nuxt 3+" not in text
@@ -455,12 +459,7 @@ def test_framework_docs_and_js_reference_current_domains_and_wording() -> None:
 def test_inertia_docs_use_current_links_and_protocol_headers() -> None:
     """Ensure Inertia docs use current canonical links and describe all supported request headers."""
     inertia_docs = ROOT / "docs" / "frameworks" / "inertia"
-    index_md = (inertia_docs / "index.md").read_text()
-    pages_and_responses = (inertia_docs / "pages-and-responses.md").read_text()
-    props_and_reloads = (inertia_docs / "props-and-reloads.md").read_text()
-    shared_data = (inertia_docs / "shared-data-and-precognition.md").read_text()
-    ssr_helpers = (inertia_docs / "ssr-and-helpers.md").read_text()
-    all_inertia_docs = f"{index_md}\n{pages_and_responses}\n{props_and_reloads}\n{shared_data}\n{ssr_helpers}"
+    all_inertia_docs = "\n".join(p.read_text() for p in sorted(inertia_docs.glob("*.md")))
 
     assert "https://inertiajs.com" in all_inertia_docs
     assert "X-Inertia" in all_inertia_docs
@@ -514,12 +513,14 @@ def test_angular_cli_and_htmx_templates_match_current_owned_scaffolds() -> None:
 
 def test_angular_cli_and_htmx_docs_match_current_owned_scaffolds() -> None:
     """Ensure Angular CLI and HTMX docs reflect the updated scaffolds."""
-    meta_frameworks = (ROOT / "docs" / "frameworks" / "meta-frameworks.md").read_text()
-    htmx_docs = (ROOT / "docs" / "learn" / "islands-and-htmx.md").read_text()
+    angular_docs = (ROOT / "docs" / "frameworks" / "angular.md").read_text()
+    htmx_docs = (ROOT / "docs" / "frameworks" / "htmx.md").read_text()
+    islands_docs = (ROOT / "docs" / "learn" / "islands-and-htmx.md").read_text()
     typegen_docs = (ROOT / "docs" / "typegen" / "openapi-sdk.md").read_text()
 
-    assert "Angular CLI" in meta_frameworks
+    assert "Angular CLI" in angular_docs
     assert "registerHtmxExtension()" in htmx_docs
+    assert "registerHtmxExtension()" in islands_docs
     assert "litestar assets generate-types" in typegen_docs
 
 

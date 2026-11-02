@@ -30,7 +30,7 @@ def _flatten_nav_paths(items: list[Any]) -> list[str]:
 
 
 def test_zensical_toml_configuration() -> None:
-    """Verify zensical.toml configures Zensical Free, mkdocstrings-python, and the 43-page navigation tree."""
+    """Verify zensical.toml configures Zensical Free, mkdocstrings-python, and the 59-page navigation tree."""
     zensical_path = REPO_ROOT / "zensical.toml"
     assert zensical_path.is_file(), "zensical.toml must exist at repository root"
 
@@ -40,6 +40,7 @@ def test_zensical_toml_configuration() -> None:
     assert project["site_url"] == "https://litestar-org.github.io/litestar-vite/"
     assert "examples/**" in project["exclude_docs"]
     assert project["extra_css"] == ["stylesheets/extra.css"]
+    assert project["extra_javascript"] == ["javascripts/termynal.js"]
     assert project["extra"]["generator"] is False
 
     theme = project["theme"]
@@ -63,8 +64,8 @@ def test_zensical_toml_configuration() -> None:
         "Reference",
     ]
     nav_paths = _flatten_nav_paths(nav)
-    assert len(nav_paths) == 43
-    assert len(set(nav_paths)) == 43
+    assert len(nav_paths) == 59
+    assert len(set(nav_paths)) == 59
 
     mkdocstrings = project["plugins"]["mkdocstrings"]
     assert mkdocstrings["custom_templates"] == "tools/docs/templates"

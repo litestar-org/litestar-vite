@@ -12,6 +12,7 @@ examples/**
 _tapes/**
 """
 extra_css = ["stylesheets/extra.css"]
+extra_javascript = ["javascripts/termynal.js"]
 nav = [
   { "Home" = [
     { "Overview" = "index.md" },
@@ -27,29 +28,45 @@ nav = [
     { "How Litestar & Vite Work Together" = "learn/index.md" },
     { "Operating Modes" = "learn/operating-modes.md" },
     { "Configuration Guide" = "learn/configuration.md" },
+    { "Dev Server & Single-Port Proxy" = "learn/development-and-proxy.md" },
     { "Static Props" = "learn/static-props.md" },
     { "Islands & HTMX" = "learn/islands-and-htmx.md" },
     { "Server-Side Rendering (SSR)" = "learn/ssr.md" },
     { "Production & Deployment" = "learn/production-and-deploy.md" },
     { "Doctor & Troubleshooting" = "learn/doctor-and-troubleshooting.md" },
+    { "Migrating to v0.32" = "learn/migration-0-32.md" },
   ] },
   { "Frameworks & Inertia" = [
     { "Framework Matrix" = "frameworks/index.md" },
-    { "Inertia v2" = [
+    { "Inertia.js" = [
       { "Overview & Lifecycle" = "frameworks/inertia/index.md" },
-      { "Pages, Responses & Redirects" = "frameworks/inertia/pages-and-responses.md" },
-      { "Props, Deferred & Partial Reloads" = "frameworks/inertia/props-and-reloads.md" },
-      { "Shared Data, Flash & Precognition" = "frameworks/inertia/shared-data-and-precognition.md" },
-      { "Inertia SSR & Client Helpers" = "frameworks/inertia/ssr-and-helpers.md" },
+      { "Configuration & Templates" = "frameworks/inertia/configuration-and-templates.md" },
+      { "Pages & Responses" = "frameworks/inertia/pages-and-responses.md" },
+      { "Routing, Links & Redirects" = "frameworks/inertia/routing-and-links.md" },
+      { "Forms, Validation & Precognition" = "frameworks/inertia/forms-and-validation.md" },
+      { "File Uploads" = "frameworks/inertia/file-uploads.md" },
+      { "Shared Data & Flash Messages" = "frameworks/inertia/shared-data-and-flash.md" },
+      { "Partial Reloads & Deferred Props" = "frameworks/inertia/partial-reloads-and-deferred.md" },
+      { "Merging Props & Infinite Scroll" = "frameworks/inertia/merging-and-infinite-scroll.md" },
+      { "Polling, Prefetching & Remembering" = "frameworks/inertia/client-visits.md" },
+      { "Security, History & Versioning" = "frameworks/inertia/security-and-versioning.md" },
+      { "SSR, TypeScript & Upgrade Guide" = "frameworks/inertia/ssr-and-typescript.md" },
     ] },
-    { "React, Vue 3 & Svelte 5" = "frameworks/react-vue-svelte.md" },
-    { "Astro, Nuxt, SvelteKit & Angular" = "frameworks/meta-frameworks.md" },
+    { "React" = "frameworks/react.md" },
+    { "Vue 3" = "frameworks/vue.md" },
+    { "Svelte 5" = "frameworks/svelte.md" },
+    { "Angular" = "frameworks/angular.md" },
+    { "HTMX" = "frameworks/htmx.md" },
+    { "Astro" = "frameworks/astro.md" },
+    { "Nuxt" = "frameworks/nuxt.md" },
+    { "SvelteKit" = "frameworks/sveltekit.md" },
   ] },
   { "TypeGen & Realtime" = [
     { "Type Generation Pipeline" = "typegen/index.md" },
     { "OpenAPI TypeScript SDK" = "typegen/openapi-sdk.md" },
     { "Type-Safe Routes (route & wsRoute)" = "typegen/routes.md" },
-    { "AsyncAPI Channels & SSE Streams" = "typegen/realtime-channels.md" },
+    { "AsyncAPI Channels & SSE" = "typegen/realtime-channels.md" },
+    { "Browser & Framework Event Streams" = "typegen/event-streams.md" },
   ] },
   { "Architecture" = [
     { "System Overview" = "architecture/index.md" },

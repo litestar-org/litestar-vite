@@ -1,6 +1,6 @@
 # Islands Architecture & HTMX Fragments
 
-When building server-driven applications in `mode="template"`, you often want 90% of a page rendered via fast Jinja2 HTML templates or HTMX partial swaps while hydrating specific interactive components (charts, command palettes, rich editors) in React, Vue, or Svelte.
+When building server-driven applications in `mode="template"` (or `mode="htmx"`), you often want 90% of a page rendered via fast Jinja2 HTML templates or HTMX partial swaps while hydrating specific interactive components (charts, command palettes, rich editors) in React, Vue, or Svelte.
 
 `litestar-vite` provides two complementary primitives powered by [`FragmentEngine`](../reference/fragments-and-ipc.md#litestar_vite.fragments.FragmentEngine):
 
@@ -11,11 +11,18 @@ When building server-driven applications in `mode="template"`, you often want 90
 
 ## 1. Returning Server-Rendered Fragments for HTMX (`ComponentResponse`)
 
-Route handlers can return [`ComponentResponse`](../reference/fragments-and-ipc.md#litestar_vite.fragments.ComponentResponse) directly. During request handling, Litestar invokes `FragmentEngine.render()` over the SSR IPC transport (`TCPStreamIPCTransport` in dev, `StdioIPCTransport` in prod) and returns `text/html`:
+Route handlers can return [`ComponentResponse`](../reference/fragments-and-ipc.md#litestar_vite.fragments.ComponentResponse) directly. During request handling, Litestar invokes `FragmentEngine.render()` over the SSR IPC transport (`TCPStreamIPCTransport` in dev, `StdioIPCTransport` or `WasmIPCTransport` in prod) and returns `text/html`:
 
 ```python title="docs/examples/learn/islands_and_fragments.py"
 --8<-- "docs/examples/learn/islands_and_fragments.py"
 ```
+
+### Static vs Island Fragment Modes
+
+| `ComponentResponse` / `vite_fragment` Mode | Client JavaScript | Output HTML |
+| --- | --- | --- |
+| **`mode="island"`** (or `hydrate="load"\|"idle"\|"visible"\|"media"`) | Hydrates interactive component on client | Wraps pre-rendered HTML in `<litestar-island data-component="..." data-hydrate="...">` with serialized props and client entry `<script>`. |
+| **`mode="static"`** (or `hydrate="none"`) | Zero client-side hydration | Returns pure server-rendered HTML and scoped `<link rel="stylesheet">` tags without `<litestar-island>` wrapper overhead. |
 
 ---
 
@@ -51,7 +58,7 @@ Inside any Jinja2 template, call `vite_fragment(component, props=..., hydrate=..
 
 ## 3. Client-Side Island Registration & HTMX Extension
 
-Register `<litestar-island>` and the Litestar HTMX CSRF/Directive extension in your frontend entrypoint:
+Register `<litestar-island>` and the Litestar HTMX CSRF/Directive extension (`registerHtmxExtension()`) in your frontend entrypoint:
 
 === "React"
 
@@ -100,3 +107,24 @@ Register `<litestar-island>` and the Litestar HTMX CSRF/Directive extension in y
       },
     });
     ```
+
+---
+
+## 4. Production Fragment SSR Worker (`createFragmentRenderer`)
+
+For production SSR of fragments (`dev_mode=False`), configure `createFragmentRenderer` with `startSsrWorker` in `resources/ssr.ts` and configure `devSsr.componentRoots` in `vite.config.ts`:
+
+```typescript title="resources/ssr.ts"
+import { createFragmentRenderer } from "litestar-vite-plugin/fragments";
+import { startSsrWorker } from "litestar-vite-plugin/ssr-worker";
+
+const renderFragment = createFragmentRenderer(
+  import.meta.glob("./islands/**/*.tsx") as Record<string, () => Promise<unknown>>,
+  {
+    clientEntry: "resources/main.ts",
+  },
+);
+
+export default renderFragment;
+startSsrWorker({ renderFragment });
+```

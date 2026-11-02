@@ -64,27 +64,35 @@ Install the Vite plugin in your frontend directory (`package.json`):
 
 The fastest way to bootstrap a new frontend workspace is `litestar assets init`, which generates `package.json`, `vite.config.ts`, `tsconfig.json`, and framework entrypoints aligned with your `ViteConfig`:
 
-```bash
-litestar assets init --template react-inertia
-litestar assets install
-litestar run --reload
+<!-- termynal -->
+
+```console
+$ litestar assets init --template react-inertia
+✓ Created vite.config.ts, package.json, tsconfig.json
+✓ Created resources/main.tsx and resources/pages/Home.tsx
+$ litestar assets install
+---> 100%
+✓ Frontend dependencies installed
+$ litestar run --reload
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 ```
 
 ### Available Scaffolding Templates
 
 | Template Flag (`--template`) | Operating Mode | Stack |
 | --- | --- | --- |
-| `react` | `mode="spa"` | React 19 + TypeScript + Vite 7+ |
+| `react` | `mode="spa"` | React + TypeScript + Vite 7+ |
 | `vue` | `mode="spa"` | Vue 3 + TypeScript + Vite 7+ |
 | `svelte` | `mode="spa"` | Svelte 5 + TypeScript + Vite 7+ |
-| `angular` | `mode="framework"` | Angular CLI + Litestar proxy |
-| `react-inertia` | `mode="hybrid"` | React 19 + `@inertiajs/react` v2 |
-| `vue-inertia` | `mode="hybrid"` | Vue 3 + `@inertiajs/vue3` v2 |
-| `svelte-inertia` | `mode="hybrid"` | Svelte 5 + `@inertiajs/svelte` v2 |
-| `jinja-htmx` | `mode="template"` | Jinja2 + HTMX + `<litestar-island>` |
-| `astro` | `mode="framework"` | Astro + `@litestar/vite-plugin/astro` |
-| `nuxt` | `mode="framework"` | Nuxt 3 + `@litestar/vite-plugin/nuxt` |
-| `sveltekit` | `mode="framework"` | SvelteKit + `@litestar/vite-plugin/sveltekit` |
+| `angular` | `mode="spa"` | Angular + `@analogjs/vite-plugin-angular` |
+| `angular-cli` | `mode="external"` | Angular CLI (`@angular/build`) + Litestar proxy |
+| `react-inertia` | `mode="hybrid"` | React + `@inertiajs/react` |
+| `vue-inertia` | `mode="hybrid"` | Vue 3 + `@inertiajs/vue3` |
+| `svelte-inertia` | `mode="hybrid"` | Svelte 5 + `@inertiajs/svelte` |
+| `htmx` | `mode="htmx"` | Jinja2 + HTMX + `registerHtmxExtension()` |
+| `astro` | `mode="ssg"` | Astro + `litestar-vite-plugin/astro` |
+| `nuxt` | `mode="ssr"` | Nuxt + `litestar-vite-plugin/nuxt` |
+| `sveltekit` | `mode="ssr"` | SvelteKit + `litestar-vite-plugin/sveltekit` |
 
 ---
 

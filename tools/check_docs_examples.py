@@ -183,6 +183,8 @@ declare module "../generated/*" {
     export const listItems: any;
     export const createItem: any;
     export const listCustomers: any;
+    export type Book = any;
+    export type Summary = any;
     export type FormInput<T = any> = any;
     export type SuccessResponse<T = any> = any;
     export type OrdersPageProps = {
@@ -197,6 +199,8 @@ declare module "../generated/api" {
     export const listItems: any;
     export const createItem: any;
     export const listCustomers: any;
+    export type Book = any;
+    export type Summary = any;
 }
 declare module "../generated/routes" {
     export const route: any;
@@ -248,8 +252,25 @@ declare module "@vitejs/plugin-vue" {
 declare module "@sveltejs/vite-plugin-svelte" {
     export function svelte(options?: Record<string, any>): any;
 }
+declare module "*.vue" {
+    const Component: any;
+    export default Component;
+}
+declare module "*.svelte" {
+    const Component: any;
+    export default Component;
+}
 declare module "@/layouts/*";
-declare module "~/generated/*";
+declare module "~/generated/*" {
+    export const route: any;
+    export type Summary = any;
+}
+declare module "~/generated/routes" {
+    export const route: any;
+}
+declare module "~/generated/api" {
+    export type Summary = any;
+}
 declare module "$lib/*";
 declare module "./$types";
 declare module "astro/config" {
@@ -297,10 +318,24 @@ declare module "virtual:litestar-static-props" {
     export const supportEmail: string;
 }
 declare module "react-error-boundary";
-declare module "@angular/*";
-declare module "@angular/core";
-declare module "@angular/router";
-declare module "@angular/common/http";
+declare module "@angular/core" {
+    export interface OnInit {
+        ngOnInit(): void;
+    }
+    export function Component(options: Record<string, any>): any;
+    export function inject<T>(token: abstract new (...args: any[]) => T): T;
+    export function inject<T = any>(token: any): T;
+}
+declare module "@angular/router" {
+    export type Routes = any[];
+    export function provideRouter(routes: any[]): any;
+}
+declare module "@angular/common/http" {
+    export class HttpClient {
+        get<T = any>(url: string): { subscribe(cb: (data: T) => void): void };
+    }
+    export function provideHttpClient(...features: any[]): any;
+}
 declare type SharedPageProps = Record<string, any>;
 declare const MetricsChart: any;
 declare const AuditLogTable: any;
@@ -562,7 +597,7 @@ def _write_typescript_stubs(ts_dir: Path) -> None:
     stub_generated = ts_dir / "generated"
     stub_generated.mkdir(exist_ok=True)
     (stub_generated / "routes.d.ts").write_text(
-        "export const route: any;\nexport const wsRoute: any;\nexport const currentRoute: any;\nexport const hasRoute: any;\nexport const routes: any;\nexport const routeDefinitions: Record<string, any>;\n",
+        "export const route: any;\nexport const wsRoute: any;\nexport const currentRoute: any;\nexport const hasRoute: any;\nexport const routes: any;\nexport const routeDefinitions: Record<string, any>;\nexport type RouteName = string;\nexport type RouteParams<T extends string = string> = Record<string, any>;\n",
         encoding="utf-8",
     )
     stub_api = ts_dir / "api"
@@ -649,6 +684,7 @@ def _write_typescript_config(workdir: Path, ts_dir: Path, repo_root: Path) -> Pa
         "litestar-vite-plugin/fragments/react": [str(repo_root / "src" / "js" / "src" / "fragments" / "react.ts")],
         "litestar-vite-plugin/fragments/vue": [str(repo_root / "src" / "js" / "src" / "fragments" / "vue.ts")],
         "litestar-vite-plugin/fragments/svelte": [str(repo_root / "src" / "js" / "src" / "fragments" / "svelte.ts")],
+        "litestar-vite-plugin/ssr-worker": [str(repo_root / "src" / "js" / "src" / "ssr-worker.ts")],
         "litestar-vite-plugin/astro": [str(repo_root / "src" / "js" / "src" / "astro.ts")],
         "litestar-vite-plugin/nuxt": [str(repo_root / "src" / "js" / "src" / "nuxt.ts")],
         "litestar-vite-plugin/sveltekit": [str(repo_root / "src" / "js" / "src" / "sveltekit.ts")],
