@@ -71,10 +71,10 @@ path = "tools/hatch_build.py"
 dev = [{ include-group = "build" }, { include-group = "linting" }, { include-group = "test" }]
 build = ["bump-my-version"]
 doc = [
-  "zensical>=0.0.71",
-  "mkdocstrings-python>=2.0.1",
-  "pymdown-extensions>=10.16",
-  "ruff>=0.15.0",
+  "zensical>=0.0.71; python_version >= '3.11'",
+  "mkdocstrings-python>=2.0.1; python_version >= '3.11'",
+  "pymdown-extensions>=10.16; python_version >= '3.11'",
+  "ruff>=0.15.0; python_version >= '3.11'",
 ]
 linting = ["prek>=0.4.3", "mypy>=1.5.1", "ruff>=0.0.287", "slotscheck", "pyright"]
 test = [
