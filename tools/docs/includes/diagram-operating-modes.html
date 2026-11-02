@@ -1,0 +1,211 @@
+<div class="lv-diag lv-diag--modes">
+  <style>
+    .lv-diag--modes {
+      --lv-surface: var(--md-default-bg-color, #ffffff);
+      --lv-card: var(--md-code-bg-color, #f8fafc);
+      --lv-border: rgba(148, 163, 184, 0.35);
+      --lv-text: var(--md-default-fg-color, #0f172a);
+      --lv-muted: var(--md-default-fg-color--light, #475569);
+      --lv-blue: #2563eb;
+      --lv-amber: #d97706;
+      --lv-emerald: #059669;
+      --lv-violet: #7c3aed;
+      margin: 1.5rem 0;
+      padding: 1rem;
+      border-radius: 0.75rem;
+      border: 1px solid var(--lv-border);
+      background: var(--lv-surface);
+    }
+    [data-md-color-scheme="slate"] .lv-diag--modes {
+      --lv-card: rgba(30, 41, 59, 0.85);
+      --lv-border: rgba(148, 163, 184, 0.24);
+      --lv-blue: #60a5fa;
+      --lv-amber: #fbbf24;
+      --lv-emerald: #34d399;
+      --lv-violet: #a78bfa;
+    }
+    .lv-diag--modes input[type="radio"] {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .lv-diag--modes .lv-mode-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .lv-diag--modes .lv-mode-tabs label {
+      cursor: pointer;
+      padding: 0.45rem 0.85rem;
+      border-radius: 0.5rem;
+      border: 1px solid var(--lv-border);
+      background: var(--lv-card);
+      color: var(--lv-text);
+      font-size: 0.82rem;
+      font-weight: 600;
+      transition: border-color 0.15s ease, background-color 0.15s ease;
+    }
+    #lv-mode-spa:checked ~ .lv-mode-tabs label[for="lv-mode-spa"],
+    #lv-mode-hybrid:checked ~ .lv-mode-tabs label[for="lv-mode-hybrid"],
+    #lv-mode-template:checked ~ .lv-mode-tabs label[for="lv-mode-template"],
+    #lv-mode-framework:checked ~ .lv-mode-tabs label[for="lv-mode-framework"] {
+      border-color: var(--lv-blue);
+      background: rgba(37, 99, 235, 0.12);
+      color: var(--lv-blue);
+    }
+    .lv-diag--modes .lv-mode-panel {
+      display: none;
+    }
+    #lv-mode-spa:checked ~ .lv-mode-panels .lv-panel-spa,
+    #lv-mode-hybrid:checked ~ .lv-mode-panels .lv-panel-hybrid,
+    #lv-mode-template:checked ~ .lv-mode-panels .lv-panel-template,
+    #lv-mode-framework:checked ~ .lv-mode-panels .lv-panel-framework {
+      display: block;
+    }
+    .lv-diag--modes svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      font-family: var(--md-text-font-family, system-ui, -apple-system, sans-serif);
+    }
+    .lv-diag--modes .lv-mode-flow {
+      stroke-dasharray: 8 6;
+      animation: lv-modes-dash 1.8s linear infinite;
+    }
+    @keyframes lv-modes-dash {
+      to { stroke-dashoffset: -28; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .lv-diag--modes .lv-mode-flow {
+        animation: none !important;
+      }
+    }
+  </style>
+
+  <input type="radio" name="lv-operating-mode" id="lv-mode-spa" checked />
+  <input type="radio" name="lv-operating-mode" id="lv-mode-hybrid" />
+  <input type="radio" name="lv-operating-mode" id="lv-mode-template" />
+  <input type="radio" name="lv-operating-mode" id="lv-mode-framework" />
+
+  <div class="lv-mode-tabs" role="tablist" aria-label="Operating Mode Switcher">
+    <label for="lv-mode-spa">1. SPA Mode (mode="spa")</label>
+    <label for="lv-mode-hybrid">2. Hybrid / Inertia v2 (mode="hybrid")</label>
+    <label for="lv-mode-template">3. Template + Islands (mode="template")</label>
+    <label for="lv-mode-framework">4. Meta-Framework (mode="framework")</label>
+  </div>
+
+  <div class="lv-mode-panels">
+    <div class="lv-mode-panel lv-panel-spa">
+      <svg viewBox="0 0 880 220" role="img" aria-labelledby="lv-modes-spa-title lv-modes-spa-desc">
+        <title id="lv-modes-spa-title">SPA Mode Architecture (mode="spa")</title>
+        <desc id="lv-modes-spa-desc">AppHandler serves a transformed index.html shell; client router owns navigation and fetches JSON from Litestar OpenAPI routes via @hey-api/openapi-ts and route().</desc>
+        <rect x="20" y="30" width="235" height="160" rx="12" fill="var(--lv-card)" stroke="var(--lv-blue)" stroke-width="2" />
+        <text x="137" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">HTML Shell Owner</text>
+        <text x="137" y="90" text-anchor="middle" fill="var(--lv-blue)" font-size="12" font-family="monospace">AppHandler (index.html)</text>
+        <text x="137" y="116" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Injects window.__LITESTAR_CSRF__</text>
+        <text x="137" y="138" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Catch-all SPA fallback routes</text>
+
+        <line class="lv-mode-flow" x1="255" y1="110" x2="325" y2="110" stroke="var(--lv-blue)" stroke-width="2.5" />
+
+        <rect x="325" y="30" width="235" height="160" rx="12" fill="var(--lv-card)" stroke="var(--lv-amber)" stroke-width="2" />
+        <text x="442" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Navigation &amp; Router</text>
+        <text x="442" y="90" text-anchor="middle" fill="var(--lv-amber)" font-size="12" font-family="monospace">Client Router</text>
+        <text x="442" y="116" text-anchor="middle" fill="var(--lv-muted)" font-size="11">React Router / Vue Router / TanStack</text>
+        <text x="442" y="138" text-anchor="middle" fill="var(--lv-muted)" font-size="11">route() &amp; createRouteHelpers()</text>
+
+        <line class="lv-mode-flow" x1="560" y1="110" x2="625" y2="110" stroke="var(--lv-emerald)" stroke-width="2.5" />
+
+        <rect x="625" y="30" width="235" height="160" rx="12" fill="var(--lv-card)" stroke="var(--lv-emerald)" stroke-width="2" />
+        <text x="742" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Data Transport</text>
+        <text x="742" y="90" text-anchor="middle" fill="var(--lv-emerald)" font-size="12" font-family="monospace">@hey-api/openapi-ts SDK</text>
+        <text x="742" y="116" text-anchor="middle" fill="var(--lv-muted)" font-size="11">JSON REST + csrfFetch()</text>
+        <text x="742" y="138" text-anchor="middle" fill="var(--lv-muted)" font-size="11">createTypedChannels() WS/SSE</text>
+      </svg>
+    </div>
+
+    <div class="lv-mode-panel lv-panel-hybrid">
+      <svg viewBox="0 0 880 220" role="img" aria-labelledby="lv-modes-hybrid-title lv-modes-hybrid-desc">
+        <title id="lv-modes-hybrid-title">Hybrid Inertia v2 Architecture (mode="hybrid")</title>
+        <desc id="lv-modes-hybrid-desc">Litestar controllers own routing and return component PageProps; Inertia v2 swaps components via X-Inertia JSON and supports SSR via _InertiaSlots.</desc>
+        <rect x="20" y="30" width="235" height="160" rx="12" fill="var(--lv-card)" stroke="var(--lv-amber)" stroke-width="2" />
+        <text x="137" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">HTML Shell &amp; SSR</text>
+        <text x="137" y="90" text-anchor="middle" fill="var(--lv-amber)" font-size="12" font-family="monospace">AppHandler / Jinja + SSR</text>
+        <text x="137" y="116" text-anchor="middle" fill="var(--lv-muted)" font-size="11">data-page or &lt;script id="app_page"&gt;</text>
+        <text x="137" y="138" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Optional Dev TCP / Prod Stdio SSR</text>
+
+        <line class="lv-mode-flow" x1="255" y1="110" x2="325" y2="110" stroke="var(--lv-amber)" stroke-width="2.5" />
+
+        <rect x="325" y="30" width="235" height="160" rx="12" fill="var(--lv-card)" stroke="var(--lv-blue)" stroke-width="2" />
+        <text x="442" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Server-Driven Routing</text>
+        <text x="442" y="90" text-anchor="middle" fill="var(--lv-blue)" font-size="12" font-family="monospace">@get(..., component="...")</text>
+        <text x="442" y="116" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Python guards &amp; DI own every route</text>
+        <text x="442" y="138" text-anchor="middle" fill="var(--lv-muted)" font-size="11">resolvePageComponent() on client</text>
+
+        <line class="lv-mode-flow" x1="560" y1="110" x2="625" y2="110" stroke="var(--lv-violet)" stroke-width="2.5" />
+
+        <rect x="625" y="30" width="235" height="160" rx="12" fill="var(--lv-card)" stroke="var(--lv-violet)" stroke-width="2" />
+        <text x="742" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Inertia v2 Protocol</text>
+        <text x="742" y="90" text-anchor="middle" fill="var(--lv-violet)" font-size="12" font-family="monospace">PageProps[T] JSON</text>
+        <text x="742" y="116" text-anchor="middle" fill="var(--lv-muted)" font-size="11">defer() • merge() • lazy() • once()</text>
+        <text x="742" y="138" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Generated page-props.ts types</text>
+      </svg>
+    </div>
+
+    <div class="lv-mode-panel lv-panel-template">
+      <svg viewBox="0 0 880 220" role="img" aria-labelledby="lv-modes-tpl-title lv-modes-tpl-desc">
+        <title id="lv-modes-tpl-title">Template + Server Islands Architecture (mode="template")</title>
+        <desc id="lv-modes-tpl-desc">Jinja2 templates render server HTML using vite() and vite_hmr(), progressively enhanced with HTMX swap="json", &lt;litestar-stream&gt;, and &lt;litestar-island&gt; fragments.</desc>
+        <rect x="20" y="30" width="235" height="160" rx="12" fill="var(--lv-card)" stroke="var(--lv-emerald)" stroke-width="2" />
+        <text x="137" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Jinja2 / Server HTML</text>
+        <text x="137" y="90" text-anchor="middle" fill="var(--lv-emerald)" font-size="12" font-family="monospace">{{ vite('src/main.ts') }}</text>
+        <text x="137" y="116" text-anchor="middle" fill="var(--lv-muted)" font-size="11">{{ vite_hmr() }} in development</text>
+        <text x="137" y="138" text-anchor="middle" fill="var(--lv-muted)" font-size="11">{{ vite_fragment('Chart.tsx') }}</text>
+
+        <line class="lv-mode-flow" x1="255" y1="110" x2="325" y2="110" stroke="var(--lv-emerald)" stroke-width="2.5" />
+
+        <rect x="325" y="30" width="235" height="160" rx="12" fill="var(--lv-card)" stroke="var(--lv-blue)" stroke-width="2" />
+        <text x="442" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Server Fragments &amp; Islands</text>
+        <text x="442" y="90" text-anchor="middle" fill="var(--lv-blue)" font-size="12" font-family="monospace">&lt;litestar-island&gt;</text>
+        <text x="442" y="116" text-anchor="middle" fill="var(--lv-muted)" font-size="11">ComponentResponse (HX-Push-Url)</text>
+        <text x="442" y="138" text-anchor="middle" fill="var(--lv-muted)" font-size="11">hydrateIslands() (React/Vue/Svelte)</text>
+
+        <line class="lv-mode-flow" x1="560" y1="110" x2="625" y2="110" stroke="var(--lv-amber)" stroke-width="2.5" />
+
+        <rect x="625" y="30" width="235" height="160" rx="12" fill="var(--lv-card)" stroke="var(--lv-amber)" stroke-width="2" />
+        <text x="742" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">HTMX &amp; Realtime Streams</text>
+        <text x="742" y="90" text-anchor="middle" fill="var(--lv-amber)" font-size="12" font-family="monospace">hx-swap="json"</text>
+        <text x="742" y="116" text-anchor="middle" fill="var(--lv-muted)" font-size="11">ls-for • ls-if • CSRF auto-header</text>
+        <text x="742" y="138" text-anchor="middle" fill="var(--lv-muted)" font-size="11">&lt;litestar-stream&gt; WebSocket/SSE</text>
+      </svg>
+    </div>
+
+    <div class="lv-mode-panel lv-panel-framework">
+      <svg viewBox="0 0 880 220" role="img" aria-labelledby="lv-modes-fw-title lv-modes-fw-desc">
+        <title id="lv-modes-fw-title">Meta-Framework Architecture (mode="framework" / "external")</title>
+        <desc id="lv-modes-fw-desc">Astro, SvelteKit, or Nuxt owns its server/SSR pipeline while litestar-vite-plugin/{astro,sveltekit,nuxt} synchronizes ports, proxies /api, and runs typegen.</desc>
+        <rect x="20" y="30" width="235" height="160" rx="12" fill="var(--lv-card)" stroke="var(--lv-violet)" stroke-width="2" />
+        <text x="137" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Meta-Framework Server</text>
+        <text x="137" y="90" text-anchor="middle" fill="var(--lv-violet)" font-size="12" font-family="monospace">Astro / SvelteKit / Nuxt 4</text>
+        <text x="137" y="116" text-anchor="middle" fill="var(--lv-muted)" font-size="11">litestar-vite-plugin/{astro,nuxt,...}</text>
+        <text x="137" y="138" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Writes hotfile on server listen</text>
+
+        <line class="lv-mode-flow" x1="255" y1="110" x2="325" y2="110" stroke="var(--lv-violet)" stroke-width="2.5" />
+
+        <rect x="325" y="30" width="235" height="160" rx="12" fill="var(--lv-card)" stroke="var(--lv-blue)" stroke-width="2" />
+        <text x="442" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Proxy &amp; Port Bridge</text>
+        <text x="442" y="90" text-anchor="middle" fill="var(--lv-blue)" font-size="12" font-family="monospace">.litestar.json + proxyMode</text>
+        <text x="442" y="116" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Forwards /api/* to Litestar</text>
+        <text x="442" y="138" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Routes HMR through Litestar port</text>
+
+        <line class="lv-mode-flow" x1="560" y1="110" x2="625" y2="110" stroke="var(--lv-emerald)" stroke-width="2.5" />
+
+        <rect x="625" y="30" width="235" height="160" rx="12" fill="var(--lv-card)" stroke="var(--lv-emerald)" stroke-width="2" />
+        <text x="742" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Shared TypeGen Output</text>
+        <text x="742" y="90" text-anchor="middle" fill="var(--lv-emerald)" font-size="12" font-family="monospace">openapi.json + routes.json</text>
+        <text x="742" y="116" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Typed load() / useFetch() calls</text>
+        <text x="742" y="138" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Zero duplicate schema config</text>
+      </svg>
+    </div>
+  </div>
+</div>
