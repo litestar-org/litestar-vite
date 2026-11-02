@@ -213,3 +213,25 @@ async def test_stdio_queued_write_reports_worker_shutdown() -> None:
         await transport.close()
     with pytest.raises(IPCWorkerCrashError, match="closed"):
         await request
+
+
+async def test_stdio_transport_enforces_max_restarts_and_resets_on_close() -> None:
+    """Verify StdioIPCTransport enforces max_restarts across repeated crashes and resets after close()."""
+    crash_script = "import sys\nsys.exit(1)\n"
+    transport = StdioIPCTransport(command=[sys.executable, "-u", "-c", crash_script], max_restarts=1)
+    try:
+        with pytest.raises(IPCWorkerCrashError):
+            await transport.send_request({"method": "render"}, timeout=1.0)
+        await anyio.sleep(0.05)
+
+        with pytest.raises(IPCWorkerCrashError):
+            await transport.send_request({"method": "render"}, timeout=1.0)
+        await anyio.sleep(0.05)
+
+        with pytest.raises(IPCWorkerCrashError, match=r"exceeded maximum automatic restarts \(1\)"):
+            await transport.send_request({"method": "render"}, timeout=1.0)
+
+        await transport.close()
+        assert transport._restart_count == 0
+    finally:
+        await transport.close()

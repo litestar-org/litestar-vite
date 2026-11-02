@@ -106,10 +106,11 @@ When `TypeGenConfig` is enabled (`ViteConfig(types=True)` or `ViteConfig(types=T
 
 ### `routes.json`
 
-Contains all registered HTTP and WebSocket routes (filtered by `exclude_routes`), parameter types, and OpenAPI `operationId` links. Used by both Python and the Vite plugin to emit `routes.ts` (`route()`, `toRoute()`, `routeDefinitions`) and `schemas.ts` (`FormInput`, `FormResponse`, `SuccessResponse`).
+Contains all registered HTTP and WebSocket routes (filtered by `exclude_routes`), parameter types, and OpenAPI `operationId` or AsyncAPI `channel_key` links. Used by both Python and the Vite plugin to emit `routes.ts` (`route()`, `toRoute()`, `wsRoute()`, `routeDefinitions`) and `schemas.ts` (`FormInput`, `FormResponse`, `SuccessResponse`).
 
 ```json
 {
+  "servers": "ws://127.0.0.1:8000",
   "routes": {
     "books:list": {
       "uri": "/api/books",
@@ -121,16 +122,13 @@ Contains all registered HTTP and WebSocket routes (filtered by `exclude_routes`)
       },
       "operationId": "list_books_api_books_get"
     },
-    "books:detail": {
-      "uri": "/api/books/{book_id:int}",
-      "methods": ["GET"],
-      "method": "get",
-      "parameters": {
-        "book_id": "number"
-      },
+    "ws_notifications": {
+      "uri": "/ws/notifications",
+      "methods": [],
+      "protocol": "websocket",
+      "parameters": {},
       "queryParameters": {},
-      "operationId": "get_book_api_books__book_id__get",
-      "component": "Books/Detail"
+      "channel_key": "ws__notifications"
     }
   }
 }
@@ -168,7 +166,8 @@ Ambient declarations live in `litestar-vite-plugin/virtual` (`StaticProps` inter
 Server-side rendering (`InertiaPlugin` SSR and `FragmentEngine.render()`) uses a unified JSON-RPC-like request/response envelope (`IPCRequest` and `IPCResponse` in Python; `SsrRenderResponse` in TypeScript) across both development and production transports:
 
 - **Development (`TCPStreamIPCTransport`)**: Sends `POST /__litestar_ssr__` over `anyio.connect_tcp` to Vite's `litestarViteSsrPlugin` (`litestar-vite-plugin/dev-ssr`), which executes modules through Vite 7+'s `ServerModuleRunner`. Browser requests (containing `Origin` or `Sec-Fetch-Site` headers) are rejected with 403 Forbidden.
-- **Production (`StdioIPCTransport`)**: Spawns a long-lived worker (`litestar-vite-ssr-worker` / `startSsrWorker` from `litestar-vite-plugin/ssr-worker`) and exchanges newline-delimited JSON (NDJSON) lines over `stdin`/`stdout` while draining `stderr` concurrently.
+- **Production (`StdioIPCTransport`)**: Spawns a long-lived worker (`startSsrWorker` from `litestar-vite-plugin/ssr-worker`) and exchanges newline-delimited JSON (NDJSON) lines over `stdin`/`stdout` while draining `stderr` concurrently.
+- **Production In-Process (`WasmIPCTransport`)**: Evaluates the self-contained ES-module `ssr.js` bundle inside an embedded QuickJS engine (`litestar-vite[wasm]`) on a dedicated worker thread via `globalThis.__litestar_ssr_dispatch__`.
 
 ### Request Envelope
 

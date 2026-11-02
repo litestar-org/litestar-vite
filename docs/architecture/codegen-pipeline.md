@@ -33,7 +33,7 @@ On the JavaScript side, `createLitestarTypeGenPlugin` (shared across `litestar-v
 | Input Artifact | Emitter | Generated Output | Primary Symbols |
 | :--- | :--- | :--- | :--- |
 | `openapi.json` | `@hey-api/openapi-ts` | `api/types.gen.ts`, `api/sdk.gen.ts` | Typed REST client, request/response models, optional Zod schemas |
-| `routes.json` | `generate_routes_ts` / `routes.ts` | `routes.ts` | `route()`, `toRoute()`, `routeDefinitions`, `RouteName` |
+| `routes.json` | `generate_routes_ts` / `routes.ts` | `routes.ts` | `route()`, `toRoute()`, `wsRoute()`, `routeDefinitions`, `RouteName` |
 | `routes.json` + `openapi.json` | `emit-schemas-types.ts` | `schemas.ts` | `FormInput<R>`, `FormResponse<R, Status>`, `SuccessResponse<R>` |
 | `inertia-pages.json` | `emit-page-props-types.ts` | `page-props.ts` | `PageProps`, `PagePropsFor<C>`, `InertiaPageProps<C>` |
 | `asyncapi.json` | `emit-channels-types.ts` | `channels.ts` | `ChannelMap`, `ChannelName`, `ChannelPayload`, `bindTypedChannels()` |

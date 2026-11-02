@@ -50,6 +50,7 @@ import {
   isCurrentRoute,
   route,
   toRoute,
+  wsRoute,
   type RouteParams,
 } from "./generated/routes";
 
@@ -61,9 +62,10 @@ const params: OrgMemberParams = {
 };
 const membersUrl = route("orgs:members", params);
 const fullUrl = toRoute("orgs:members", params);
+const socketUrl = wsRoute("ws_notifications");
 
 if (hasRoute("orgs:members") && isCurrentRoute("orgs:*")) {
-  console.log("Current route:", currentRoute(), membersUrl, fullUrl);
+  console.log("Current route:", currentRoute(), membersUrl, fullUrl, socketUrl);
 }
 ```
 
@@ -71,8 +73,9 @@ if (hasRoute("orgs:members") && isCurrentRoute("orgs:*")) {
 
 | Exported Helper | Description |
 | --- | --- |
-| `route(name, params?)` | Builds a type-safe URL path (plus `?query` string for non-path keys). |
+| `route(name, params?)` | Builds a type-safe HTTP URL path (plus `?query` string for non-path keys). |
 | `toRoute(name, params?)` | Like `route()`, prefixed with `API_URL` when an origin is configured. |
+| `wsRoute(name, params?)` / `route.ws(name, params?)` | Builds a type-safe `ws://` or `wss://` WebSocket URL for WebSocket routes (`WsRouteName`), converting `window.location.origin` or `WS_SERVER_URL` automatically. |
 | `hasRoute(name)` | Type guard checking whether `name` exists in `routeDefinitions`. |
 | `currentRoute()` | Matches `window.location.pathname` against `routeDefinitions` and returns the active `RouteName | null`. |
 | `isCurrentRoute(pattern)` | Checks whether `currentRoute()` matches an exact name or wildcard pattern (e.g. `"orgs:*"`). |

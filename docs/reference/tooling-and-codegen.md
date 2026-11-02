@@ -90,6 +90,18 @@ API reference for `litestar_vite.codegen`, `litestar_vite.scaffolding`, `litesta
     options:
       heading_level: 4
 
+::: litestar_vite.codegen.ChannelKeyAllocator
+    options:
+      heading_level: 4
+
+::: litestar_vite.codegen.channel_key_base
+    options:
+      heading_level: 4
+
+::: litestar_vite.codegen.extract_ws_server_url
+    options:
+      heading_level: 4
+
 ---
 
 ## Project Scaffolding

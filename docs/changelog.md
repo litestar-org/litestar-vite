@@ -2,6 +2,40 @@
 
 Notable changes to this project are documented in this file.
 
+## Unreleased
+
+- Added first-class Deno 2.x and Bun runtime support: `RuntimeConfig.executor` is detected from
+  `bun.lock`/`bun.lockb`, `deno.lock`/`deno.json`/`deno.jsonc`, `pnpm-lock.yaml`,
+  `yarn.lock`, `package-lock.json`, or `package.json#packageManager`; `DenoExecutor` uses
+  `deno task`/`deno install`/`deno outdated --update`; type generation emits Deno/Bun-compatible
+  module specifiers; `litestar assets doctor` warns on executor/lockfile mismatches. New optional
+  extras `litestar-vite[node]`, `[bun]`, and `[deno]` install PEP 425 runtime wheels and
+  `RuntimeConfig.provisioning_mode` (`auto`/`wheel`/`nodeenv`/`system`) controls where
+  binaries are resolved from.
+- Added Vite backend-integration and ASGI modernization: recursive `<link rel="modulepreload">` and
+  transitive CSS injection from the manifest graph, CSP `nonce` and SRI `integrity` propagation,
+  RFC 8288 `Link` preload headers (`RuntimeConfig.link_preload_headers`), opt-in `103 Early Hints`
+  via the ASGI `http.response.early_hint` extension (`RuntimeConfig.early_hints`), immutable
+  `Cache-Control` for hashed files under the Vite `assets` directory
+  (`RuntimeConfig.immutable_cache_headers`), `404` for `manifest.json`/`.vite/manifest.json`/
+  `ssr-manifest.json`/`.litestar.json`/`hot` on the static route, and binary WebSocket frame
+  forwarding in the HMR proxy. Static hooks are router-level and keep Granian
+  `StaticPlacement.NATIVE` eligibility; they do not apply to Granian-native file hits.
+- Added self-contained production SSR: the npm plugin now defaults `ssr.noExternal: true` for
+  production SSR builds and `litestar-vite-plugin/ssr-worker` no longer imports `node:readline`,
+  so the same `ssr.js` runs under Node, Bun, Deno, and QuickJS. The worker exits on
+  `stdin` EOF after draining in-flight requests. **Breaking:** projects that relied on SSR bundles
+  resolving packages from `node_modules` at runtime must opt out with `ssr: { noExternal: [] }`
+  (or a package allow-list) in `vite.config.ts`; see [Migrating to v0.33](learn/migration-0-33.md).
+- Added experimental in-process `WasmIPCTransport` (`litestar-vite[wasm]`, QuickJS) with ES-module
+  bundle loading, a global shim (`TextEncoder`/`TextDecoder`, `queueMicrotask`, `setTimeout`),
+  per-request engine time limits, and automatic context rebuild after a timeout.
+  `RuntimeConfig.ssr_transport` (`auto`/`stdio`/`wasm`) and `resolve_ssr_transport` select the
+  production transport.
+- Added WebSocket route metadata extraction (`WebSocketRoute` with `protocol="websocket"` and
+  AsyncAPI `channel_key` alignment) and type-safe `wsRoute()` / `route.ws()` helpers in generated
+  `routes.ts` and `litestar-vite-plugin/helpers`.
+
 ## 0.32.0 - 2026-09-28
 
 - Added AsyncAPI export and TypeScript channel type generation from a registered

@@ -13,6 +13,15 @@ export const viteMinor = Number(viteMinorRaw)
 export const isVite7Plus: boolean = viteMajor >= 7
 
 /**
+ * Throws a descriptive error if the Vite major version is below 7.
+ */
+export function assertVite7Plus(major: number = viteMajor): void {
+  if (major < 7) {
+    throw new Error(`litestar-vite-plugin requires Vite >= 7.0.0, but running Vite is ${major}.x. Please upgrade Vite.`)
+  }
+}
+
+/**
  * Whether the running Vite version is 8+, which uses Rolldown and exposes
  * `build.rolldownOptions` in place of Vite 7's `build.rollupOptions`.
  */

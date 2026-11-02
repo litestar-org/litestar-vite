@@ -64,8 +64,8 @@ def test_zensical_toml_configuration() -> None:
         "Reference",
     ]
     nav_paths = _flatten_nav_paths(nav)
-    assert len(nav_paths) == 59
-    assert len(set(nav_paths)) == 59
+    assert len(nav_paths) == 60
+    assert len(set(nav_paths)) == 60
 
     mkdocstrings = project["plugins"]["mkdocstrings"]
     assert mkdocstrings["custom_templates"] == "tools/docs/templates"

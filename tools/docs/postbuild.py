@@ -56,6 +56,7 @@ LEGACY_REDIRECTS: dict[str, str] = {
     "guide/vite-architecture": "architecture/",
     "ssr/ipc-architecture": "architecture/ssr-and-ipc/",
     "hypermedia/fragments": "learn/islands-and-htmx/",
+    "migration/0.33": "learn/migration-0-33/",
     "migration/0.32": "learn/migration-0-32/",
     "frameworks/index": "frameworks/",
     "frameworks/react": "frameworks/react/",

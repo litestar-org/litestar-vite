@@ -27,7 +27,7 @@ from litestar_vite.config._constants import FSSPEC_INSTALLED, JINJA_INSTALLED, T
 from litestar_vite.config._deploy import DeployConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._inertia import InertiaConfig, InertiaSSRConfig, InertiaTypeGenConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._paths import PathConfig  # pyright: ignore[reportPrivateUsage]
-from litestar_vite.config._runtime import ExternalDevServer, RuntimeConfig  # pyright: ignore[reportPrivateUsage]
+from litestar_vite.config._runtime import ExternalDevServer, RuntimeConfig, detect_runtime, detect_runtime_marker  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._spa import LoggingConfig, SPAConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._types import TypeGenConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._vite import PaginationContainer, ViteConfig  # pyright: ignore[reportPrivateUsage]
@@ -48,4 +48,6 @@ __all__ = (
     "SPAConfig",
     "TypeGenConfig",
     "ViteConfig",
+    "detect_runtime",
+    "detect_runtime_marker",
 )

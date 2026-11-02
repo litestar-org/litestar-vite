@@ -34,6 +34,7 @@ class StdioIPCTransport(BaseIPCTransport):
         "_pending",
         "_process",
         "_reader_tasks",
+        "_restart_count",
         "_stderr_buffer",
         "_write_lock",
     )
@@ -57,6 +58,7 @@ class StdioIPCTransport(BaseIPCTransport):
         self._cwd = Path(cwd) if cwd else None
         self._env = env
         self._max_restarts = max_restarts
+        self._restart_count = 0
         self._process: anyio.abc.Process | None = None
         self._reader_tasks: list[asyncio.Task[None]] = []
         self._pending: dict[int, tuple[anyio.Event, dict[str, Any]]] = {}
@@ -98,6 +100,10 @@ class StdioIPCTransport(BaseIPCTransport):
                 return
 
             if self._process is not None:
+                if self._restart_count >= self._max_restarts:
+                    msg = f"Worker exceeded maximum automatic restarts ({self._max_restarts})"
+                    raise IPCWorkerCrashError(msg)
+                self._restart_count += 1
                 await self._close()
 
             stale_tasks = list(self._reader_tasks)
@@ -264,12 +270,14 @@ class StdioIPCTransport(BaseIPCTransport):
         if response.get("error") is not None:
             raise IPCError(str(response["error"]))
 
+        self._restart_count = 0
         return response
 
     async def close(self) -> None:
         """Gracefully terminate worker subprocess and release reader tasks."""
         with anyio.CancelScope(shield=True):
             async with self._lock:
+                self._restart_count = 0
                 await self._close()
 
     async def _close(self) -> None:

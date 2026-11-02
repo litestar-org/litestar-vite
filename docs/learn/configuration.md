@@ -21,7 +21,7 @@ flowchart LR
 | --- | --- | --- |
 | [`ViteConfig`](../reference/plugin-and-config.md#litestar_vite.config.ViteConfig) | Top-level mode, environment, and sub-config composition | `mode`, `dev_mode`, `paths`, `runtime`, `inertia`, `types`, `deploy`, `static_props` |
 | [`PathConfig`](../reference/plugin-and-config.md#litestar_vite.config.PathConfig) | Filesystem layout and URL prefix resolution | `root`, `resource_dir`, `bundle_dir`, `public_dir`, `ssr_output_dir`, `asset_url`, `manifest_name`, `hot_file` |
-| [`RuntimeConfig`](../reference/plugin-and-config.md#litestar_vite.config.RuntimeConfig) | Dev proxy, JS executor, subprocess management, and security | `dev_mode`, `proxy_mode`, `host`, `port`, `executor`, `start_dev_server`, `csp_nonce`, `trusted_proxies` |
+| [`RuntimeConfig`](../reference/plugin-and-config.md#litestar_vite.config.RuntimeConfig) | Dev proxy, JS executor, subprocess management, SSR transport, and asset security | `dev_mode`, `proxy_mode`, `host`, `port`, `executor`, `provisioning_mode`, `ssr_transport`, `csp_nonce`, `link_preload_headers`, `early_hints`, `immutable_cache_headers`, `trusted_proxies` |
 | [`InertiaConfig`](../reference/plugin-and-config.md#litestar_vite.config.InertiaConfig) | Inertia.js v2 protocol, shared props, SSR, and Precognition | `root_template`, `ssr`, `use_script_element`, `precognition`, `extra_static_page_props`, `shared_page_prop_types` |
 | [`TypeGenConfig`](../reference/plugin-and-config.md#litestar_vite.config.TypeGenConfig) | OpenAPI, route, Inertia page-props, and AsyncAPI codegen | `output`, `openapi_path`, `routes_path`, `page_props_path`, `schemas_path`, `generate_sdk`, `generate_routes`, `generate_channels` |
 | [`DeployConfig`](../reference/plugin-and-config.md#litestar_vite.config.DeployConfig) | Cloud object storage (`fsspec`) bundle upload and CDN URLs | `enabled`, `storage_backend`, `storage_options`, `asset_url`, `delete_orphaned` |
@@ -75,10 +75,32 @@ Every runtime setting can be controlled via environment variables for container 
 | `VITE_PROXY_MODE` | `RuntimeConfig.proxy_mode` | Auto-derived from `ViteConfig.mode` (`"vite"` or `"proxy"`) |
 | `VITE_HOST` | `RuntimeConfig.host` | `"127.0.0.1"` |
 | `VITE_PORT` | `RuntimeConfig.port` | `5173` |
+| `LITESTAR_VITE_RUNTIME` / `VITE_EXECUTOR` | `RuntimeConfig.executor` | Auto-detected via `detect_runtime()` |
 | `ASSET_URL` | `PathConfig.asset_url` | `"/static/"` |
 | `VITE_DEPLOY_STORAGE` | `DeployConfig.storage_backend` | `None` |
 | `VITE_DEPLOY_ASSET_URL` | `DeployConfig.asset_url` | `None` |
 | `LITESTAR_TRUSTED_PROXIES` | `RuntimeConfig.trusted_proxies` | `None` (`"*"` or comma-separated CIDR/IP list) |
+
+---
+
+## JavaScript Runtime Auto-Detection & Provisioning
+
+When `RuntimeConfig.executor` is omitted, [`detect_runtime()`](../reference/plugin-and-config.md#litestar_vite.config.detect_runtime) inspects your project root (`PathConfig.root`) and selects the matching JavaScript executor automatically:
+
+1. `bun.lock` or `bun.lockb` → `"bun"` (`BunExecutor`)
+2. `deno.lock`, `deno.json`, or `deno.jsonc` → `"deno"` (`DenoExecutor` using `deno task`, `deno install`, `deno outdated --update`)
+3. `pnpm-lock.yaml` → `"pnpm"` (`PnpmExecutor`)
+4. `yarn.lock` → `"yarn"` (`YarnExecutor`)
+5. `package-lock.json` → `"node"` (`NodeExecutor`)
+6. `package.json` `"packageManager"` field (`bun@...`, `deno@...`, `pnpm@...`, `yarn@...`, `npm@...`)
+7. Fallback → `"node"`
+
+`RuntimeConfig.provisioning_mode` controls how the runtime binary is located:
+
+- **`"auto"` (default)**: Prefers a runtime binary installed inside the active Python virtual environment (via PEP 425 wheel extras `litestar-vite[node]`, `litestar-vite[bun]`, or `litestar-vite[deno]`) and falls back to the system `PATH`.
+- **`"wheel"`**: Requires the virtual-environment binary from a runtime wheel extra and raises `ViteExecutableNotFoundError` if missing.
+- **`"nodeenv"`**: Provisions a local Node environment inside the active virtual environment via `nodeenv`.
+- **`"system"`**: Uses only binaries found on the host `PATH`.
 
 ---
 

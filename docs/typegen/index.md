@@ -15,7 +15,7 @@ All intermediate schemas and generated TypeScript files are written under `TypeG
 | Litestar Source | Generated Output | Frontend Exports |
 | --- | --- | --- |
 | OpenAPI Schema | `openapi.json` → `api/` & `schemas.ts` | Typed SDK functions, `FormInput`, `FormResponse`, `SuccessResponse` |
-| Router Metadata | `routes.json` → `routes.ts` | `route()`, `toRoute()`, `isCurrentRoute()`, `RouteName` |
+| Router Metadata | `routes.json` → `routes.ts` | `route()`, `toRoute()`, `wsRoute()`, `isCurrentRoute()`, `RouteName` |
 | Inertia Handlers | `inertia-pages.json` → `page-props.ts` & `inertia.d.ts` | `PagePropsFor`, `SharedPageProps`, `FlashMessages` |
 | Static Props | `.litestar.json` → `static-props.ts` | `virtual:litestar-static-props` |
 | AsyncAPI Plugin | `asyncapi.json` → `channels.ts` | `createTypedChannels()`, `useEventStream()`, `useQueueEventStream()` |

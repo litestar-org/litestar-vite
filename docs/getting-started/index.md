@@ -35,8 +35,11 @@ Install the Python package in your backend environment:
     poetry add litestar-vite
     ```
 
-!!! tip
-    If you use Jinja2 templates (`mode="template"` or Jinja-based root templates), install the `jinja` extra (`uv add "litestar-vite[jinja]"`).
+!!! tip "Optional Extras (`jinja`, `asyncapi`, `node`, `bun`, `deno`, `wasm`)"
+    - **Jinja2 templates (`mode="template"`)**: `uv add "litestar-vite[jinja]"`
+    - **AsyncAPI channel codegen (`generate_channels=True`)**: `uv add "litestar-vite[asyncapi]"`
+    - **Self-contained JS runtime wheels (no host Node/Bun/Deno needed)**: `uv add "litestar-vite[node]"`, `"litestar-vite[bun]"`, or `"litestar-vite[deno]"`
+    - **In-process QuickJS SSR (`WasmIPCTransport`)**: `uv add "litestar-vite[wasm]"`
 
 Install the Vite plugin in your frontend directory (`package.json`):
 

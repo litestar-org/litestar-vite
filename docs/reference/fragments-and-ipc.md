@@ -26,7 +26,17 @@ API reference for UI component fragments (`litestar_vite.fragments`) and the Ser
 
 ::: litestar_vite.ipc.StdioIPCTransport
 
+::: litestar_vite.ipc.WasmIPCTransport
+
 ::: litestar_vite.ipc.TCPStreamIPCTransport
+
+::: litestar_vite.ipc.resolve_ssr_transport
+    options:
+      heading_level: 4
+
+::: litestar_vite.ipc.is_wasm_available
+    options:
+      heading_level: 4
 
 ::: litestar_vite.ipc.IPCRequest
     options:

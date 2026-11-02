@@ -78,6 +78,10 @@ API reference for `ViteAssetLoader`, Jinja template helpers, `AppHandler`, `Vite
     options:
       heading_level: 4
 
+::: litestar_vite.executor.resolve_ssr_command
+    options:
+      heading_level: 4
+
 ---
 
 ## Exceptions Hierarchy

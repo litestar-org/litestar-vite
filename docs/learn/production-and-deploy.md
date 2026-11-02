@@ -45,8 +45,27 @@ When paired with [`litestar-granian`](https://github.com/litestar-org/litestar-g
 
 | ASGI Server | Static Serving Mechanism | Metadata Blocking (`manifest.json`, `hot`) | Immutable Cache Headers |
 | --- | --- | --- | --- |
-| **Granian (`StaticPlacement.NATIVE`)** | Rust HTTP worker serves static files before Python/ASGI | Enforced via native path exclusions + `_StaticBeforeRequestHook` | `Cache-Control: public, max-age=31536000, immutable` |
+| **Granian (`StaticPlacement.NATIVE`)** | Rust HTTP worker serves static files before Python/ASGI | Router hooks preserve `StaticPlacement.NATIVE`; configure equivalent server/CDN rules for native hits | Configure at server/CDN layer for native hits |
 | **Uvicorn / Hypercorn (`StaticPlacement.ASGI`)** | Litestar `create_static_files_router` | Enforced via `_StaticBeforeRequestHook` (404 Not Found) | Enforced via `_StaticAfterRequestHook` |
+
+---
+
+## Asset Headers, Preloading, SRI, and CSP
+
+Production HTML and asset responses served by Litestar apply browser-facing performance and security optimizations controlled by [`RuntimeConfig`](../reference/plugin-and-config.md#litestar_vite.config.RuntimeConfig) and [`ViteAssetLoader`](../reference/runtime-and-assets.md#litestar_vite.loader.ViteAssetLoader):
+
+| Setting | Behavior |
+| --- | --- |
+| `immutable_cache_headers=True` | Files under the Vite `assets` directory whose names carry a Rollup content hash (`index-D8x9kL2p.js`) receive `Cache-Control: public, max-age=31536000, immutable`. Unhashed files (`favicon.ico`, `icon-192x192.png`) are untouched. |
+| `link_preload_headers=True` | HTML responses include an RFC 8288 `Link` header with `rel=modulepreload` for the served entry and its transitive chunks and `rel=preload; as=style` for their stylesheets. Computed once per process from `manifest.json`. |
+| `early_hints=True` (opt-in) | Sends the same preload links as a `103 Early Hints` frame when the ASGI server advertises `http.response.early_hint` in `scope["extensions"]` (for example Hypercorn). Servers without the extension receive only the `Link` header. |
+| `csp_nonce="..."` | Inline and entry scripts carry `nonce="..."`. Inertia and template responses also honor a per-request `request.scope["state"]["csp_nonce"]` set by middleware. |
+| Manifest `integrity` (SRI) | When your Vite build populates `integrity` hashes in `manifest.json` (e.g. via `vite-plugin-manifest-sri`), `ViteAssetLoader` automatically propagates `integrity="sha384-..."` and `crossorigin="anonymous"` onto `<script>`, `<link rel="stylesheet">`, and `<link rel="modulepreload">` tags. |
+
+Internal build metadata (`manifest.json`, `.vite/manifest.json`, `ssr-manifest.json`, `.litestar.json`, and the `hot` file) returns `404` from the Litestar static route regardless of these settings.
+
+!!! note "Granian Native Static Placement (`StaticPlacement.NATIVE`)"
+    The built-in asset hardening (`immutable_cache_headers` and `404` blocking for `manifest.json` / `.vite/manifest.json` / `hot`) is implemented as picklable router-level hooks (`_StaticBeforeRequestHook`, `_StaticAfterRequestHook`) so `StaticFilesConfig.has_asgi_overrides()` stays `False` and the bundle remains eligible for Granian native serving. Consequently, router hooks do not execute on Granian-native hits — configure equivalent cache headers and metadata blocking at the reverse proxy or CDN layer when relying on `StaticPlacement.NATIVE`.
 
 ---
 

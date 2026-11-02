@@ -134,6 +134,7 @@ declare module "@/generated/page-props" {
 declare module "./generated/*" {
     export const route: any;
     export const toRoute: any;
+    export const wsRoute: any;
     export const currentRoute: any;
     export const isCurrentRoute: any;
     export const isRoute: any;
@@ -148,12 +149,14 @@ declare module "./generated/*" {
 declare module "./generated/routes" {
     export const route: any;
     export const toRoute: any;
+    export const wsRoute: any;
     export const currentRoute: any;
     export const isCurrentRoute: any;
     export const isRoute: any;
     export const hasRoute: any;
     export const routeDefinitions: Record<string, any>;
     export type RouteName = string;
+    export type WsRouteName = string;
     export type RouteParams<T extends string = string> = Record<string, any>;
 }
 declare module "./generated/api" {
@@ -214,6 +217,7 @@ declare module "../generated/api" {
 declare module "../generated/routes" {
     export const route: any;
     export const toRoute: any;
+    export const wsRoute: any;
     export const currentRoute: any;
     export const isCurrentRoute: any;
     export const isRoute: any;

@@ -6,15 +6,15 @@
     "dev": "vite",
 {% if enable_ssr %}
     "build": "vue-tsc -b && vite build && vite build --ssr {{ resource_dir }}/ssr.ts",
+    "build:ssr": "vite build --ssr {{ resource_dir }}/ssr.ts",
 {% else %}
     "build": "vue-tsc -b && vite build",
 {% endif %}
     "preview": "vite preview",
 {% if enable_ssr %}
-    "serve": "NODE_ENV=production node {{ resource_dir }}/bootstrap/ssr/ssr.js",
-{% else %}
-    "serve": "vite preview",
+    "serve:ssr": "node {{ resource_dir }}/bootstrap/ssr/ssr.js --stdio",
 {% endif %}
+    "serve": "vite preview",
     "watch": "npm run serve",
     "update": "npm update"{% if generate_client %},
     "generate-types": "openapi-ts"{% endif %}

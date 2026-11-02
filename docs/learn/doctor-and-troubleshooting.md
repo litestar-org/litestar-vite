@@ -38,7 +38,7 @@ litestar assets doctor --check --runtime-checks
 | **6. Production Manifest & Hotfile** | In `dev_mode=False`, verifies `<bundle_dir>/.vite/manifest.json` exists and no stale `hot` file is left behind | Run `litestar assets build` and remove stale `<bundle_dir>/hot` |
 | **7. TypeGen Artifacts** | When `TypeGenConfig` is enabled, checks `openapi.json`, `routes.json`, and `schemas.ts` exist | Run `litestar assets generate-types` |
 | **8. Inertia Script-Element Alignment** | When `InertiaConfig.use_script_element=True`, checks that Inertia v2 client entrypoints enable `useScriptElementForInitialPage: true` | Add `defaults: { future: { useScriptElementForInitialPage: true } }` to `createInertiaApp()` |
-| **9. Environment Variable Conflicts** | Detects deprecated `VITE_PROXY_MODE=direct` or mismatched `VITE_PORT` overrides | Unset `VITE_PROXY_MODE=direct` (single-port `"vite"` or `"proxy"` is always used) |
+| **9. Runtime & Environment Alignment** | Detects `RuntimeConfig.executor` / lockfile mismatches (`detect_runtime_marker`) and deprecated `VITE_PROXY_MODE=direct` overrides | Omit `RuntimeConfig.executor` to auto-detect from your lockfile and unset `VITE_PROXY_MODE=direct` |
 
 ---
 

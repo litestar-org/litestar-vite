@@ -385,7 +385,7 @@ async def test_vite_hmr_handler_accepts_multiple_subprotocols(tmp_path: Path) ->
     socket.scope = {"path": "/vite-hmr", "query_string": b"", "headers": [(b"sec-websocket-protocol", b"json,graphql")]}
     socket.accept = AsyncMock()
     socket.close = AsyncMock()
-    socket.receive_text = AsyncMock(side_effect=WebSocketDisconnect(code=1000, detail="Client disconnected"))
+    socket.receive = AsyncMock(side_effect=WebSocketDisconnect(code=1000, detail="Client disconnected"))
 
     class _DummyUpstream:
         async def __aenter__(self) -> Self:

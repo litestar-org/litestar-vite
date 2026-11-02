@@ -30,6 +30,14 @@ API reference for [`VitePlugin`](#litestar_vite.plugin.VitePlugin), [`ViteConfig
     options:
       heading_level: 4
 
+::: litestar_vite.config.detect_runtime
+    options:
+      heading_level: 4
+
+::: litestar_vite.config.detect_runtime_marker
+    options:
+      heading_level: 4
+
 ---
 
 ## Inertia, TypeGen & Deploy Configuration

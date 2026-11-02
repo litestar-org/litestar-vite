@@ -15,8 +15,9 @@ Litestar Vite provides a unified inter-process communication (IPC) engine (`Base
 
 | Transport | Active When | Wire Protocol | Process & Cache Model |
 | :--- | :--- | :--- | :--- |
-| `TCPStreamIPCTransport` | `dev_mode=True` | HTTP/1.1 `POST /__litestar_ssr__` over `anyio.connect_tcp` | Executes SSR modules inside Vite 7+'s `RunnableDevEnvironment` (`ServerModuleRunner`). Rejects browser requests (`Origin` or `Sec-Fetch-Site` headers return 403). Recursively invalidates parent importer chains on HMR updates. |
-| `StdioIPCTransport` | `dev_mode=False` | Newline-delimited JSON (`IPCRequest` / `IPCResponse`) over `stdin` / `stdout` pipes | Spawns a persistent worker (`litestar-vite-ssr-worker` / `startSsrWorker`). Drains `stderr` concurrently into a bounded 100-line ring buffer to prevent 4 KB OS pipe buffer deadlocks on Windows and Linux. Automatically restarts on crash up to `max_restarts`. |
+| `TCPStreamIPCTransport` | `dev_mode=True` | HTTP/1.1 `POST /__litestar_ssr__` over pooled `httpx2` | Executes SSR modules inside Vite 7+'s `RunnableDevEnvironment` (`ServerModuleRunner`). Rejects browser requests (`Origin` or `Sec-Fetch-Site` headers return 403). Recursively invalidates parent importer chains on HMR updates. |
+| `StdioIPCTransport` | `dev_mode=False` (`ssr_transport="stdio"` or `"auto"`) | Newline-delimited JSON (`IPCRequest` / `IPCResponse`) over `stdin` / `stdout` pipes | Spawns a persistent worker (`startSsrWorker` from `litestar-vite-plugin/ssr-worker` using streaming `TextDecoder` with zero `node:readline` imports, compatible with Node, Bun, and Deno). Drains `stderr` concurrently into a bounded 100-line ring buffer to prevent 4 KB OS pipe buffer deadlocks. Exits with status `0` on `stdin` EOF once in-flight renders drain, and restarts on crash up to `max_restarts`. |
+| `WasmIPCTransport` | `dev_mode=False` (`ssr_transport="wasm"` or auto-detected via `resolve_ssr_transport`) | In-process JSON dispatch via `globalThis.__litestar_ssr_dispatch__` | Evaluates the self-contained ES-module `ssr.js` bundle (`ssr.noExternal: true`) inside an embedded QuickJS context (`litestar-vite[wasm]`) on a dedicated worker thread via `Context.module`. Enforces per-request `set_time_limit(timeout)` and rebuilds the context automatically after a timeout. |
 
 ---
 

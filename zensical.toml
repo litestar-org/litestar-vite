@@ -33,6 +33,7 @@ nav = [
     { "Server-Side Rendering (SSR)" = "learn/ssr.md" },
     { "Production & Deployment" = "learn/production-and-deploy.md" },
     { "Doctor & Troubleshooting" = "learn/doctor-and-troubleshooting.md" },
+    { "Migrating to v0.33" = "learn/migration-0-33.md" },
     { "Migrating to v0.32" = "learn/migration-0-32.md" },
   ] },
   { "Frameworks & Inertia" = [
