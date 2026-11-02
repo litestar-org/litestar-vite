@@ -124,4 +124,3 @@ litestar run --reload                # Vite dev server proxied automatically
 ## Documentation Structure
 
 The documentation is powered by Zensical (`zensical.toml`) with custom styling in `docs/stylesheets/extra.css`, branding assets in `docs/assets/logo.svg` and `docs/assets/favicon.svg`, and autodoc reference generators (`tools/docs/generate_cli_docs.py`, `tools/docs/generate_ts_docs.py`).
-
