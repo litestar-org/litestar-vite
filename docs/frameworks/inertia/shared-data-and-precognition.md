@@ -33,7 +33,7 @@ When `TypeGenConfig` runs (with `InertiaTypeGenConfig(include_default_flash=True
 [Laravel Precognition](https://laravel.com/docs/precognition) lets your frontend validate form fields against your exact Litestar DTO/msgspec/Pydantic validation rules as the user types, without executing the handler body's side effects (database writes, emails, billing calls):
 
 1. Enable `InertiaConfig(precognition=True)` (which registers `create_precognition_exception_handler` to normalize Litestar `ValidationException` errors into Precognition's `{ message, errors }` JSON format).
-2. Decorate your mutation route handler with [`@precognition`](../../reference/inertia.md#litestar_vite.inertia.precognition).
+2. Decorate your mutation route handler with [`@precognition`](../../reference/inertia.md#litestar_vite.inertia.precognition.precognition).
 3. When the client sends `Precognition: true` (and optional `Precognition-Validate-Only: name,slug`), Litestar runs parameter and body validation first:
    - If validation fails, Litestar returns `422 Unprocessable Entity` with field-keyed error messages filtered to `Precognition-Validate-Only`.
    - If validation succeeds on a `Precognition: true` request, `@precognition` short-circuits before executing your route handler body and returns `204 No Content` with `Precognition: true` and `Precognition-Success: true`.

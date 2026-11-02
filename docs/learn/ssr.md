@@ -19,7 +19,7 @@
 
 ## 1. Enabling SSR in `ViteConfig`
 
-Enable SSR by passing `InertiaConfig(ssr=True)` (or an explicit [`InertiaSSRConfig`](../reference/inertia.md#litestar_vite.config.InertiaSSRConfig) instance):
+Enable SSR by passing `InertiaConfig(ssr=True)` (or an explicit [`InertiaSSRConfig`](../reference/plugin-and-config.md#litestar_vite.config.InertiaSSRConfig) instance):
 
 ```python title="docs/examples/learn/ssr_app.py"
 --8<-- "docs/examples/learn/ssr_app.py"

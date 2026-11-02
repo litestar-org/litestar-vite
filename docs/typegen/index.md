@@ -2,7 +2,7 @@
 
 Maintaining duplicate data models, API URL strings, and WebSocket payload types across Python and TypeScript is one of the largest sources of bugs in full-stack applications.
 
-When `ViteConfig(types=True)` (or an explicit [`TypeGenConfig`](../reference/tooling-and-codegen.md#litestar_vite.config.TypeGenConfig)) is enabled, `litestar-vite` exports canonical JSON schemas from Litestar on startup and drives `litestar-vite-plugin` to generate strongly typed TypeScript modules in `src/generated/`.
+When `ViteConfig(types=True)` (or an explicit [`TypeGenConfig`](../reference/plugin-and-config.md#litestar_vite.config.TypeGenConfig)) is enabled, `litestar-vite` exports canonical JSON schemas from Litestar on startup and drives `litestar-vite-plugin` to generate strongly typed TypeScript modules in `src/generated/`.
 
 --8<-- "tools/docs/includes/diagram-typegen-pipeline.html"
 
