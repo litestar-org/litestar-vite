@@ -41,7 +41,7 @@ make build
 | **Docstring & Field Hygiene** | `uv run python tools/docs/scan_public_docstrings.py` | Enforces 1-sentence PEP 257 inline field docstrings, zero duplicate `Attributes:` blocks, and zero rST syntax |
 | **CLI & TypeScript Auto-Docs** | `uv run python tools/docs/generate_cli_docs.py --check && uv run python tools/docs/generate_ts_docs.py --check` | Verifies `docs/reference/cli.md` and `docs/reference/typescript/*.md` match live source |
 | **Documentation Snippet Gate** | `DOCS_EXAMPLES_STRICT=1 uv run python tools/check_docs_examples.py` | Validates fenced code blocks in `docs/**/*.md` and executes `docs/examples/**/*.py` |
-| **Full Documentation Build Gate** | `uv run python tools/docs/verify_docs_artifacts.py --strict-warnings` | Runs Zensical build, `postbuild.py`, HTML size/TOC budgets, and redirect checks |
+| **Full Documentation Build Gate** | `uv run python tools/docs/verify_docs_artifacts.py --strict-warnings` | Runs documentation build, `postbuild.py`, HTML size/TOC budgets, and redirect checks |
 
 ---
 

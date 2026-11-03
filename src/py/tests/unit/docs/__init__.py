@@ -1,1 +1,1 @@
-"""Unit tests for the Zensical documentation toolchain and configuration."""
+"""Unit tests for the documentation toolchain and configuration."""

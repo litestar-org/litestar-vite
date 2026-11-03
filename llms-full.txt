@@ -125,8 +125,7 @@ Use official docs plus official release feeds when checking for updates. For thi
   - @hey-api/openapi-ts docs/releases: https://heyapi.dev/openapi-ts/get-started and https://github.com/hey-api/openapi-ts/releases
   - Re-check here when these change: `src/py/litestar_vite/plugin/`, `src/py/litestar_vite/executor.py`, `src/py/litestar_vite/config/_runtime.py`, `src/py/litestar_vite/codegen/`, `src/js/src/index.ts`, `src/js/src/shared/`, proxy/SSR tests, `README.md`, `llms*.txt`
 
-- **Docs theme / Zensical**
-  - Docs: https://zensical.org/
+- **Documentation theme & layout**
   - Configuration: `zensical.toml`
   - Re-check here when it changes: `zensical.toml`, `docs/stylesheets/extra.css`, `docs/assets/logo.svg`, `docs/assets/favicon.svg`, `CONTRIBUTING.rst`, `README.md`, `llms*.txt`
 

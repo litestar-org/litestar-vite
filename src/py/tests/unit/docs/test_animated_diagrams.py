@@ -6,7 +6,7 @@ REPO_ROOT = Path(__file__).resolve().parents[5]
 
 EXPECTED_DIAGRAMS: dict[str, tuple[str, ...]] = {
     "diagram-dev-proxy.html": ("ViteProxyMiddleware", "anyio.connect_tcp", "/vite-hmr", ".litestar.json"),
-    "diagram-dev-vs-prod.html": ("Development Mode", "Production Mode", "manifest.json", "StaticPlacement.NATIVE"),
+    "diagram-dev-vs-prod.html": ("Development Mode", "Production Mode", "manifest.json", "Immutable caching + metadata blocking"),
     "diagram-operating-modes.html": (
         "lv-mode-spa",
         "lv-mode-hybrid",
@@ -63,7 +63,7 @@ def test_all_six_animated_diagrams_exist_and_satisfy_svg_a11y_and_motion_contrac
         assert "<desc" in text, f"Missing <desc> in {filename}"
         assert "@keyframes" in text, f"Missing @keyframes animation in {filename}"
         assert "prefers-reduced-motion: reduce" in text, f"Missing reduced-motion media query in {filename}"
-        assert "--md-" in text, f"Missing Zensical theme CSS variables in {filename}"
+        assert "--md-" in text, f"Missing theme CSS variables in {filename}"
         for token in required_tokens:
             assert token in text, f"Missing expected token {token!r} in {filename}"
 

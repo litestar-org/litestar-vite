@@ -1,4 +1,4 @@
-"""Post-build pipeline for Zensical documentation artifacts and legacy redirects."""
+"""Post-build pipeline for documentation artifacts and legacy redirects."""
 
 from __future__ import annotations
 
@@ -368,7 +368,7 @@ def write_legacy_redirects(site_dir: Path = DEFAULT_SITE_DIR) -> int:
 
 
 def run_postbuild(site_dir: Path = DEFAULT_SITE_DIR, docs_dir: Path = DEFAULT_DOCS_DIR) -> None:
-    """Execute the full Zensical post-build artifact and redirect pipeline."""
+    """Execute the full post-build artifact and redirect pipeline."""
     site_dir.mkdir(parents=True, exist_ok=True)
     compact_site_html(site_dir=site_dir)
     (site_dir / ".nojekyll").write_text("", encoding="utf-8")

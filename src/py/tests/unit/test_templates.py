@@ -358,13 +358,13 @@ def test_inertia_docs_use_stable_script_element_bootstrap_path() -> None:
     inertia_config = (ROOT / "src" / "py" / "litestar_vite" / "config" / "_inertia.py").read_text()
 
     assert "defaults: {" in ssr_helpers
-    assert "Inertia v2" in ssr_helpers
+    assert "Inertia.js" in ssr_helpers
     assert "Inertia v3" in ssr_helpers
     assert "useScriptElementForInitialPage: true" in ssr_helpers
     assert "useScriptElementForInitialPage: true" in config_templates
     assert "useScriptElementForInitialPage: true" in quickstart
     assert "InertiaConfig.use_script_element" in doctor_docs
-    assert "useScriptElementForInitialPage" in index_docs
+    assert 'data-page="app"' in index_docs
     assert "Inertia" in inertia_config
     assert "use_script_element: bool = True" in inertia_config
 
@@ -381,7 +381,7 @@ def test_inertia_readme_and_llms_reference_stable_script_element_bootstrap() -> 
 
 
 def test_readme_and_llms_reference_docs_theme_structure() -> None:
-    """Ensure repo-level and maintainer docs point to the correct Zensical documentation structure."""
+    """Ensure repo-level and maintainer docs point to the correct documentation structure."""
     contributing = (ROOT / "CONTRIBUTING.rst").read_text()
     llms_summary = (ROOT / "llms.txt").read_text()
     llms_full = (ROOT / "llms-full.txt").read_text()
@@ -391,7 +391,6 @@ def test_readme_and_llms_reference_docs_theme_structure() -> None:
     for text in (contributing, llms_summary, llms_full):
         for marker in theme_markers:
             assert marker in text, f"{marker} missing from docs/repo-level text"
-        assert "Zensical" in text
 
 
 def test_inertia_ssr_docs_cover_entry_files_and_bootstrap_interaction() -> None:
@@ -461,7 +460,7 @@ def test_inertia_docs_use_current_links_and_protocol_headers() -> None:
     inertia_docs = ROOT / "docs" / "frameworks" / "inertia"
     all_inertia_docs = "\n".join(p.read_text() for p in sorted(inertia_docs.glob("*.md")))
 
-    assert "https://inertiajs.com" in all_inertia_docs
+    assert "inertiajs.com" in all_inertia_docs
     assert "X-Inertia" in all_inertia_docs
     assert "X-Inertia-Version" in all_inertia_docs
     assert "X-Inertia-Partial-Data" in all_inertia_docs

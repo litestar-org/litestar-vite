@@ -300,11 +300,11 @@ docs-gen:                                          ## Regenerate CLI and TypeScr
 
 .PHONY: docs-serve
 docs-serve: docs-clean                             ## Serve documentation locally
-	@echo "${INFO} Starting Zensical documentation server... 📚"
+	@echo "${INFO} Starting documentation server... 📚"
 	@uv run zensical serve -a localhost:8000
 
 .PHONY: docs
-docs: docs-clean                                   ## Build and verify Zensical documentation
+docs: docs-clean                                   ## Build and verify documentation
 	@echo "${INFO} Building documentation... 📝"
 	@PYTHONPATH=. uv run python tools/docs/generate_cli_docs.py --check
 	@PYTHONPATH=. uv run python tools/docs/generate_ts_docs.py --check

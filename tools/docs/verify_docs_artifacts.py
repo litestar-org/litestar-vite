@@ -1,4 +1,4 @@
-"""Verification gate for Zensical documentation build artifacts, budgets, and coverage."""
+"""Verification gate for documentation build artifacts, budgets, and coverage."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def _run_zensical_build(strict_warnings: bool) -> list[str]:
 
     if strict_warnings:
         errors.extend(
-            f"Zensical build warning/error detected: {line.strip()}"
+            f"Documentation build warning/error detected: {line.strip()}"
             for line in combined_output.splitlines()
             if WARNING_PATTERN.search(line)
         )
@@ -163,12 +163,12 @@ def verify_docs_build(
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint for ``verify_docs_artifacts.py``."""
-    parser = argparse.ArgumentParser(description="Verify Zensical documentation build and artifacts.")
+    parser = argparse.ArgumentParser(description="Verify documentation build and artifacts.")
     parser.add_argument(
         "--strict-warnings",
         action="store_true",
         default=False,
-        help="Fail if Zensical emits any WARNING or ERROR log lines.",
+        help="Fail if the documentation build emits any WARNING or ERROR log lines.",
     )
     parser.add_argument(
         "--no-build",

@@ -1,4 +1,4 @@
-"""Tests for Zensical configuration, brand assets, Jinja overrides, and pyproject.toml metadata."""
+"""Tests for documentation configuration, brand assets, Jinja overrides, and pyproject.toml metadata."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def _flatten_nav_paths(items: list[Any]) -> list[str]:
 
 
 def test_zensical_toml_configuration() -> None:
-    """Verify zensical.toml configures Zensical Free, mkdocstrings-python, and the 59-page navigation tree."""
+    """Verify zensical.toml configures mkdocstrings-python and the 60-page navigation tree."""
     zensical_path = REPO_ROOT / "zensical.toml"
     assert zensical_path.is_file(), "zensical.toml must exist at repository root"
 

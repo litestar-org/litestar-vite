@@ -8,7 +8,9 @@ from typing import Any, Literal, cast
 
 from litestar import Litestar
 from litestar._openapi.datastructures import OpenAPIContext  # pyright: ignore[reportPrivateUsage]
-from litestar._openapi.parameters import create_parameters_for_handler  # pyright: ignore[reportPrivateUsage,reportPrivateImportUsage]
+from litestar._openapi.parameters import (
+    create_parameters_for_handler,  # pyright: ignore[reportPrivateUsage,reportPrivateImportUsage]
+)
 from litestar.handlers import HTTPRouteHandler, WebsocketRouteHandler
 from litestar.routes import HTTPRoute, WebSocketRoute
 

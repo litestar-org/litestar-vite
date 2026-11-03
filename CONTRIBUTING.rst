@@ -45,8 +45,7 @@ Writing and running tests
 Project documentation
 ---------------------
 
-The documentation is located in the ``/docs`` directory and is written in Markdown powered by
-`Zensical <https://zensical.org/>`_.
+The documentation is located in the ``/docs`` directory and is written in Markdown.
 
 Running the docs locally
 ++++++++++++++++++++++++
