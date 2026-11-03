@@ -127,16 +127,24 @@ def normalize_type_string(type_string: str, openapi_schemas: set[str]) -> str:
 
 @dataclass
 class InertiaPageMetadata:
-    """Metadata for a single Inertia page component."""
+    """Metadata for a single Inertia page component and its extracted prop types."""
 
     component: str
+    """Inertia page component name (for example, `'Dashboard'` or `'Users/Index'`)."""
     route_path: str
+    """URL path pattern associated with the Inertia route handler."""
     props_type: str | None = None
+    """Inferred Python return type name for the page props."""
     schema_ref: str | None = None
+    """OpenAPI `$ref` reference for the page props schema when registered."""
     handler_name: str | None = None
+    """Python function or method name of the route handler."""
     ts_type: str | None = None
+    """Direct TypeScript type expression for inline or non-OpenAPI return types."""
     custom_types: list[str] = field(default_factory=str_list_factory)
+    """Custom schema/type names referenced by the handler's return annotation."""
     wrap_with_content: bool = False
+    """Whether the prop payload is wrapped inside a top-level `content` property."""
 
 
 def get_return_type_name(handler: HTTPRouteHandler) -> "str | None":

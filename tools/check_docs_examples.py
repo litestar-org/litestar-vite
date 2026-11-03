@@ -1,8 +1,8 @@
 """Verification gate for documentation code examples.
 
-Extracts TypeScript, Vue, Svelte, and Python code blocks from reStructuredText
-files, validates them against repository types and runtime definitions, and
-reports source-mapped diagnostics.
+Extracts TypeScript, Vue, Svelte, and Python code blocks from Markdown and
+reStructuredText files, validates them against repository types and runtime
+definitions, and reports source-mapped diagnostics.
 """
 
 from __future__ import annotations
@@ -19,13 +19,16 @@ import subprocess
 import sys
 import tempfile
 import textwrap
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import msgspec
+
 _DIRECTIVE_PATTERN = re.compile(r"^(\s*)\.\.\s+(?:code-block|sourcecode)::\s*(\w+)")
 _OPTION_PATTERN = re.compile(r"^\s*:[a-zA-Z0-9_-]+:")
-_SKIP_MARKER = ".. docs-example: skip"
+_MD_FENCE_OPEN_PATTERN = re.compile(r"^(\s*)(`{3,}|~{3,})\s*([a-zA-Z0-9_-]+)(?:\s+.*)?$")
+_SNIPPET_INCLUDE_PATTERN = re.compile(r'^\s*--8<--\s+["\']([^"\']+)["\']\s*$')
+_SKIP_MARKERS = frozenset({".. docs-example: skip", "<!-- docs-example: skip -->"})
 _SCRIPT_START_PATTERN = re.compile(r"<script\b([^>]*)>", re.IGNORECASE)
 _SCRIPT_END_PATTERN = re.compile(r"</script>", re.IGNORECASE)
 _TS_LANGS = frozenset({"typescript", "ts", "tsx"})
@@ -57,8 +60,47 @@ class _StubModule:
         return _StubSymbol()
 
 
-_AMBIENT_DECLARATIONS = """declare module "@/generated/*";
-declare module "@/generated/routes";
+_AMBIENT_DECLARATIONS = """interface ImportMeta {
+    glob: (pattern: string, options?: Record<string, any>) => Record<string, any>;
+    env: Record<string, any>;
+}
+declare module "@/generated/*";
+declare module "@/generated/routes" {
+    export const route: any;
+    export const toRoute: any;
+    export const wsRoute: any;
+    export const currentRoute: any;
+    export const isCurrentRoute: any;
+    export const isRoute: any;
+    export const hasRoute: any;
+    export const routeDefinitions: Record<string, any>;
+    export type RouteName = string;
+    export type RouteParams<T extends string = string> = Record<string, any>;
+    export type RouteQueryParams<T extends string = string> = Record<string, any>;
+}
+declare module "@/generated/api" {
+    export const client: any;
+    export const listItems: any;
+    export const createItem: any;
+    export const listCustomers: any;
+    export const getApiSummary: any;
+    export const getApiBooks: any;
+    export const getApiBooksBookId: any;
+    export type Book = any;
+    export type Summary = any;
+    export type Item = any;
+    export type ItemCreate = any;
+}
+declare module "@/generated/schemas" {
+    export const schemas: any;
+    export type OperationName = string;
+    export type FormInput<T = any> = any;
+    export type FormResponse<T = any, S = any> = any;
+    export type SuccessResponse<T = any> = any;
+    export type ErrorResponse<T = any> = any;
+    export type PathParams<T = any> = any;
+    export type QueryParams<T = any> = any;
+}
 declare module "@/generated/channels" {
     export type ChannelKey = string;
     export type ChannelAddress<K extends string = string> = string;
@@ -77,21 +119,241 @@ declare module "@/generated/channels" {
     }
     export const CHANNEL_METADATA: Record<string, any>;
 }
-declare module "@/generated/page-props";
+declare module "@/generated/page-props" {
+    export type PagePropsMap = Record<string, any>;
+    export type PageComponentName = string;
+    export type PagePropsFor<K extends string = string> = any;
+    export type SharedProps = Record<string, any>;
+    export type OrdersPageProps = {
+        orders: Array<{ id: number; customer: string; total_cents: number }>;
+        selected_order?: { id: number; customer: string; total_cents: number } | null;
+        audit_log?: string[];
+        permissions?: string[];
+    };
+}
+declare module "./generated/*" {
+    export const route: any;
+    export const toRoute: any;
+    export const wsRoute: any;
+    export const currentRoute: any;
+    export const isCurrentRoute: any;
+    export const isRoute: any;
+    export const hasRoute: any;
+    export const routeDefinitions: Record<string, any>;
+    export const listItems: any;
+    export const createItem: any;
+    export const listCustomers: any;
+    export const CHANNEL_METADATA: Record<string, any>;
+    export type RealtimeChannels = Record<string, any>;
+}
+declare module "./generated/routes" {
+    export const route: any;
+    export const toRoute: any;
+    export const wsRoute: any;
+    export const currentRoute: any;
+    export const isCurrentRoute: any;
+    export const isRoute: any;
+    export const hasRoute: any;
+    export const routeDefinitions: Record<string, any>;
+    export type RouteName = string;
+    export type WsRouteName = string;
+    export type RouteParams<T extends string = string> = Record<string, any>;
+}
+declare module "./generated/api" {
+    export const client: any;
+    export const listItems: any;
+    export const createItem: any;
+    export const listCustomers: any;
+}
+declare module "./generated/schemas" {
+    export type FormInput<T = any> = any;
+    export type SuccessResponse<T = any> = any;
+}
+declare module "./generated/channels" {
+    export const CHANNEL_METADATA: Record<string, any>;
+    export type RealtimeChannels = {
+        ws__notifications: {
+            address: string;
+            protocol: "ws" | "channels";
+            params: Record<string, never>;
+            sendPayload: any;
+            receivePayload: any;
+        };
+    };
+}
+declare module "./generated/api/sdk.gen" {
+    export const listItems: any;
+    export const createItem: any;
+}
+declare module "../generated/*" {
+    export const route: any;
+    export const toRoute: any;
+    export const currentRoute: any;
+    export const isCurrentRoute: any;
+    export const isRoute: any;
+    export const hasRoute: any;
+    export const listItems: any;
+    export const createItem: any;
+    export const listCustomers: any;
+    export type Book = any;
+    export type Summary = any;
+    export type FormInput<T = any> = any;
+    export type SuccessResponse<T = any> = any;
+    export type OrdersPageProps = {
+        orders: Array<{ id: number; customer: string; total_cents: number }>;
+        selected_order?: { id: number; customer: string; total_cents: number } | null;
+        audit_log?: string[];
+        permissions?: string[];
+    };
+}
+declare module "../generated/api" {
+    export const client: any;
+    export const listItems: any;
+    export const createItem: any;
+    export const listCustomers: any;
+    export type Book = any;
+    export type Summary = any;
+}
+declare module "../generated/routes" {
+    export const route: any;
+    export const toRoute: any;
+    export const wsRoute: any;
+    export const currentRoute: any;
+    export const isCurrentRoute: any;
+    export const isRoute: any;
+    export const hasRoute: any;
+    export const routeDefinitions: Record<string, any>;
+}
+declare module "../generated/schemas" {
+    export type FormInput<T = any> = any;
+    export type SuccessResponse<T = any> = any;
+}
+declare module "../generated/page-props" {
+    export type OrdersPageProps = {
+        orders: Array<{ id: number; customer: string; total_cents: number }>;
+        selected_order?: { id: number; customer: string; total_cents: number } | null;
+        audit_log?: string[];
+        permissions?: string[];
+    };
+}
+declare module "./api/types.gen" {
+    export interface InvoiceSummary {
+        id: number;
+        total: number;
+    }
+}
+declare module "./islands/*" {
+    const Component: any;
+    export default Component;
+}
+declare module "./islands/RevenueChart" {
+    const Component: any;
+    export default Component;
+}
+declare module "./islands/RevenueChart.vue" {
+    const Component: any;
+    export default Component;
+}
+declare module "./islands/RevenueChart.svelte" {
+    const Component: any;
+    export default Component;
+}
+declare module "@vitejs/plugin-react" {
+    export default function react(options?: Record<string, any>): any;
+}
+declare module "@vitejs/plugin-vue" {
+    export default function vue(options?: Record<string, any>): any;
+}
+declare module "@sveltejs/vite-plugin-svelte" {
+    export function svelte(options?: Record<string, any>): any;
+}
+declare module "*.vue" {
+    const Component: any;
+    export default Component;
+}
+declare module "*.svelte" {
+    const Component: any;
+    export default Component;
+}
 declare module "@/layouts/*";
-declare module "~/generated/*";
+declare module "~/generated/*" {
+    export const route: any;
+    export type Summary = any;
+}
+declare module "~/generated/routes" {
+    export const route: any;
+}
+declare module "~/generated/api" {
+    export type Summary = any;
+}
 declare module "$lib/*";
 declare module "./$types";
+declare module "astro/config" {
+    export function defineConfig(config: Record<string, any>): any;
+}
+declare function defineNuxtConfig(config: Record<string, any>): any;
+declare module "@sveltejs/kit/vite" {
+    export function sveltekit(): any;
+}
 declare module "@inertiajs/*";
-declare module "@inertiajs/react";
-declare module "@inertiajs/vue3";
-declare module "@inertiajs/svelte";
-declare module "virtual:litestar-static-props";
+declare module "@inertiajs/react" {
+    export const Head: any;
+    export const Link: any;
+    export const router: any;
+    export const Deferred: any;
+    export const WhenVisible: any;
+    export function usePage<T = any>(): { props: T; url: string; component: string; version: string | null };
+    export function useForm<T = any>(initialValues?: T): any;
+    export function createInertiaApp(options: Record<string, any>): Promise<any>;
+}
+declare module "@inertiajs/vue3" {
+    export const Head: any;
+    export const Link: any;
+    export const router: any;
+    export const Deferred: any;
+    export const WhenVisible: any;
+    export function usePage<T = any>(): { props: T; url: string; component: string; version: string | null };
+    export function useForm<T = any>(initialValues?: T): any;
+    export function createInertiaApp(options: Record<string, any>): Promise<any>;
+}
+declare module "@inertiajs/svelte" {
+    export const page: any;
+    export const router: any;
+    export function useForm<T = any>(initialValues?: T): any;
+    export function createInertiaApp(options: Record<string, any>): Promise<any>;
+}
+declare module "virtual:litestar-static-props" {
+    const props: Record<string, any>;
+    export default props;
+    export const appName: string;
+    export const environment: string;
+    export const version: string;
+    export const features: Record<string, boolean>;
+    export const maxUploadMb: number;
+    export const supportEmail: string;
+}
 declare module "react-error-boundary";
-declare module "@angular/*";
-declare module "@angular/core";
-declare module "@angular/router";
-declare module "@angular/common/http";
+declare module "@angular/core" {
+    export interface OnInit {
+        ngOnInit(): void;
+    }
+    export function Component(options: Record<string, any>): any;
+    export function inject<T>(token: abstract new (...args: any[]) => T): T;
+    export function inject<T = any>(token: any): T;
+}
+declare module "@angular/router" {
+    export type Routes = any[];
+    export function provideRouter(routes: any[]): any;
+}
+declare module "@angular/common/http" {
+    export class HttpClient {
+        get<T = any>(url: string): { subscribe(cb: (data: T) => void): void };
+    }
+    export function provideHttpClient(...features: any[]): any;
+}
+declare type SharedPageProps = Record<string, any>;
+declare const MetricsChart: any;
+declare const AuditLogTable: any;
 declare type ChatMessage = any;
 declare type ChatResponse = any;
 declare type RoomEvent = any;
@@ -116,16 +378,8 @@ declare const getApiBooksBookId: any;
 """
 
 
-@dataclass(slots=True)
-class CodeBlock:
-    """Extracted code block metadata and contents.
-
-    Attributes:
-        rst_path: Original reST file path.
-        first_body_line: 1-based line number of the block body in the reST file.
-        lang: Code block language specifier.
-        code: Dedented source content of the block.
-    """
+class CodeBlock(msgspec.Struct, frozen=True, gc=False):
+    """Extracted code block metadata and contents."""
 
     rst_path: Path
     first_body_line: int
@@ -133,15 +387,8 @@ class CodeBlock:
     code: str
 
 
-@dataclass(slots=True)
-class Diagnostic:
-    """Source-mapped failure diagnostic.
-
-    Attributes:
-        rst_path: Original reST file path.
-        line: 1-based line number in the reST file.
-        message: Diagnostic description.
-    """
+class Diagnostic(msgspec.Struct, frozen=True, gc=False):
+    """Source-mapped failure diagnostic."""
 
     rst_path: Path
     line: int
@@ -153,32 +400,15 @@ class Diagnostic:
 
 
 def _is_block_skipped(lines: list[str], directive_index: int) -> bool:
-    """Determine whether a skip marker precedes the directive line.
-
-    Args:
-        lines: All lines in the reST document.
-        directive_index: Index of the .. code-block:: directive line.
-
-    Returns:
-        True if the immediately preceding non-empty line is a skip marker.
-    """
+    """Determine whether a skip marker precedes the directive or fence line."""
     check_idx = directive_index - 1
     while check_idx >= 0 and not lines[check_idx].strip():
         check_idx -= 1
-    return check_idx >= 0 and lines[check_idx].strip() == _SKIP_MARKER
+    return check_idx >= 0 and lines[check_idx].strip() in _SKIP_MARKERS
 
 
 def _skip_directive_options(lines: list[str], start_cursor: int, directive_indent: int) -> int:
-    """Advance past directive options to the start of the body or blank separator.
-
-    Args:
-        lines: All lines in the reST document.
-        start_cursor: Line index immediately following the directive.
-        directive_indent: Column indentation level of the directive.
-
-    Returns:
-        Line index after all options and option continuation lines.
-    """
+    """Advance past directive options to the start of the body or blank separator."""
     cursor = start_cursor
     line_count = len(lines)
     while cursor < line_count:
@@ -205,16 +435,7 @@ def _skip_directive_options(lines: list[str], start_cursor: int, directive_inden
 
 
 def _collect_body_lines(lines: list[str], start_cursor: int, directive_indent: int) -> tuple[int, list[str], int]:
-    """Collect contiguous indented body lines for a code block.
-
-    Args:
-        lines: All lines in the reST document.
-        start_cursor: Line index after directive options.
-        directive_indent: Column indentation level of the directive.
-
-    Returns:
-        Tuple of (first_body_line_number, collected_body_lines, next_cursor).
-    """
+    """Collect contiguous indented body lines for a reStructuredText code block."""
     cursor = start_cursor
     line_count = len(lines)
     while cursor < line_count and not lines[cursor].strip():
@@ -243,24 +464,74 @@ def _collect_body_lines(lines: list[str], start_cursor: int, directive_indent: i
     return first_body_line, body_lines, cursor
 
 
-def extract_code_blocks(rst_path: Path) -> list[CodeBlock]:
-    """Extract validated code blocks from a reStructuredText file.
+def _expand_snippet_includes(body_lines: list[str], repo_root: Path) -> list[str]:
+    """Expand pymdownx.snippets include lines inside a Markdown code block."""
+    expanded: list[str] = []
+    for line in body_lines:
+        match = _SNIPPET_INCLUDE_PATTERN.match(line)
+        if match:
+            snippet_rel = match.group(1)
+            snippet_path = (repo_root / snippet_rel).resolve()
+            if snippet_path.is_file():
+                expanded.extend(snippet_path.read_text(encoding="utf-8").splitlines())
+                continue
+        expanded.append(line)
+    return expanded
 
-    Handles language filtering, skip markers, option pruning, dedenting,
-    and Vue/Svelte script element isolation.
 
-    Args:
-        rst_path: Path to the .rst file to inspect.
+def _extract_markdown_blocks(md_path: Path, lines: list[str], repo_root: Path) -> list[CodeBlock]:
+    """Extract fenced code blocks from a Markdown document."""
+    blocks: list[CodeBlock] = []
+    line_count = len(lines)
+    index = 0
 
-    Returns:
-        List of extracted CodeBlock objects.
-    """
+    while index < line_count:
+        match = _MD_FENCE_OPEN_PATTERN.match(lines[index])
+        if not match:
+            index += 1
+            continue
+
+        fence_chars = match.group(2)
+        lang = match.group(3).lower()
+        is_skipped = _is_block_skipped(lines, index)
+        first_body_line = index + 2
+        cursor = index + 1
+        body_lines: list[str] = []
+
+        close_pattern = re.compile(rf"^\s*{re.escape(fence_chars[0])}{{{len(fence_chars)},}}\s*$")
+        while cursor < line_count and not close_pattern.match(lines[cursor]):
+            body_lines.append(lines[cursor])
+            cursor += 1
+
+        if not is_skipped and body_lines and (lang in _TS_LANGS or lang in _VUE_SVELTE_LANGS or lang in _PY_LANGS):
+            expanded_lines = _expand_snippet_includes(body_lines, repo_root)
+            dedented_body = textwrap.dedent("\n".join(expanded_lines))
+            if lang in _VUE_SVELTE_LANGS:
+                script_block = _extract_script_block(md_path, first_body_line, expanded_lines)
+                if script_block is not None:
+                    blocks.append(script_block)
+            else:
+                blocks.append(
+                    CodeBlock(rst_path=md_path, first_body_line=first_body_line, lang=lang, code=dedented_body)
+                )
+
+        index = cursor + 1
+
+    return blocks
+
+
+def extract_code_blocks(rst_path: Path, repo_root: Path | None = None) -> list[CodeBlock]:
+    """Extract validated code blocks from a Markdown or reStructuredText file."""
     try:
         content = rst_path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         return []
 
+    resolved_root = repo_root or Path(__file__).resolve().parent.parent
     lines = content.splitlines()
+    if rst_path.suffix.lower() == ".md":
+        return _extract_markdown_blocks(rst_path, lines, resolved_root)
+
     blocks: list[CodeBlock] = []
     line_count = len(lines)
     index = 0
@@ -298,16 +569,7 @@ def extract_code_blocks(rst_path: Path) -> list[CodeBlock]:
 
 
 def _extract_script_block(rst_path: Path, first_body_line: int, body_lines: list[str]) -> CodeBlock | None:
-    """Extract the script element contents from a Vue or Svelte body.
-
-    Args:
-        rst_path: Original reST file path.
-        first_body_line: 1-based start line of the component body.
-        body_lines: Component body lines prior to dedenting.
-
-    Returns:
-        CodeBlock targeting TypeScript checking if script tag found, else None.
-    """
+    """Extract the script element contents from a Vue or Svelte body."""
     start_idx: int | None = None
     end_idx: int | None = None
     is_tsx = False
@@ -337,36 +599,41 @@ def _extract_script_block(rst_path: Path, first_body_line: int, body_lines: list
 
 
 def sanitize_filename(rst_path: Path, line: int, ext: str) -> str:
-    """Generate a collision-resistant flat filename for a temp snippet.
-
-    Args:
-        rst_path: Original reST path.
-        line: 1-based line number.
-        ext: Target file extension including dot.
-
-    Returns:
-        Sanitized filename safe for temporary directory storage.
-    """
+    """Generate a collision-resistant flat filename for a temp snippet."""
     clean_stem = re.sub(r"[^a-zA-Z0-9_-]", "_", str(rst_path))
     return f"{clean_stem}__L{line}{ext}"
 
 
 def _write_typescript_stubs(ts_dir: Path) -> None:
-    """Write ambient declaration shims and generated stub modules for tsc.
-
-    Args:
-        ts_dir: Directory where temporary TypeScript snippets reside.
-    """
+    """Write ambient declaration shims and generated stub modules for tsc."""
     ambient_path = ts_dir / "__ambient.d.ts"
     ambient_path.write_text(_AMBIENT_DECLARATIONS, encoding="utf-8")
 
     stub_generated = ts_dir / "generated"
     stub_generated.mkdir(exist_ok=True)
     (stub_generated / "routes.d.ts").write_text(
-        "export const route: any;\nexport const routes: any;\n", encoding="utf-8"
+        "export const route: any;\n"
+        "export const toRoute: any;\n"
+        "export const wsRoute: any;\n"
+        "export const currentRoute: any;\n"
+        "export const isCurrentRoute: any;\n"
+        "export const isRoute: any;\n"
+        "export const hasRoute: any;\n"
+        "export const routes: any;\n"
+        "export const routeDefinitions: Record<string, any>;\n"
+        "export type RouteName = string;\n"
+        "export type RouteParams<T extends string = string> = Record<string, any>;\n",
+        encoding="utf-8",
+    )
+    stub_api = ts_dir / "api"
+    stub_api.mkdir(exist_ok=True)
+    (stub_api / "types.gen.d.ts").write_text(
+        "export interface InvoiceSummary { id: number; total: number; }\n", encoding="utf-8"
     )
     (stub_generated / "api.d.ts").write_text(
         "export const client: any;\n"
+        "export const listItems: any;\n"
+        "export const createItem: any;\n"
         "export const getApiSummary: any;\n"
         "export const getApiBooks: any;\n"
         "export const getApiBooksBookId: any;\n"
@@ -392,6 +659,19 @@ def _write_typescript_stubs(ts_dir: Path) -> None:
         "export const features: any;\n",
         encoding="utf-8",
     )
+    (stub_generated / "channels.d.ts").write_text(
+        "export const CHANNEL_METADATA: Record<string, any>;\nexport type RealtimeChannels = Record<string, any>;\n",
+        encoding="utf-8",
+    )
+    (stub_generated / "page-props.d.ts").write_text(
+        "export type OrdersPageProps = {\n"
+        "    orders: Array<{ id: number; customer: string; total_cents: number }>;\n"
+        "    selected_order?: { id: number; customer: string; total_cents: number } | null;\n"
+        "    audit_log?: string[];\n"
+        "    permissions?: string[];\n"
+        "};\n",
+        encoding="utf-8",
+    )
 
     stub_types = ts_dir / "types"
     stub_types.mkdir(exist_ok=True)
@@ -399,16 +679,7 @@ def _write_typescript_stubs(ts_dir: Path) -> None:
 
 
 def _write_typescript_config(workdir: Path, ts_dir: Path, repo_root: Path) -> Path:
-    """Create tsconfig.json in the workdir with package alias mappings.
-
-    Args:
-        workdir: Base temporary directory.
-        ts_dir: Snippet directory under workdir.
-        repo_root: Litestar-vite repository root path.
-
-    Returns:
-        Path to the generated tsconfig.json.
-    """
+    """Create tsconfig.json in the workdir with package alias mappings."""
     tsconfig_template_path = repo_root / "tools" / "docs_examples" / "tsconfig.docs.json"
     template_data: dict[str, Any] = {}
     if tsconfig_template_path.exists():
@@ -433,6 +704,15 @@ def _write_typescript_config(workdir: Path, ts_dir: Path, repo_root: Path) -> Pa
         "litestar-vite-plugin/react": [str(repo_root / "src" / "js" / "src" / "react" / "index.ts")],
         "litestar-vite-plugin/vue": [str(repo_root / "src" / "js" / "src" / "vue" / "index.ts")],
         "litestar-vite-plugin/svelte": [str(repo_root / "src" / "js" / "src" / "svelte" / "index.ts")],
+        "litestar-vite-plugin/fragments": [str(repo_root / "src" / "js" / "src" / "fragments" / "renderer.ts")],
+        "litestar-vite-plugin/fragments/client": [str(repo_root / "src" / "js" / "src" / "fragments" / "client.ts")],
+        "litestar-vite-plugin/fragments/react": [str(repo_root / "src" / "js" / "src" / "fragments" / "react.ts")],
+        "litestar-vite-plugin/fragments/vue": [str(repo_root / "src" / "js" / "src" / "fragments" / "vue.ts")],
+        "litestar-vite-plugin/fragments/svelte": [str(repo_root / "src" / "js" / "src" / "fragments" / "svelte.ts")],
+        "litestar-vite-plugin/ssr-worker": [str(repo_root / "src" / "js" / "src" / "ssr-worker.ts")],
+        "litestar-vite-plugin/astro": [str(repo_root / "src" / "js" / "src" / "astro.ts")],
+        "litestar-vite-plugin/nuxt": [str(repo_root / "src" / "js" / "src" / "nuxt.ts")],
+        "litestar-vite-plugin/sveltekit": [str(repo_root / "src" / "js" / "src" / "sveltekit.ts")],
         "litestar-vite-plugin": [str(repo_root / "src" / "js" / "src" / "index.ts")],
         "@/generated/*": [str(ts_dir / "generated" / "*")],
     }
@@ -445,15 +725,7 @@ def _write_typescript_config(workdir: Path, ts_dir: Path, repo_root: Path) -> Pa
 
 
 def _parse_tsc_output(output_lines: list[str], block_map: dict[str, tuple[Path, int]]) -> list[Diagnostic]:
-    """Parse compiler output lines into source-mapped Diagnostics.
-
-    Args:
-        output_lines: Combined stdout and stderr lines from tsc.
-        block_map: Mapping from temp file names to originating rst path and line.
-
-    Returns:
-        List of Diagnostic records.
-    """
+    """Parse compiler output lines into source-mapped Diagnostics."""
     diagnostics: list[Diagnostic] = []
     current_diag: Diagnostic | None = None
 
@@ -476,7 +748,7 @@ def _parse_tsc_output(output_lines: list[str], block_map: dict[str, tuple[Path, 
                 source_line = first_body_line + line_offset - 1
                 current_diag = Diagnostic(rst_path=rst_path, line=source_line, message=f"{ts_code}: {detail}")
         elif current_diag is not None and line_clean.startswith(" "):
-            current_diag.message += f" {line_clean.strip()}"
+            current_diag = msgspec.structs.replace(current_diag, message=f"{current_diag.message} {line_clean.strip()}")
 
     if current_diag is not None:
         diagnostics.append(current_diag)
@@ -485,16 +757,7 @@ def _parse_tsc_output(output_lines: list[str], block_map: dict[str, tuple[Path, 
 
 
 def check_typescript_blocks(blocks: list[CodeBlock], workdir: Path, repo_root: Path) -> list[Diagnostic]:
-    """Type-check extracted TypeScript blocks with tsc --noEmit.
-
-    Args:
-        blocks: Extracted TypeScript and script blocks.
-        workdir: Base temporary directory.
-        repo_root: Litestar-vite repository root path.
-
-    Returns:
-        List of mapped Diagnostic failures.
-    """
+    """Type-check extracted TypeScript blocks with tsc --noEmit."""
     if not blocks:
         return []
 
@@ -515,6 +778,7 @@ def check_typescript_blocks(blocks: list[CodeBlock], workdir: Path, repo_root: P
         target_path = ts_dir / fname
         code_str = re.sub(r"\{\s*\.\.\.\s*\}(?:\s*as const\s*satisfies\s*\w+)?", "({} as any)", block.code)
         code_str = re.sub(r"//\s*\.\.\.\s*other routes", "[key: string]: any;", code_str)
+        code_str = re.sub(r'///\s*<reference\s+types="litestar-vite-plugin/virtual"\s*/>', "", code_str)
         if "export function route" in code_str:
             line_list = code_str.splitlines()
             first_idx = -1
@@ -531,8 +795,7 @@ def check_typescript_blocks(blocks: list[CodeBlock], workdir: Path, repo_root: P
                 )
                 line_list.insert(last_idx + 2, 'export function route(...args: any[]): any { return "" as any; }')
                 code_str = "\n".join(line_list)
-        normalized_code = code_str
-        target_path.write_text(normalized_code, encoding="utf-8")
+        target_path.write_text(code_str, encoding="utf-8")
         block_map[target_path.name] = (block.rst_path, block.first_body_line)
 
     _write_typescript_stubs(ts_dir)
@@ -549,16 +812,7 @@ def check_typescript_blocks(blocks: list[CodeBlock], workdir: Path, repo_root: P
 
 
 def check_python_undefined_names(blocks: list[CodeBlock], workdir: Path, repo_root: Path) -> list[Diagnostic]:
-    """Run ruff check --select F821 to identify undefined names in Python blocks.
-
-    Args:
-        blocks: Extracted Python code blocks.
-        workdir: Base temporary directory.
-        repo_root: Litestar-vite repository root path.
-
-    Returns:
-        List of mapped Diagnostic failures.
-    """
+    """Run ruff check --select F821 to identify undefined names in Python blocks."""
     if not blocks:
         return []
 
@@ -609,16 +863,7 @@ def check_python_undefined_names(blocks: list[CodeBlock], workdir: Path, repo_ro
 def _resolve_block_imports(
     tree: ast.AST, rst_path: Path, first_body_line: int
 ) -> tuple[dict[str, Any], dict[str, Any], list[Diagnostic]]:
-    """Resolve imported modules and symbols from an AST tree.
-
-    Args:
-        tree: Parsed AST tree of a Python block.
-        rst_path: Original reST file path.
-        first_body_line: 1-based start line of the block.
-
-    Returns:
-        Tuple of (imported_modules, imported_symbols, diagnostics).
-    """
+    """Resolve imported modules and symbols from an AST tree."""
     diagnostics: list[Diagnostic] = []
     imported_modules: dict[str, Any] = {}
     imported_symbols: dict[str, Any] = {}
@@ -678,18 +923,7 @@ def _resolve_block_imports(
 def _validate_call_keywords(
     call: ast.Call, target_callable: Any, callable_name: str, rst_path: Path, first_body_line: int
 ) -> list[Diagnostic]:
-    """Validate keyword arguments of a Call against inspect.signature.
-
-    Args:
-        call: AST Call node.
-        target_callable: Resolved callable object.
-        callable_name: Printable identifier for the callable.
-        rst_path: Original reST file path.
-        first_body_line: 1-based start line of the block.
-
-    Returns:
-        List of Diagnostic failures for unrecognized keyword arguments.
-    """
+    """Validate keyword arguments of a Call against inspect.signature."""
     if not callable(target_callable):
         return []
 
@@ -725,18 +959,7 @@ def _validate_block_calls(
     imported_modules: dict[str, Any],
     imported_symbols: dict[str, Any],
 ) -> list[Diagnostic]:
-    """Validate all calls in an AST tree against imported symbols and signatures.
-
-    Args:
-        tree: Parsed AST tree of a Python block.
-        rst_path: Original reST file path.
-        first_body_line: 1-based start line of the block.
-        imported_modules: Map of imported module names to module objects.
-        imported_symbols: Map of imported symbol names to resolved objects.
-
-    Returns:
-        List of Diagnostic failures.
-    """
+    """Validate all calls in an AST tree against imported symbols and signatures."""
     diagnostics: list[Diagnostic] = []
 
     for node in ast.walk(tree):
@@ -775,17 +998,7 @@ def _validate_block_calls(
 
 
 def check_python_imports_and_signatures(blocks: list[CodeBlock]) -> list[Diagnostic]:
-    """Validate imports, attributes, and callable signatures in Python blocks.
-
-    Parses blocks with ast, resolves imported modules and members via importlib,
-    and validates Call keyword arguments against inspect.signature.
-
-    Args:
-        blocks: Extracted Python code blocks.
-
-    Returns:
-        List of mapped Diagnostic failures.
-    """
+    """Validate imports, attributes, and callable signatures in Python blocks."""
     diagnostics: list[Diagnostic] = []
 
     for block in blocks:
@@ -816,31 +1029,24 @@ def check_python_imports_and_signatures(blocks: list[CodeBlock]) -> list[Diagnos
 
 
 def collect_rst_files(paths: list[Path]) -> list[Path]:
-    """Collect all target .rst files from specified files and directories.
-
-    Args:
-        paths: Paths provided via CLI arguments.
-
-    Returns:
-        Sorted list of unique resolved .rst paths.
-    """
+    """Collect all target Markdown (.md) and reStructuredText (.rst) documentation files."""
     found: set[Path] = set()
     for path in paths:
         if path.is_file():
             found.add(path)
         elif path.is_dir():
+            for md_path in path.rglob("*.md"):
+                if "reference/typescript/" in md_path.as_posix():
+                    continue
+                found.add(md_path)
             for rst_path in path.rglob("*.rst"):
                 found.add(rst_path)
     return sorted(found)
 
 
 def main() -> int:
-    """CLI entrypoint for documentation code example verification.
-
-    Returns:
-        0 on success, 1 on any diagnostic failure.
-    """
-    parser = argparse.ArgumentParser(description="Verify code examples embedded in reStructuredText documentation.")
+    """CLI entrypoint for documentation code example verification."""
+    parser = argparse.ArgumentParser(description="Verify code examples embedded in documentation.")
     parser.add_argument(
         "--paths", nargs="+", default=["docs"], help="Path(s) to documentation files or directories to verify."
     )
@@ -851,18 +1057,16 @@ def main() -> int:
 
     repo_root = Path(__file__).resolve().parent.parent
     target_paths = [Path(p) if Path(p).is_absolute() else (repo_root / p).resolve() for p in args.paths]
-    rst_files = collect_rst_files(target_paths)
+    doc_files = collect_rst_files(target_paths)
 
     all_blocks: list[CodeBlock] = []
-    for rst_file in rst_files:
+    for doc_file in doc_files:
         try:
-            rel_path = rst_file.relative_to(repo_root)
+            rel_path = doc_file.relative_to(repo_root)
         except ValueError:
-            rel_path = rst_file
-        file_blocks = extract_code_blocks(rst_file)
-        for b in file_blocks:
-            b.rst_path = rel_path
-        all_blocks.extend(file_blocks)
+            rel_path = doc_file
+        file_blocks = extract_code_blocks(doc_file, repo_root=repo_root)
+        all_blocks.extend(msgspec.structs.replace(b, rst_path=rel_path) for b in file_blocks)
 
     ts_blocks = [b for b in all_blocks if b.lang in _TS_LANGS]
     py_blocks = [b for b in all_blocks if b.lang in _PY_LANGS]
@@ -878,14 +1082,14 @@ def main() -> int:
         diagnostics.sort(key=lambda d: (str(d.rst_path), d.line))
 
         for diag in diagnostics:
-            print(str(diag))
+            sys.stdout.write(f"{diag}\n")
 
-        total_files = len(rst_files)
+        total_files = len(doc_files)
         total_blocks = len(all_blocks)
         fail_count = len(diagnostics)
 
         summary = f"docs-example check: {total_blocks} blocks across {total_files} files, {fail_count} failures."
-        print(summary)
+        sys.stdout.write(f"{summary}\n")
 
         return 1 if fail_count > 0 else 0
     finally:

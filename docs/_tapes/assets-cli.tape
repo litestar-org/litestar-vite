@@ -2,7 +2,7 @@
 # Demonstrates: litestar assets wraps npm/bun/deno workflows
 # Uses: examples/react-inertia
 
-Output docs/_static/demos/assets-cli.gif
+Output docs/assets/demos/assets-cli.gif
 
 Set Shell "bash"
 Set FontSize 14

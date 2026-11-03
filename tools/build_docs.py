@@ -1,3 +1,5 @@
+"""Build documentation site and copy artifacts into the target output directory."""
+
 from __future__ import annotations
 
 import argparse
@@ -10,16 +12,16 @@ parser.add_argument("output")
 
 
 def build(output_dir: str) -> None:
-    subprocess.run(["make", "docs"], check=True)  # noqa: S607
+    """Run make docs and copy the generated site/ directory to output_dir."""
+    make_bin = shutil.which("make") or "make"
+    subprocess.run([make_bin, "docs"], check=True)
 
-    docs_src_path = Path("docs/_build/html")
+    docs_src_path = Path("site")
     output_path = Path(output_dir)
 
     output_path.mkdir(parents=True, exist_ok=True)
     output_path.joinpath(".nojekyll").touch(exist_ok=True)
 
-    # Copy LLM context files from root to documentation output directory
-    # This enables discovery at litestar-org.github.io/litestar-vite/llms.txt
     for filename in ["llms.txt", "llms-full.txt"]:
         root_file = Path(filename)
         if root_file.exists():
@@ -34,6 +36,7 @@ def build(output_dir: str) -> None:
 
 
 def main() -> None:
+    """Parse CLI arguments and build documentation output."""
     args = parser.parse_args()
     build(output_dir=args.output)
 

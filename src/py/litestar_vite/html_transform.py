@@ -6,7 +6,7 @@ Regex patterns are compiled once at import time for performance.
 import re
 from functools import lru_cache, partial
 from html.parser import HTMLParser
-from typing import Any
+from typing import Any, cast
 
 __all__ = (
     "inject_head_html",
@@ -480,8 +480,121 @@ window.__vite_plugin_react_preamble_installed__ = true"""
     return html + "\n" + script_content
 
 
+def _find_manifest_integrity_for_file(manifest: dict[str, Any], file_path: str) -> str | None:
+    """Return the SRI integrity attribute for a built file path in the manifest, if present."""
+    for raw_val in manifest.values():
+        if isinstance(raw_val, dict):
+            item = cast("dict[str, Any]", raw_val)
+            if item.get("file") == file_path:
+                integrity = item.get("integrity")
+                if isinstance(integrity, str) and integrity:
+                    return integrity
+    return None
+
+
+def _inject_tag_attributes(tag_suffix: str, extra_attrs: str) -> str:
+    """Insert ``extra_attrs`` before the closing ``>`` or ``/>`` of an HTML opening tag suffix."""
+    if not extra_attrs:
+        return tag_suffix
+    if tag_suffix.endswith("/>"):
+        return f"{tag_suffix[:-2].rstrip()}{extra_attrs} />"
+    if tag_suffix.endswith(">"):
+        return f"{tag_suffix[:-1]}{extra_attrs}>"
+    return f"{tag_suffix}{extra_attrs}"
+
+
+def _format_companion_link_tags(
+    css_items: list[dict[str, Any]], import_items: list[dict[str, Any]], build_url: Any, nonce_attr: str
+) -> str:
+    """Render companion ``<link rel="stylesheet">`` and ``<link rel="modulepreload">`` tags."""
+    tags: list[str] = []
+    for css_item in css_items:
+        css_url = build_url(css_item["file"])
+        css_integrity = css_item.get("integrity")
+        sri_attr = (
+            f' integrity="{_escape_attr(css_integrity)}" crossorigin="anonymous"'
+            if isinstance(css_integrity, str) and css_integrity
+            else ""
+        )
+        tags.append(f'<link rel="stylesheet"{sri_attr}{nonce_attr} href="{_escape_attr(css_url)}" />')
+    for imp_item in import_items:
+        imp_url = build_url(imp_item["file"])
+        imp_integrity = imp_item.get("integrity")
+        if isinstance(imp_integrity, str) and imp_integrity:
+            preload_attrs = f'crossorigin="anonymous" integrity="{_escape_attr(imp_integrity)}"{nonce_attr}'
+        else:
+            preload_attrs = f"crossorigin{nonce_attr}"
+        tags.append(f'<link rel="modulepreload" {preload_attrs} href="{_escape_attr(imp_url)}" />')
+    return "".join(tags)
+
+
+def _collect_manifest_entry_assets(
+    manifest: dict[str, Any], entry_key: str, emitted_css: set[str], emitted_preloads: set[str]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Collect CSS descriptors and imported chunk descriptors recursively for a manifest entry.
+
+    Args:
+        manifest: The parsed Vite manifest dictionary.
+        entry_key: Normalized manifest entry key.
+        emitted_css: Set of already emitted CSS paths across the HTML document.
+        emitted_preloads: Set of already emitted modulepreload file paths across the HTML document.
+
+    Returns:
+        A tuple of ``(css_items, import_items)``.
+    """
+    visited: set[str] = {entry_key}
+    css_items: list[dict[str, Any]] = []
+    import_items: list[dict[str, Any]] = []
+
+    def _append_css_from(manifest_item: dict[str, Any]) -> None:
+        for css_file in manifest_item.get("css", []):
+            if isinstance(css_file, str) and css_file not in emitted_css:
+                emitted_css.add(css_file)
+                css_items.append({"file": css_file, "integrity": _find_manifest_integrity_for_file(manifest, css_file)})
+
+    def _walk(keys: list[str]) -> None:
+        for key in keys:
+            if key in visited or key not in manifest:
+                continue
+            visited.add(key)
+            raw_imp = manifest[key]
+            if not isinstance(raw_imp, dict):
+                continue
+            imp_item = cast("dict[str, Any]", raw_imp)
+            _append_css_from(imp_item)
+            imp_file = imp_item.get("file")
+            if (
+                isinstance(imp_file, str)
+                and imp_file
+                and not imp_file.endswith(".css")
+                and imp_file not in emitted_preloads
+            ):
+                emitted_preloads.add(imp_file)
+                import_items.append(imp_item)
+            raw_nested = imp_item.get("imports", [])
+            if isinstance(raw_nested, list):
+                nested = cast("list[Any]", raw_nested)
+                _walk([str(k) for k in nested])
+
+    raw_root = manifest.get(entry_key)
+    if isinstance(raw_root, dict):
+        root_entry = cast("dict[str, Any]", raw_root)
+        _append_css_from(root_entry)
+        raw_direct = root_entry.get("imports", [])
+        if isinstance(raw_direct, list):
+            direct_imports = cast("list[Any]", raw_direct)
+            _walk([str(k) for k in direct_imports])
+
+    return css_items, import_items
+
+
 def transform_asset_urls(
-    html: str, manifest: dict[str, Any], asset_url: str = "/static/", base_url: str | None = None
+    html: str,
+    manifest: dict[str, Any],
+    asset_url: str = "/static/",
+    base_url: str | None = None,
+    *,
+    csp_nonce: str | None = None,
 ) -> str:
     """Transform asset URLs in HTML based on Vite manifest.
 
@@ -499,6 +612,8 @@ def transform_asset_urls(
         asset_url: Base URL for assets (default "/static/").
         base_url: Optional CDN base URL override for production assets. When
             provided, takes precedence over ``asset_url``.
+        csp_nonce: Optional Content Security Policy nonce to attach to transformed
+            and injected ``<script>`` and ``<link>`` tags.
 
     Returns:
         The HTML with transformed asset URLs. Returns the original HTML unchanged
@@ -514,12 +629,14 @@ def transform_asset_urls(
         manifest = {"resources/main.tsx": {"file": "assets/main-abc123.js"}}
         html = '<script type="module" src="/resources/main.tsx"></script>'
         result = transform_asset_urls(html, manifest)
-        # Result: '<script type="module" src="/static/assets/main-abc123.js"></script>'
     """
     if not manifest:
         return html
 
     url_base = base_url or asset_url
+    emitted_css: set[str] = set()
+    emitted_preloads: set[str] = set()
+    nonce_attr = f' nonce="{_escape_attr(csp_nonce)}"' if csp_nonce else ""
 
     def _normalize_path(path: str) -> str:
         """Normalize a path for manifest lookup by removing leading slash.
@@ -539,10 +656,10 @@ def transform_asset_urls(
         return base + file_path
 
     def replace_script_src(match: re.Match[str]) -> str:
-        """Replace script src with manifest lookup.
+        """Replace script src with manifest lookup and prepend recursive CSS and modulepreload links.
 
         Returns:
-            The transformed script tag with updated src, or original if not found.
+            The transformed script tag with updated src and companion link tags, or original if not found.
         """
         prefix = match.group(1)
         src = match.group(2)
@@ -550,9 +667,20 @@ def transform_asset_urls(
 
         normalized = _normalize_path(src)
         if normalized in manifest:
-            entry = manifest[normalized]
-            new_src = _build_url(entry.get("file", src))
-            return prefix + new_src + suffix
+            raw_entry = manifest[normalized]
+            entry = cast("dict[str, Any]", raw_entry) if isinstance(raw_entry, dict) else {}
+            new_src = _build_url(str(entry.get("file", src)))
+            css_items, import_items = _collect_manifest_entry_assets(
+                manifest, normalized, emitted_css, emitted_preloads
+            )
+            companion = _format_companion_link_tags(css_items, import_items, _build_url, nonce_attr)
+            extra_attrs = ""
+            integrity = entry.get("integrity")
+            if isinstance(integrity, str) and integrity and "integrity=" not in prefix and "integrity=" not in suffix:
+                extra_attrs += f' integrity="{_escape_attr(integrity)}" crossorigin="anonymous"'
+            if nonce_attr and "nonce=" not in prefix and "nonce=" not in suffix:
+                extra_attrs += nonce_attr
+            return companion + prefix + new_src + _inject_tag_attributes(suffix, extra_attrs)
         return match.group(0)
 
     def replace_link_href(match: re.Match[str]) -> str:
@@ -567,9 +695,16 @@ def transform_asset_urls(
 
         normalized = _normalize_path(href)
         if normalized in manifest:
-            entry = manifest[normalized]
-            new_href = _build_url(entry.get("file", href))
-            return prefix + new_href + suffix
+            raw_entry = manifest[normalized]
+            entry = cast("dict[str, Any]", raw_entry) if isinstance(raw_entry, dict) else {}
+            new_href = _build_url(str(entry.get("file", href)))
+            extra_attrs = ""
+            integrity = entry.get("integrity")
+            if isinstance(integrity, str) and integrity and "integrity=" not in prefix and "integrity=" not in suffix:
+                extra_attrs += f' integrity="{_escape_attr(integrity)}" crossorigin="anonymous"'
+            if nonce_attr and "nonce=" not in prefix and "nonce=" not in suffix:
+                extra_attrs += nonce_attr
+            return prefix + new_href + _inject_tag_attributes(suffix, extra_attrs)
         return match.group(0)
 
     html = _SCRIPT_SRC_PATTERN.sub(replace_script_src, html)

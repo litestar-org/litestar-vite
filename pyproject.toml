@@ -23,7 +23,7 @@ dependencies = [
   "httpx2>=2.13.1",
   "markupsafe>=2.0",
   "websockets>=12.0",
-  "typing_extensions"
+  "typing_extensions",
 ]
 description = "Vite plugin for Litestar"
 keywords = ["litestar", "vite"]
@@ -34,16 +34,20 @@ requires-python = ">=3.10"
 version = "0.32.0"
 
 [project.urls]
-Changelog = "https://litestar-org.github.io/litestar-vite/latest/changelog"
+Changelog = "https://litestar-org.github.io/litestar-vite/changelog/"
 Discord = "https://discord.gg/X3FJqy8d2j"
-Documentation = "https://litestar-org.github.io/litestar-vite/latest/"
-Homepage = "https://litestar-org.github.io/litestar-vite/latest/"
+Documentation = "https://litestar-org.github.io/litestar-vite/"
+Homepage = "https://litestar-org.github.io/litestar-vite/"
 Issue = "https://github.com/litestar-org/litestar-vite/issues/"
 Source = "https://github.com/litestar-org/litestar-vite"
 
 [project.optional-dependencies]
 jinja = [ "jinja2"]
 nodeenv = ["nodeenv"]
+node = ["nodejs-wheel>=22.0.0"]
+deno = ["deno>=2.0.0"]
+bun = ["bun-wheel>=1.2.0"]
+wasm = ["quickjs>=1.19.4"]
 http2 = ["h2>=4.0.0"]
 asyncapi = ["litestar-asyncapi>=0.2.0"]
 
@@ -68,22 +72,15 @@ force-include = { "src/py/litestar_vite/static/server-starting.html" = "litestar
 path = "tools/hatch_build.py"
 
 [dependency-groups]
-dev = [ {include-group = "build"}, { include-group = "linting" }, { include-group = "test" }, { include-group = "docs" }  ]
+dev = [{ include-group = "build" }, { include-group = "linting" }, { include-group = "test" }]
 build = ["bump-my-version"]
-docs = [
-    "auto-pytabs[sphinx]>=0.4.0",
-    "shibuya",
-    "sphinx-autobuild>=2021.3.14",
-    "sphinx-click>=4.4.0",
-    "sphinx-copybutton>=0.5.2",
-    "sphinx-design>=0.5.0",
-    "sphinx>=7.1.2",
-    "sphinxcontrib-mermaid>=0.9.2",
-    "sphinx-paramlinks>=0.6.0",
-    "sphinx-togglebutton>=0.3.2",
-    "Pygments","vue-lexer","jsx-lexer",
+doc = [
+  "zensical>=0.0.71; python_version >= '3.11'",
+  "mkdocstrings-python>=2.0.1; python_version >= '3.11'",
+  "pymdown-extensions>=10.16; python_version >= '3.11'",
+  "ruff>=0.15.0; python_version >= '3.11'",
 ]
-linting = ["prek>=0.4.3", "mypy>=1.5.1", "ruff>=0.0.287", "types-docutils", "slotscheck",  "pyright"]
+linting = ["prek>=0.4.3", "mypy>=1.5.1", "ruff>=0.0.287", "slotscheck", "pyright"]
 test = [
   "fsspec",
   "litestar[standard,cryptography,jwt,jinja]",
@@ -99,6 +96,7 @@ test = [
   "pytest-timeout>=2.0.0",
   "httpx>=0.24.1",
   "litestar-asyncapi>=0.2.0",
+  "quickjs>=1.19.4",
 ]
 
 [tool.bumpversion]
@@ -335,6 +333,7 @@ convention = "google"
 max-complexity = 18
 
 [tool.ruff.format]
+exclude = ["*.md"]
 preview = true
 skip-magic-trailing-comma = true
 
@@ -343,7 +342,7 @@ skip-magic-trailing-comma = true
 "src/py/litestar_vite/typing.py" = ["A005"]
 "src/py/litestar_vite/cli.py" = ["RUF001"]
 "docs/**/*.*" = ["S", "B", "DTZ", "A", "TC", "ERA", "D", "RET", "E731", "RUF012", "FA100", "ARG001"]
-"docs/conf.py" = ["FIX002", "ARG001", "INP001"]
+"docs/examples/**/*.py" = ["INP001", "RUF029", "DOC201", "S101"]
 "examples/**/*.*" = ["INP001","RUF029","DOC201"]
 "src/py/litestar_vite/plugin.py" = ["BLE001"]  # Intentional broad exception catch in proxy middleware
 "src/py/tests/**/*.*" = [
@@ -375,6 +374,7 @@ skip-magic-trailing-comma = true
   "RUF029",
 ]
 "tools/*.py" = ["PLR0911", "T201"]
+"tools/docs/**/*.py" = ["PLR0911", "S", "T201"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["litestar_vite", "tests"]
@@ -413,4 +413,4 @@ module = "tests.*"
 
 [tool.codespell]
 ignore-words-list = "selectin,te"  # te is a valid HTTP hop-by-hop header (RFC 2616)
-skip = 'uv.lock,examples/vue-inertia/package-lock.json,examples/vue-inertia/public/assets/*.js,docs/_static/code.css'
+skip = 'uv.lock,examples/vue-inertia/package-lock.json,examples/vue-inertia/public/assets/*.js'

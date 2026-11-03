@@ -120,3 +120,7 @@ litestar run --reload                # Vite dev server proxied automatically
 - Inertia apps default to a JSON script element payload for full-page HTML bootstrap (`InertiaConfig.use_script_element=True`). Inertia v3 clients use that transport automatically. If you pin Inertia v2, the browser entry must also enable `defaults.future.useScriptElementForInitialPage` in `createInertiaApp(...)`, and the SSR entry should mirror that setting when `InertiaConfig(ssr=True)` is enabled. Set `InertiaConfig(use_script_element=False)` to keep the legacy `data-page` attribute bootstrap.
 - `InertiaConfig(ssr=True)` enables Inertia's separate Node SSR renderer for initial HTML responses (default URL `http://127.0.0.1:13714/render`, configurable via `InertiaSSRConfig`). This is distinct from framework proxy mode (`mode="framework"` / alias `mode="ssr"` for Astro, Nuxt, SvelteKit).
 - The plugin maintains a shared `httpx.AsyncClient` (`InertiaPlugin.ssr_client`) for SSR fan-out and pre-resolves async `defer`/`lazy`/`once`/`optional` callbacks on the request loop so they share scope with DI-managed resources.
+
+## Documentation Structure
+
+The documentation is configured in `zensical.toml` with custom styling in `docs/stylesheets/extra.css`, branding assets in `docs/assets/logo.svg` and `docs/assets/favicon.svg`, and autodoc reference generators (`tools/docs/generate_cli_docs.py`, `tools/docs/generate_ts_docs.py`).

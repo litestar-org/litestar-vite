@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
+import { buildRuntimeExecArgs } from "../src/shared/typegen-core"
 
 const execAsync = promisify(exec)
 const repoRoot = process.cwd()
@@ -470,6 +471,30 @@ describe("typegen-cli", () => {
         expect(error.code).toBe(1)
         expect(error.stdout || error.stderr).toContain("Page props generation failed")
       }
+    })
+  })
+
+  describe("buildRuntimeExecArgs", () => {
+    it("prepends run -A when execPath is deno on POSIX or Windows", () => {
+      expect(buildRuntimeExecArgs("/usr/local/bin/deno", "/app/node_modules/@hey-api/openapi-ts/bin/index.cjs", ["-i", "openapi.json"])).toEqual([
+        "run",
+        "-A",
+        "/app/node_modules/@hey-api/openapi-ts/bin/index.cjs",
+        "-i",
+        "openapi.json",
+      ])
+      expect(buildRuntimeExecArgs("C:\\Users\\dev\\.deno\\bin\\deno.exe", "C:\\app\\bin\\index.cjs", ["--file", "openapi-ts.config.ts"])).toEqual([
+        "run",
+        "-A",
+        "C:\\app\\bin\\index.cjs",
+        "--file",
+        "openapi-ts.config.ts",
+      ])
+    })
+
+    it("returns direct binPath and args for node and bun", () => {
+      expect(buildRuntimeExecArgs("/usr/bin/node", "/app/bin/index.cjs", ["-i", "openapi.json"])).toEqual(["/app/bin/index.cjs", "-i", "openapi.json"])
+      expect(buildRuntimeExecArgs("/usr/local/bin/bun", "/app/bin/index.cjs", ["-i", "openapi.json"])).toEqual(["/app/bin/index.cjs", "-i", "openapi.json"])
     })
   })
 })

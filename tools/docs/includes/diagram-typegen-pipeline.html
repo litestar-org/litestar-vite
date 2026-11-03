@@ -1,0 +1,118 @@
+<div class="lv-diag lv-diag--typegen">
+  <style>
+    .lv-diag--typegen {
+      --lv-surface: var(--md-default-bg-color, #ffffff);
+      --lv-card: var(--md-code-bg-color, #f8fafc);
+      --lv-border: rgba(148, 163, 184, 0.35);
+      --lv-text: var(--md-default-fg-color, #0f172a);
+      --lv-muted: var(--md-default-fg-color--light, #475569);
+      --lv-blue: #2563eb;
+      --lv-amber: #d97706;
+      --lv-emerald: #059669;
+      --lv-violet: #7c3aed;
+      margin: 1.5rem 0;
+      padding: 1rem;
+      border-radius: 0.75rem;
+      border: 1px solid var(--lv-border);
+      background: var(--lv-surface);
+    }
+    [data-md-color-scheme="slate"] .lv-diag--typegen {
+      --lv-card: rgba(30, 41, 59, 0.85);
+      --lv-border: rgba(148, 163, 184, 0.24);
+      --lv-blue: #60a5fa;
+      --lv-amber: #fbbf24;
+      --lv-emerald: #34d399;
+      --lv-violet: #a78bfa;
+    }
+    .lv-diag--typegen svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      font-family: var(--md-text-font-family, system-ui, -apple-system, sans-serif);
+    }
+    .lv-diag--typegen .lv-tg-flow {
+      stroke-dasharray: 8 5;
+      animation: lv-tg-dash 1.8s linear infinite;
+    }
+    @keyframes lv-tg-dash {
+      to { stroke-dashoffset: -26; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .lv-diag--typegen .lv-tg-flow {
+        animation: none !important;
+      }
+    }
+  </style>
+  <svg viewBox="0 0 920 340" role="img" aria-labelledby="lv-tg-title lv-tg-desc">
+    <title id="lv-tg-title">End-to-End OpenAPI, AsyncAPI, and Route Type Generation Pipeline</title>
+    <desc id="lv-tg-desc">Four-stage type generation pipeline: 1. Python Litestar introspection (_openapi.py, _asyncapi.py, _routes.py, _inertia.py), 2. Deterministic write_if_changed JSON artifacts (openapi.json, asyncapi.json, routes.json, inertia-pages.json), 3. Vite createLitestarTypeGenPlugin (@hey-api/openapi-ts and TypeScript emitters), and 4. Frontend typed consumption (route(), toRoute(), createTypedChannels(), FormInput, PagePropsFor).</desc>
+
+    <!-- Stage 1: Python Introspection -->
+    <rect x="16" y="25" width="200" height="290" rx="12" fill="var(--lv-card)" stroke="var(--lv-amber)" stroke-width="2" />
+    <text x="116" y="54" text-anchor="middle" fill="var(--lv-text)" font-size="13.5" font-weight="700">Litestar Introspection</text>
+    <text x="116" y="74" text-anchor="middle" fill="var(--lv-amber)" font-size="11" font-family="monospace">export_integration_assets()</text>
+    <rect x="30" y="92" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="116" y="118" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">codegen/_openapi.py</text>
+    <rect x="30" y="146" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="116" y="172" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">codegen/_routes.py</text>
+    <rect x="30" y="200" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="116" y="226" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">codegen/_inertia.py</text>
+    <rect x="30" y="254" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="116" y="280" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">AsyncAPI + static_props</text>
+
+    <!-- Stage 2: Deterministic JSON Artifacts -->
+    <rect x="252" y="25" width="200" height="290" rx="12" fill="var(--lv-card)" stroke="var(--lv-blue)" stroke-width="2" />
+    <text x="352" y="54" text-anchor="middle" fill="var(--lv-text)" font-size="13.5" font-weight="700">JSON Schema Artifacts</text>
+    <text x="352" y="74" text-anchor="middle" fill="var(--lv-blue)" font-size="11" font-family="monospace">write_if_changed (SHA-256)</text>
+    <rect x="266" y="92" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="352" y="118" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">openapi.json</text>
+    <rect x="266" y="146" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="352" y="172" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">routes.json</text>
+    <rect x="266" y="200" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="352" y="226" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">inertia-pages.json</text>
+    <rect x="266" y="254" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="352" y="280" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">asyncapi.json</text>
+
+    <!-- Stage 3: Vite TypeGen Plugin -->
+    <rect x="488" y="25" width="200" height="290" rx="12" fill="var(--lv-card)" stroke="var(--lv-violet)" stroke-width="2" />
+    <text x="588" y="54" text-anchor="middle" fill="var(--lv-text)" font-size="13.5" font-weight="700">Vite TypeGen Plugin</text>
+    <text x="588" y="74" text-anchor="middle" fill="var(--lv-violet)" font-size="11" font-family="monospace">Debounced HMR Watcher</text>
+    <rect x="502" y="92" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="588" y="118" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">@hey-api/openapi-ts</text>
+    <rect x="502" y="146" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="588" y="172" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">emit-schemas-types.ts</text>
+    <rect x="502" y="200" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="588" y="226" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">emit-page-props-types.ts</text>
+    <rect x="502" y="254" width="172" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="588" y="280" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">emit-channels-types.ts</text>
+
+    <!-- Stage 4: Generated TypeScript SDK -->
+    <rect x="724" y="25" width="180" height="290" rx="12" fill="var(--lv-card)" stroke="var(--lv-emerald)" stroke-width="2" />
+    <text x="814" y="54" text-anchor="middle" fill="var(--lv-text)" font-size="13.5" font-weight="700">Typed Frontend</text>
+    <text x="814" y="74" text-anchor="middle" fill="var(--lv-emerald)" font-size="11" font-family="monospace">src/generated/*</text>
+    <rect x="736" y="92" width="156" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="814" y="118" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">api/types.gen.ts + sdk</text>
+    <rect x="736" y="146" width="156" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="814" y="172" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">route() • wsRoute()</text>
+    <rect x="736" y="200" width="156" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="814" y="226" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">PagePropsFor&lt;C&gt;</text>
+    <rect x="736" y="254" width="156" height="44" rx="6" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="814" y="280" text-anchor="middle" fill="var(--lv-text)" font-size="11" font-family="monospace">createTypedChannels()</text>
+
+    <!-- Animated Connectors -->
+    <line class="lv-tg-flow" x1="216" y1="114" x2="252" y2="114" stroke="var(--lv-amber)" stroke-width="2.2" />
+    <line class="lv-tg-flow" x1="216" y1="168" x2="252" y2="168" stroke="var(--lv-amber)" stroke-width="2.2" />
+    <line class="lv-tg-flow" x1="216" y1="222" x2="252" y2="222" stroke="var(--lv-amber)" stroke-width="2.2" />
+    <line class="lv-tg-flow" x1="216" y1="276" x2="252" y2="276" stroke="var(--lv-amber)" stroke-width="2.2" />
+
+    <line class="lv-tg-flow" x1="452" y1="114" x2="488" y2="114" stroke="var(--lv-blue)" stroke-width="2.2" />
+    <line class="lv-tg-flow" x1="452" y1="168" x2="488" y2="168" stroke="var(--lv-blue)" stroke-width="2.2" />
+    <line class="lv-tg-flow" x1="452" y1="222" x2="488" y2="222" stroke="var(--lv-blue)" stroke-width="2.2" />
+    <line class="lv-tg-flow" x1="452" y1="276" x2="488" y2="276" stroke="var(--lv-blue)" stroke-width="2.2" />
+
+    <line class="lv-tg-flow" x1="688" y1="114" x2="724" y2="114" stroke="var(--lv-violet)" stroke-width="2.2" />
+    <line class="lv-tg-flow" x1="688" y1="168" x2="724" y2="168" stroke="var(--lv-violet)" stroke-width="2.2" />
+    <line class="lv-tg-flow" x1="688" y1="222" x2="724" y2="222" stroke="var(--lv-violet)" stroke-width="2.2" />
+    <line class="lv-tg-flow" x1="688" y1="276" x2="724" y2="276" stroke="var(--lv-violet)" stroke-width="2.2" />
+  </svg>
+</div>

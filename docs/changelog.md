@@ -1,0 +1,692 @@
+# Changelog
+
+Notable changes to this project are documented in this file.
+
+## Unreleased
+
+- Added first-class Deno 2.x and Bun runtime support: `RuntimeConfig.executor` is detected from
+  `bun.lock`/`bun.lockb`, `deno.lock`/`deno.json`/`deno.jsonc`, `pnpm-lock.yaml`,
+  `yarn.lock`, `package-lock.json`, or `package.json#packageManager`; `DenoExecutor` uses
+  `deno task`/`deno install`/`deno outdated --update`; type generation emits Deno/Bun-compatible
+  module specifiers; `litestar assets doctor` warns on executor/lockfile mismatches. New optional
+  extras `litestar-vite[node]`, `[bun]`, and `[deno]` install PEP 425 runtime wheels and
+  `RuntimeConfig.provisioning_mode` (`auto`/`wheel`/`nodeenv`/`system`) controls where
+  binaries are resolved from.
+- Added Vite backend-integration and ASGI modernization: recursive `<link rel="modulepreload">` and
+  transitive CSS injection from the manifest graph, CSP `nonce` and SRI `integrity` propagation,
+  RFC 8288 `Link` preload headers (`RuntimeConfig.link_preload_headers`), opt-in `103 Early Hints`
+  via the ASGI `http.response.early_hint` extension (`RuntimeConfig.early_hints`), immutable
+  `Cache-Control` for hashed files under the Vite `assets` directory
+  (`RuntimeConfig.immutable_cache_headers`), `404` for `manifest.json`/`.vite/manifest.json`/
+  `ssr-manifest.json`/`.litestar.json`/`hot` on the static route, and binary WebSocket frame
+  forwarding in the HMR proxy. Static hooks are router-level and keep Granian
+  `StaticPlacement.NATIVE` eligibility; they do not apply to Granian-native file hits.
+- Added self-contained production SSR: the npm plugin now defaults `ssr.noExternal: true` for
+  production SSR builds and `litestar-vite-plugin/ssr-worker` no longer imports `node:readline`,
+  so the same `ssr.js` runs under Node, Bun, Deno, and QuickJS. The worker exits on
+  `stdin` EOF after draining in-flight requests. **Breaking:** projects that relied on SSR bundles
+  resolving packages from `node_modules` at runtime must opt out with `ssr: { noExternal: [] }`
+  (or a package allow-list) in `vite.config.ts`; see [Migrating to v0.33](learn/migration-0-33.md).
+- Added experimental in-process `WasmIPCTransport` (`litestar-vite[wasm]`, QuickJS) with ES-module
+  bundle loading, a global shim (`TextEncoder`/`TextDecoder`, `queueMicrotask`, `setTimeout`),
+  per-request engine time limits, and automatic context rebuild after a timeout.
+  `RuntimeConfig.ssr_transport` (`auto`/`stdio`/`wasm`) and `resolve_ssr_transport` select the
+  production transport.
+- Added WebSocket route metadata extraction (`WebSocketRoute` with `protocol="websocket"` and
+  AsyncAPI `channel_key` alignment) and type-safe `wsRoute()` / `route.ws()` helpers in generated
+  `routes.ts` and `litestar-vite-plugin/helpers`.
+
+## 0.32.0 - 2026-09-28
+
+- Added AsyncAPI export and TypeScript channel type generation from a registered
+  `litestar-asyncapi.AsyncAPIPlugin`. Applications without that plugin no longer receive
+  inferred realtime schemas. ([#368](https://github.com/litestar-org/litestar-vite/pull/368))
+- Added IPC subsystem (`litestar_vite.ipc`) using `StdioIPCTransport` for production `stdio` workers and `TCPStreamIPCTransport` for development Vite `ModuleRunner` SSR, with circuit breaking (`SSRCircuitBreaker`) and client-side hydration fallback. ([#369](https://github.com/litestar-org/litestar-vite/pull/369))
+- Replaced `httpx` with `httpx2` as the runtime HTTP client for pooled asset and framework HTTP proxying;
+  development SSR RPC also uses a managed `httpx2` pool inside `TCPStreamIPCTransport`,
+  while production SSR keeps the stdio IPC protocol. ([#369](https://github.com/litestar-org/litestar-vite/pull/369))
+- Declared `markupsafe` as a runtime dependency so a minimal installation can import the
+  asset loader without installing the optional Jinja template engine.
+- Added Vite `ModuleRunner` dev SSR plugin (`RunnableDevEnvironment.runner`) and recursive importer cache
+  invalidation for in-memory SSR during development. ([#369](https://github.com/litestar-org/litestar-vite/pull/369))
+- Restricted development SSR to configured entrypoints and component roots, rejecting
+  browser-origin RPC requests and paths outside those roots.
+- Added server-side UI component fragment rendering (`ComponentResponse`, Jinja `vite_fragment`
+  global, and `<litestar-island>` custom element) with scoped CSS chunk injection from `manifest.json`
+  for HTMX partial swaps and Jinja templates. ([#369](https://github.com/litestar-org/litestar-vite/pull/369))
+- Updated Inertia HTML transform to use slot/token replacement (`<!--inertia-head-->` and
+  `<!--inertia-body-->`) with fallback to `#app` selector replacement, and routed SSR requests
+  through the IPC transport layer. ([#369](https://github.com/litestar-org/litestar-vite/pull/369))
+- Enforced Vite 7+ minimum runtime baseline (`>=7.0.0`), updated scaffolding templates for Vite 8 and
+  `rolldownOptions`, and bundled dev SSR, worker, and fragment entrypoints in the JS package. ([#369](https://github.com/litestar-org/litestar-vite/pull/369))
+- Fixed SSR token replacement preserving user data, strict failure behavior when the circuit
+  breaker is open, and Jinja fragment rendering with dependency injection and response caching.
+  Bounded worker startup/write deadlines and cancellation-safe cleanup prevent stranded
+  requests and processes. Added compiled component registries and framework-specific island
+  hydration, and corrected generated scaffold builds.
+- Upgraded Python and JavaScript dependencies and updated the Makefile upgrade workflow to use `prek update`.
+- Replaced HTTP Inertia SSR configuration with development ModuleRunner and production stdio
+  workers. Removed `url`, `auto_start`, `health_check`, and `health_check_timeout`;
+  SSR failures now fall back to client rendering by default. See [v0.32 Migration Guide](learn/migration-0-32.md)
+  for dependency, configuration, and generated-artifact migration steps.
+
+## 0.31.0 - 2026-08-17
+
+- Emitted configured CSRF cookie and header names (`CSRF_COOKIE_NAME` and `CSRF_HEADER_NAME`)
+  as static constants in generated TypeScript route definitions (`routes.ts`) sourced from
+  `app.csrf_config`. ([#353](https://github.com/litestar-org/litestar-vite/issues/353))
+- Added static fallback support to frontend CSRF helpers (`getCsrfHeaderName`, `getCookieToken`,
+  `getCsrfToken`, `csrfHeaders`, and `csrfFetch`) so generated constants can be passed in
+  non-server-rendered contexts (e.g. standalone SPA dev servers, unit tests, and API clients)
+  while preserving runtime window global precedence. ([#353](https://github.com/litestar-org/litestar-vite/issues/353))
+- Updated dependencies and version metadata for 0.31.0.
+
+## 0.30.1 - 2026-08-15
+
+- Fixed static route authentication metadata emission at handler level and decoupled native static
+  serving eligibility. ([#349](https://github.com/litestar-org/litestar-vite/issues/349),
+  [#350](https://github.com/litestar-org/litestar-vite/issues/350),
+  [#351](https://github.com/litestar-org/litestar-vite/pull/351))
+
+## 0.30.0 - 2026-08-11
+
+- Fixed direct `msgspec.Struct` Inertia handler returns to use serialized top-level field names,
+  including struct `rename=` rules and explicit `msgspec.field(name=...)` aliases.
+  ([#345](https://github.com/litestar-org/litestar-vite/issues/345))
+- Added async and synchronous `ViteAssetLoader` APIs for resolving exact secondary Vite HTML
+  entries in development and their explicit artifacts in production. The paired npm endpoint safely
+  reads entries beneath the configured Vite root, and optional absolute development asset URLs support
+  documents opened outside the application origin. ([#346](https://github.com/litestar-org/litestar-vite/issues/346))
+
+## 0.29.1 - 2026-08-04
+
+- Fixed relative hot-file paths being rebased against the Vite root when `bundleDir` is absolute.
+  The core plugin and framework integrations now share the same resolver, so the hot file is written
+  directly beneath the configured bundle directory. ([#341](https://github.com/litestar-org/litestar-vite/issues/341),
+  [#343](https://github.com/litestar-org/litestar-vite/pull/343))
+- Fixed Vite 8.1 and newer compatibility proxies erasing HMR defaults with enumerable `undefined`
+  values. HMR options now merge only defined values, explicit overrides and disable flags are preserved,
+  and proxy mode lets Vite infer the browser client port from `@vite/client` instead of synthesizing a
+  potentially stale Litestar port. ([#342](https://github.com/litestar-org/litestar-vite/issues/342),
+  [#343](https://github.com/litestar-org/litestar-vite/pull/343))
+- Changed the internal Vite build and test configurations to use `import.meta.dirname` so they work
+  with Vite's native config loader without compatibility warnings.
+- Updated the release metadata to 0.29.1 and refreshed the Python and JavaScript dependency locks,
+  including `bump-my-version` 1.5.0 and `fsspec` 2026.7.0. ([#340](https://github.com/litestar-org/litestar-vite/pull/340))
+
+## 0.29.0 - 2026-07-27
+
+- Added `InertiaConfig.shared_page_prop_types` for typing props pushed at request time with
+  `share()`. Guards and middleware have no naming site the generator can read, so `auth` and
+  similar props previously fell back to a synthesized `AuthData` shape. Declared annotations are
+  registered against the same OpenAPI schema registry as route props, so nested models resolve to the
+  identical generated TypeScript type instead of a hand-maintained duplicate. Plain models, containers,
+  and unions are all accepted. The field holds types only and never values.
+- Added a generated `inertia.d.ts` that fills Inertia's `flashDataType` configuration slot with the
+  generated `FlashMessages` interface, making `page.flash.success` a `string[]` rather than
+  `unknown`. It is referenced from `page-props.ts` so it still applies when a `tsconfig.json`
+  excludes the generated directory. `include_default_flash=False` skips it and removes any stale copy.
+- Added `csrfCookieName` and `csrfHeaderName` to the `.litestar.json` bridge and injected browser
+  state. `getCsrfToken()`, `getCsrfHeaderName()`, `csrfHeaders()`, `csrfFetch()`, and the HTMX
+  extension now follow custom `CSRFConfig(cookie_name=..., header_name=...)` values automatically.
+- Fixed `litestar assets init` failing with a bare `ModuleNotFoundError` when the `jinja` extra was
+  not installed. Scaffolding now raises `MissingDependencyError` with install instructions from every
+  entry point, and writes no files before failing.
+- Fixed the install hints in `MissingDependencyError`. The direct-install hint named the extra instead
+  of the distribution (`pip install jinja` rather than `pip install jinja2`), and storage backends
+  suggested a `litestar-vite[gcsfs]`-style extra that does not exist.
+- Fixed the empty generated `static-props.ts` describing itself as "currently empty" while pointing at
+  `ViteConfig.static_props`. Inertia applications typically use the unrelated
+  `InertiaConfig.extra_static_page_props`, so an empty file read like a generation failure.
+- Fixed the Astro integration silently ignoring a user-supplied `executor`; the Nuxt and SvelteKit
+  integrations already honored it. `LitestarAstroConfig` now accepts `executor` like the others.
+- Fixed `AssetNotFoundError` and `ManifestNotFoundError` discarding the paths passed to them. The
+  messages still omit filesystem paths, which are now available as `file_path` and `manifest_path`
+  attributes.
+- Changed SPA/proxy route derivation so `/api` and `/schema` are reserved only when registered
+  Litestar routes, OpenAPI configuration, or `RuntimeConfig.extra_route_prefixes` claim them. Add
+  `extra_route_prefixes=("/api",)` if an application relied on the old guessed fallback.
+- Changed Inertia `share()` so top-level `defer()`, `optional()`, `once()`, and `always()`
+  callables run only when the current response renders them or when a redirect needs to persist
+  them. The `True`/`False` return contract is unchanged, and async special props still return
+  `False` because they cannot be persisted synchronously across redirects.
+- Changed Inertia transient state to stay request-local when the current response can consume it
+  and to use the configured session automatically when state must survive a redirect. Existing
+  session-backed application setup remains compatible.
+- Changed `mode="external"` back to a fully supported alias of `mode="framework"`. It no longer emits
+  a `DeprecationWarning`, and still requires `runtime.external_dev_server`. All five mode aliases
+  (`inertia`, `htmx`, `ssr`, `ssg`, `external`) are permanent and silent.
+- Changed `litestar assets doctor` to isolate each diagnostic check. A check that fails is reported as
+  a warning instead of aborting the whole run.
+- Changed the SPA development handler to send `text/html; charset=utf-8`, matching what the production
+  handler already sent.
+- Changed the per-framework `AstroTypesConfig`, `NuxtTypesConfig`, `SvelteKitTypesConfig`, and
+  `TypesConfig` types into aliases of one shared definition. The names and accepted fields are
+  unchanged; the integrations can no longer drift apart.
+- Deprecated `materialize_shared_props_to_session()` for removal in v0.30.0; Inertia redirect
+  responses now perform the compatible session handoff automatically.
+- Replaced HTMX JSON-template expression evaluation with a CSP-safe allowlist interpreter. Assignment,
+  `new`, functions/arrows, computed indexing, array literals, and globals other than `JSON` and
+  `Math` are no longer supported. Reserved data-field names include `constructor`, `__proto__`,
+  `prototype`, `apply`, `call`, `bind`, `arguments`, `callee`, `caller`, and the
+  `__define*`/`__lookup*` names; rename those fields before using them in expressions.
+  `@event` now exposes a sanitized `$event` wrapper instead of the raw DOM event. Applications may
+  remove CSP `script-src 'unsafe-eval'` when no other code requires it.
+- **Breaking**: `MissingDependencyError` takes `extra` in place of `install_package`. `extra` names
+  a `litestar-vite` extra and may be omitted for dependencies that are not exposed as one.
+- **Breaking**: Removed `litestar_vite.commands` and `init_vite()`. Use `litestar_vite.scaffolding`
+  (`TemplateContext` plus `generate_project()`), which is what `litestar assets init` calls and
+  which supports Tailwind, subdirectory output, and client/Zod generation that `init_vite()` did not.
+- **Breaking**: Removed `create_ssr_proxy_controller()` and `create_ssr_websocket_handler()`,
+  deprecated since 0.23.0. Use `SSRProxyMiddleware` for HTTP and `create_ssr_ws_proxy_handler()` for
+  WebSocket HMR.
+- **Breaking**: Removed `inject_body_content()`, `inject_json_script()`, and
+  `set_element_inner_html()` from `litestar_vite.html_transform`, along with the unused
+  `InertiaProps` type. `html_transform` now declares an explicit `__all__`.
+- **Breaking**: `flash` and `errors` are no longer generated into `GeneratedSharedProps`. Inertia
+  carries both on the page object, and the runtime has always sent them that way, so the generated types
+  were the only thing that disagreed. `page.props.flash` never held a value at runtime and now fails to
+  compile; read `page.flash` instead. `page.props.errors` keeps working because Inertia declares it,
+  and gains the accurate `string` value type in place of the `string[]` that was generated before.
+- **Breaking**: `include_default_flash` no longer emits an `auth` prop as a side effect. Applications
+  running `include_default_auth=False` with `include_default_flash=True` previously received a
+  generated `auth` entry anyway; set `include_default_auth=True` to keep it.
+
+## 0.28.0 - 2026-07-25
+
+- Added zero-dependency browser stream helpers for generic WebSocket/SSE routes,
+  regular Litestar Channels routes, and Litestar Queues routes, including
+  reconnect backoff, health, heartbeat filtering, deduplication, and gap
+  warnings.
+- Added the light-DOM `<litestar-stream>` custom element with optional JSON
+  template swapping. For JSON streams it replaces `htmx-ext-ws` and
+  `htmx-ext-sse` rather than layering a second reconnect policy.
+- Added optional `litestar-vite-plugin/react`, `/vue`, and `/svelte`
+  adapters with both generic and queue-specific bindings.
+- Added a server-neutral production static-provider contract for optional Granian 0.16+ native serving while retaining Litestar's static route on every ASGI server.
+- Added an explicit native/ASGI placement result with a diagnostic reason for development, framework/SSR, protected or customized assets, unsafe routes, and invalid production builds.
+- Fixed Vite and Inertia SSR sidecar ownership so the Litestar server lifespan performs graceful process-group cleanup without installing competing global signal handlers.
+- Fixed Vite's run-environment handling so built-in Uvicorn and Granian-backed `litestar run` commands expose the same effective host and port to frontend sidecars and the `.litestar.json` bridge.
+- Changed Vite hotfile readiness so the JS plugin writes the hotfile only after the dev server is listening.
+  Python now pre-writes only user-asserted `ExternalDevServer` targets, so requests arriving during Vite
+  startup fall through to built assets instead of proxying to an unbound socket and returning `502`.
+- Hardened Vite 8.1 HMR compatibility by emitting network options under `server.ws.*` on Vite 8.1+,
+  retaining `server.hmr.*` emission for Vite 7 / 8.0, and continuing to read either shape from user
+  configuration.
+
+## 0.26.1 - 2026-07-06
+
+- Fixed `litestar assets build` so `.litestar.json` is written before pre-build code generators and the JS typegen CLI read the Vite bridge.
+
+## 0.26.0 - 2026-07-05
+
+### Migration notes
+
+- Inertia asset-version mismatches now follow the protocol more strictly: stale `GET` visits receive the `409` refresh response, while stale non-`GET` submissions continue to their handlers. Review handlers that relied on non-`GET` mismatch short-circuiting.
+- Inertia infinite-scroll metadata is now emitted as `scrollProps` keyed by data prop name. Frontend code that read a single flat scroll config should read `scrollProps.<propName>` instead.
+- Type generation now fails production builds by default when generation fails. Set `TypeGenConfig(fail_on_error=False)` or `types.failOnError = false` to keep warn-only build behavior.
+- `litestar assets init --no-prompt` now defaults TypeScript type generation and API client generation ON (previously off). Pass the new `--no-enable-types` or `--no-generate-client` flags to restore the previous behavior non-interactively.
+- `litestar assets init --no-prompt` now aborts with exit code `2` when scaffold files (e.g. `package.json`, `vite.config.ts`) already exist, instead of proceeding and skipping them. Pass `--overwrite` to proceed non-interactively.
+
+- Fixed Inertia asset-version mismatch handling so only `GET` requests can return the protocol `409` refresh response; non-GET submissions now continue to their handlers instead of being downgraded and losing the request body. (#306)
+- Fixed `share()` with Inertia redirects so top-level sync special props are materialized before session storage and async special props are skipped instead of crashing session serialization. (#306)
+- Fixed request-scope Inertia shared props so they are still rendered on routes without session middleware.
+- Fixed Inertia infinite-scroll `scrollProps` to emit a record keyed by data prop name, matching the official client protocol. (#306)
+- Fixed explicit Inertia `scroll_props=` responses so metadata is keyed by the returned data prop when there is a single route prop.
+- Fixed auto-wrapped Inertia responses so non-Inertia JSON handlers preserve Litestar's resolved `201`/`204` status codes while user-created `InertiaResponse` statuses still win. (#306)
+- Fixed Precognition validation success handling for handlers without an explicit `request` parameter by using the middleware request context. (#306)
+- Fixed Inertia SSR serialization so app, handler, and response type encoders are honored for custom page prop values. (#306)
+- Fixed Inertia partial reloads so `deferredProps` metadata is omitted on partial responses while initial responses still advertise deferred props. (#306)
+- Fixed Inertia partial reloads so plain dict route props honor `X-Inertia-Partial-Data` and `X-Inertia-Partial-Except` independently.
+- Fixed `litestar assets init` so generated `package.json` files no longer emit duplicate dependency keys. (#302, #303)
+- Fixed type generation so the JS plugin resolves local `@hey-api/openapi-ts` installs first, uses a pinned package-manager fallback when needed, fails production builds loudly by default, and lets `TypeGenConfig(fail_on_error=False)` or `types.failOnError = false` opt out. (#311, #314)
+- Fixed Deno type-generation fallback execution when the providing npm package exposes a binary with a different name.
+- Fixed type generation reliability for generated outputs by preserving queued dev regenerations, checking that expected output files exist before reusing caches, watching `routes.json`, emitting `static-props.ts` from the shared CLI path, and handling semantic aliases and nested hey-api operation types. (#311, #314)
+- Fixed Vite dev-server resilience by revalidating hotfile targets by mtime, recovering after missing or replaced hotfiles, tolerating additive/corrupt bridge config files, aligning TLS certificate env vars, and preserving static-files defaults when user overrides leave fields unset. (#312, #314)
+- Fixed `litestar assets init` scaffold correctness for framework variants without dedicated directories, Tailwind CSS/PostCSS dependencies and entry inputs, current hey-api/TanStack/Vite template APIs, transactional writes, and non-interactive collision handling. (#313, #314)
+- Updated npm publishing to use trusted publishing with provenance and no npm token. (#314)
+- Fixed Vite dev-server lifecycle handling so unexpected exits are restarted with capped backoff and intentional shutdowns do not trigger restarts. (#317)
+- Fixed Vite dev-server auto-restart so each recovered crash gets a fresh retry budget instead of exhausting the lifetime budget.
+- Changed SPA/proxy route-prefix fallbacks so `/docs` is no longer reserved unless Litestar actually registers docs there or `RuntimeConfig.extra_route_prefixes` includes it. (#317)
+- Added `ViteConfig(enabled=...)` and `VITE_ENABLED` so Vite routes and lifespans can be disabled in CLI, worker, and test contexts while keeping asset CLI commands available. (#301, #310)
+- Added `RuntimeConfig.extra_route_prefixes` for deliberately reserving custom backend prefixes from SPA/proxy fallbacks. (#317)
+- Added `--no-enable-types` and `--no-generate-client` opt-out flags to `litestar assets init` so `--no-prompt` runs can disable TypeScript type generation and API client generation non-interactively.
+- Fixed `getCsrfToken()` so SPA and HTMX helpers can fall back to the `csrftoken` or `XSRF-TOKEN` cookie when injected page-state sources are absent. (#299, #310)
+- Hardened HTMX helper handling so dynamic `href`, `src`, and `action` attributes reject dangerous protocols and expression checks catch denied globals reconstructed through string concatenation. (#316)
+- Simplified Vite integration internals by consolidating type-config resolution, hotfile handling, proxy helpers, Inertia prop wrappers, and typing-only helper paths without removing public exports. (#316)
+- Reduced duplicate work in type generation, route metadata extraction, proxy header filtering, deploy diffing, bridge reads, placeholder probing, and Inertia response wrapping while preserving generated output paths and public behavior. (#315)
+- Fixed SPA startup so async lifespan initialization uses the async handler path and custom Inertia component option keys are preserved when startup wrappers are installed. (#315)
+- Fixed production SPA manifest resolution for Vite's default `.vite/manifest.json` path and recursive deploy change detection for nested bundle assets. (#315)
+- Updated Python dependencies: `typing-extensions` 4.16.0, `prek` 0.4.8, `slotscheck` 0.20.1, and `coverage` 7.15.0. (#309)
+
+## 0.25.0 - 2026-06-25
+
+- Fixed Vite 8.1 HMR compatibility by moving network overrides to `server.ws.*` (#292, #293).
+
+## 0.24.1 - 2026-06-07
+
+- Fixed structured handler returns so Inertia bootstrap responses expose them as HTML props (#272, #277).
+
+## 0.24.0 - 2026-06-03
+
+- Excluded the SPA handler's own routes from the Litestar route prefix list so SPA fallbacks no longer mask real backend routes (#264).
+- Added Python 3.14 to the CI test matrix (#263).
+- Fixed Inertia partial reloads so resolved keys are removed from `deferredProps` and non-requested properties are not included in the response (#265).
+- Replaced Biome with Oxlint and Oxfmt for JavaScript linting and formatting (#232).
+- Prepared the integration for Litestar 3 deprecations and tightened Inertia bootstrap behavior (#269).
+
+## 0.23.4 - 2026-05-06
+
+- Fixed Inertia bootstrap responses to always use the HTML content type (#256).
+
+## 0.23.3 - 2026-05-04
+
+- Normalized browser app URLs (#255).
+- Honored RuntimeConfig.executor for local typegen binary on bun/deno (#253).
+
+## 0.23.2 - 2026-05-04
+
+- Preserved resolved Vite hotfile targets (#252).
+
+## 0.23.1 - 2026-05-03
+
+- Fixed the asset loader so it re-reads the hotfile on demand (#251).
+
+## 0.23.0 - 2026-05-03
+
+- Fixed VitePlugin startup so it eagerly invokes `InertiaPlugin.on_app_init` (#249).
+- Cleaned up dev proxy and config (#250).
+
+## 0.22.2 - 2026-05-03
+
+- Fixed proxy requests so `GET`, `HEAD`, and `OPTIONS` requests do not send request bodies (#242, #246).
+- Fixed Inertia async prop callbacks by pre-resolving `optional()`, `defer()`, `lazy()`, and `once()` callbacks on the request event loop, avoiding asyncpg/aiosqlite/sqlspec cross-loop failures (#244, #245).
+- Fixed Inertia page remounts during navigation and partial reloads by memoizing `resolvePageComponent` wrappers with a `WeakMap` (#245).
+- Removed the internal `BlockingPortal` path from Inertia prop rendering; direct unresolved async prop rendering now raises `RuntimeError` because async callbacks are resolved during response dispatch (#245).
+- Fixed dev-proxy and Inertia fallback regressions (#248).
+
+## 0.22.1 - 2026-04-19
+
+- Fixed metadata extraction for Inertia deferred props before initial and partial response filtering (#236, #241).
+- Updated the documentation build so `llms.txt` and `llms-full.txt` are published at the site root (#240, #241).
+- Isolated TanStack Router generated assets into `src/generated/` in the examples and scaffolding templates (#241).
+- Changed non-Inertia scaffold defaults to use `src` as `resource_dir` while keeping Inertia templates on `resources` (#241).
+- Updated CLI and documentation wording to consistently use `litestar assets` and document `--frontend-dir` (#241).
+- Added Node 24 to CI (#234).
+
+## 0.22.0 - 2026-03-30
+
+- Updated LLM guidance text (#230).
+- Added `extra_commands` to `TypeGenConfig` for frontend code-generation CLIs (#231).
+
+## 0.21.1 - 2026-03-29
+
+- Fixed `resolvePageComponent` types for compatibility with the Inertia v3 `ComponentResolver` (#229).
+
+## 0.21.0 - 2026-03-29
+
+- Fixed type-generation builds and enabled Inertia 3.0 support (#227).
+
+## 0.20.0 - 2026-03-23
+
+- Added Vite 8 support (#217).
+- Normalized resolved command binaries (#218).
+- Hardened the bridge schema and added config validation (#219).
+- Updated Angular packages to latest in examples (#220).
+
+## 0.19.0 - 2026-03-09
+
+- Aligned stable inertia contract and bootstrap guidance (#209).
+
+## 0.18.4 - 2026-03-05
+
+- Prevented proxy bypasses for dev CSS assets and hardened diagnostics (#208).
+
+## 0.18.3 - 2026-03-03
+
+- Aligned proxy/static and inertia script payload handling (#205).
+- Synced `llms.txt` and `llms-full.txt` to the v0.18.3 codebase (#206).
+
+## 0.18.2 - 2026-02-23
+
+- Fixed CLI file-existence checks so they respect `--frontend-dir` (#190).
+- Allowed numeric framework selection in assets init prompt (#197).
+- Fixed CLI next-step output so it includes the `--frontend-dir` path (#191).
+- Fixed the docs logo target and removed stale `watch_patterns` documentation (#199).
+- Fixed module-prefixed enum type resolution and updated docs (#200).
+
+## 0.18.1 - 2026-02-04
+
+- Fixed CLI initialization so it respects the configured `--frontend-dir` path (#186).
+- Improved openapi-ts error handling and included `LICENSE` in the npm package (#187).
+
+## 0.18.0 - 2026-01-29
+
+- Fixed proxy handling for `node_modules` paths and made SPA caching configurable (#184).
+
+## 0.17.0 - 2026-01-19
+
+- Changed the restricted test port from 5061 to 5050 (#177).
+- Added the static-props bridge and fixed the HTMX template (#178, #179).
+
+## 0.16.4 - 2026-01-07
+
+- Updated path validation logic to reduce spurious warnings (#175).
+
+## 0.16.3 - 2026-01-06
+
+- Removed outdated context files for Litestar, React, Svelte, Vue, Vite, and Testing (#174).
+
+## 0.16.2 - 2026-01-05
+
+- Fixed PyPI publishing by building Python distributions into `dist/py` so JavaScript build output is not uploaded as a Python package (#173).
+
+## 0.16.1 - 2026-01-05
+
+- Fixed source distributions by including `package.json` and `package-lock.json` for the build hook (#172).
+
+## 0.16.0 - 2026-01-05
+
+- Cleaned up and updated console format (#171).
+
+## 0.15.0 - 2025-12-22
+
+- Finalized the 0.15.0 overhaul after the prerelease series, including single-port Vite integration, framework-mode docs, Inertia protocol improvements, stronger type generation, route helpers, and Precognition support.
+- This release is a migration point; users should review the updated docs before upgrading from 0.14.x.
+
+## 0.15.0-rc.5 - 2025-12-21
+
+- Added ProxyHeadersMiddleware for secure reverse proxy support (#168).
+- Added Precognition support (#169).
+
+## 0.15.0-rc.4 - 2025-12-20
+
+- Fixed session helpers to return `bool` and added a query-parameter fallback for flash messages (#165).
+
+## 0.15.0-rc.3 - 2025-12-19
+
+- Fixed page-prop type resolution and deployment configuration (#161).
+- Fixed deterministic build output and write-on-change (#162).
+- Split large modules into packages (#163).
+
+## 0.15.0-rc.2 - 2025-12-16
+
+- Detected Inertia mode from `hybrid` in `.litestar.json` (#158).
+- Restored route helpers for runtime navigation (#159).
+
+## 0.15.0-rc.1 - 2025-12-15
+
+- Added auto-install during builds (#152).
+
+## 0.15.0-beta.6 - 2025-12-13
+
+- Cleaned up routing internals (#151).
+
+## 0.15.0-beta.5 - 2025-12-11
+
+- Cleaned up external handler (#148).
+- Enhanced body parameter detection for route handlers (#149).
+
+## 0.15.0-beta.4 - 2025-12-10
+
+- Improved pagination support (#146).
+
+## 0.15.0-beta.3 - 2025-12-09
+
+- Updated CI to bypass checks for GIF generation (#143).
+- Prevented vite proxy from shadowing litestar routes (#144).
+
+## 0.15.0-beta.2 - 2025-12-09
+
+- Fixed Litestar route handling (#138).
+- Fixed the Vue Inertia favicon (#140).
+- Added the litestar-fullstack reference link (#142).
+
+## 0.15.0-beta.1 - 2025-12-08
+
+- Added animated console gifs (#130).
+- Improved Inertia configuration and integration behavior (#131).
+- Fixed proxy handling (#132).
+
+## 0.15.0-alpha.7 - 2025-12-07
+
+- Hardened Inertia security and quality behavior (#127).
+
+## 0.15.0-alpha.6 - 2025-12-06
+
+- Enhanced type generation from OpenAPI schemas (#120).
+
+## 0.15.0-alpha.5 - 2025-12-05
+
+- Added end-to-end tests for examples (#119).
+
+## 0.15.0-alpha.4 - 2025-12-01
+
+- Removed Vite 5 support and fixed production-mode behavior (#118).
+
+## 0.15.0-alpha.3 - 2025-12-01
+
+- Implemented lazy initialization for ViteSPAHandler (#111).
+- Cleaned up path info (#112).
+
+## 0.15.0-alpha.2 - 2025-11-30
+
+- Overhauled the documentation (#108).
+- Updated the README (#109).
+- Corrected index auto-detection and port proxying (#110).
+
+## 0.15.0-alpha.1 - 2025-11-29
+
+- **Breaking**: Added single-port Vite integration (#104).
+
+## 0.14.0 - 2025-08-21
+
+- Corrected a README typo (#88).
+- Added Vite 7 support and made Jinja2 optional (#93).
+
+## 0.13.2 - 2025-05-05
+
+- Fixed `initialize_loader` errors in the loader asset plugin (#80, #78).
+- Updated the example app to use Jinja templating (#79).
+- Fixed plugin `index.html` detection (#86).
+
+## 0.13.1 - 2025-03-27
+
+- **Breaking**: Dropped Python 3.8 support and added Python 3.13 tests (#70).
+- Detected and served `index.html` automatically (#75).
+
+## 0.13.0 - 2025-01-04
+
+- Allowed static file config options (#65).
+- Corrected issues related to hatchling (#67).
+
+## 0.12.1 - 2024-12-30
+
+- Updated `lazy` handling (#64).
+- Allowed no template_config, enabling you to use litestar-vite with html frameworks other than Jinja2 (#63).
+
+## 0.12.0 - 2024-12-23
+
+- Added experimental Inertia `lazy()` support for deferring prop rendering until a partial reload requests the data (#61).
+
+## 0.11.1 - 2024-12-09
+
+- Used subprocess directly.
+
+## 0.11.0 - 2024-12-09
+
+- Improved process management (#59).
+
+## 0.10.0 - 2024-12-08
+
+- **Breaking**: Removed the custom `JinjaTemplateEngine` integration and switched to patching Litestar's built-in `TemplateConfig` instead (#58).
+- Applications should configure Litestar templates through `template_config=TemplateConfig(...)` and keep `VitePlugin` focused on Vite assets.
+
+## 0.9.0 - 2024-12-07
+
+- Reformatted the `Makefile` (#56).
+- Added SPA `index.html` auto-detection (#57).
+
+## 0.8.3 - 2024-12-06
+
+- Fixed remaining npm-package publishing issues after the 0.8.x build pipeline updates.
+
+## 0.8.2 - 2024-12-06
+
+- Fixed `--root-path` option behavior during CLI initialization (#48).
+
+## 0.8.1 - 2024-12-01
+
+- Fixed the generated wheel so the `litestar_vite` Python module is included.
+
+## 0.8.0 - 2024-12-01
+
+- Added 404 redirect option (#46).
+
+## 0.7.1 - 2024-11-30
+
+- Updated `build_docs.py` (#54).
+- Updated release process (#55).
+
+## 0.7.0 - 2024-11-30
+
+- Synchronized the Python `litestar-vite` package and TypeScript `vite-plugin` package versions after earlier version drift.
+- Updated the example app with JavaScript route helpers (#43).
+- Added API documentation, introduced the Vite plugin package, and moved project tooling to `uv` (#53).
+
+## 0.2.9 - 2024-08-04
+
+- Updated exception handler (#42).
+
+## 0.2.8 - 2024-07-30
+
+- Fixed external redirect (#41).
+
+## 0.2.7 - 2024-07-28
+
+- Added `ImproperConfig` to exception handler (#40).
+
+## 0.2.6 - 2024-07-28
+
+- Fixed URL reconstruction with `urlunparse`.
+
+## 0.2.5 - 2024-07-28
+
+- Used the referer scheme for redirects (#39).
+
+## 0.2.4 - 2024-07-27
+
+- Improved invalid-session error handling (#38).
+
+## 0.2.3 - 2024-07-27
+
+- Added automatic session props (#36).
+- Improved error handling (#37).
+
+## 0.2.2 - 2024-07-22
+
+- Updated `referer` handling (#35).
+
+## 0.2.1 - 2024-07-21
+
+- Fixed flash handling so it only runs when a session exists (#34).
+
+## 0.2.0 - 2024-07-21
+
+- Improved integration with the `flash` plugin (#21).
+- Fixed Python 3.8 compatibility by avoiding `removesuffix` (#28).
+- Added the base Inertia.js integration (#5).
+- Enhanced Inertia.js support (#33).
+
+## 0.1.22 - 2024-03-23
+
+- Fixed template initialization (#19).
+
+## 0.1.21 - 2024-03-20
+
+- Removed `cli` from the required `litestar` optional features (#18).
+
+## 0.1.20 - 2024-03-17
+
+- Fixed serving `public_dir` when it exists (#17).
+
+## 0.1.19 - 2024-02-20
+
+- Replaced deprecated static-file integration (#15).
+
+## 0.1.18 - 2024-02-04
+
+- Set the engine instance during configuration and adjusted the default manifest path (#14).
+
+## 0.1.17 - 2024-01-02
+
+- Added automatic Litestar static-file configuration for Vite assets.
+
+## 0.1.16 - 2023-12-30
+
+- Improved CLI console output, simplified Jinja templates, and added environment-variable configuration support.
+
+## 0.1.15 - 2023-12-19
+
+- Fixed websocket-client rendering when dev mode is disabled.
+
+## 0.1.14 - 2023-12-19
+
+- Fixed HMR rendering so it follows dev-mode status and HMR configuration.
+
+## 0.1.13 - 2023-12-19
+
+- Fixed `hot_file` location loading when `DEV_MODE` is enabled.
+
+## 0.1.12 - 2023-12-19
+
+- Added the `set_environment` call to server lifespan handling.
+
+## 0.1.11 - 2023-12-19
+
+- Fixed startup before frontend assets have been built.
+
+## 0.1.10 - 2023-12-17
+
+- Cleaned up templates and added default entry points (#13).
+
+## 0.1.9 - 2023-12-13
+
+- Removed stale `asset_path` references (#12).
+
+## 0.1.8 - 2023-12-13
+
+- Removed `asset_dir` and allowed paths to be passed as strings (#11).
+
+## 0.1.7 - 2023-12-11
+
+- Added `build --watch` option and updated `README` (#10).
+
+## 0.1.6 - 2023-12-10
+
+- Updated default manifest location (#9).
+
+## 0.1.5 - 2023-12-10
+
+- Optimized imports (#8).
+
+## 0.1.4 - 2023-12-10
+
+- Added project templating and the JavaScript plugin (#4).
+- Added additional Vite install templates (#6).
+
+## 0.1.3 - 2023-10-08
+
+- Added `py.typed` to the package (#3).
+
+## 0.1.2 - 2023-10-05
+
+- Corrected a typo (#2).
+
+## 0.1.1 - 2023-10-05
+
+- Corrected imports (#1).
+
+## 0.1.0 - 2023-10-04
+
+- Initial release of the Litestar Vite plugin.

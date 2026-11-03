@@ -19,7 +19,7 @@ from rich.prompt import Confirm
 from rich.syntax import Syntax
 from rich.table import Table
 
-from litestar_vite.config import ExternalDevServer, TypeGenConfig
+from litestar_vite.config import ExternalDevServer, TypeGenConfig, detect_runtime_marker
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -134,39 +134,64 @@ def _rel_to_root(path: Path | None, root: Path) -> str:
 
 @dataclass
 class DoctorIssue:
-    """Represents a detected configuration issue."""
+    """Diagnostic issue detected by `ViteDoctor` when inspecting Python and Vite configuration."""
 
     check: str
+    """Name of the diagnostic check that raised the issue."""
     severity: Literal["error", "warning"]
+    """Issue severity (`'error'` or `'warning'`)."""
     message: str
+    """Human-readable explanation of the configuration mismatch or problem."""
     fix_hint: str
+    """Actionable remediation guidance for resolving the issue."""
     auto_fixable: bool = False
+    """Whether `litestar assets doctor --fix` can automatically patch this issue."""
     context: dict[str, Any] | None = None
+    """Optional structured context values used by automatic fixers."""
 
 
 @dataclass
 class ParsedViteConfig:
-    """Parsed values from vite.config.* file."""
+    """Static analysis snapshot extracted from a `vite.config.*` file."""
 
     path: Path
+    """Filesystem path to the inspected `vite.config.*` file."""
     content: str
+    """Raw UTF-8 source text of the Vite configuration file."""
     litestar_config_block: str | None = None
+    """Extracted argument block passed to the `litestar({...})` Vite plugin call."""
     has_litestar_config: bool = False
+    """Whether a `litestar(...)` plugin invocation was found in the file."""
     asset_url: str | None = None
+    """Configured `assetUrl` value parsed from `vite.config.*`, if explicitly set."""
     bundle_dir: str | None = None
+    """Configured `bundleDir` value parsed from `vite.config.*`, if explicitly set."""
     resource_dir: str | None = None
+    """Configured `resourceDir` value parsed from `vite.config.*`, if explicitly set."""
     static_dir: str | None = None
+    """Configured `staticDir` value parsed from `vite.config.*`, if explicitly set."""
     hot_file: str | None = None
+    """Configured `hotFile` value parsed from `vite.config.*`, if explicitly set."""
     inertia_mode: bool | None = None
+    """Explicit `inertia` boolean parsed from `vite.config.*`, if present."""
     types_setting: Literal["auto"] | bool | None = None
+    """Raw `types` option (`'auto'`, `True`, `False`, or `None`) parsed from `vite.config.*`."""
     inputs: list[str] = field(default_factory=_str_list_factory)
+    """Entrypoint paths configured in the `input` option of `litestar({...})`."""
     types_enabled: bool | None = None
+    """Whether TypeScript type generation is explicitly enabled in `vite.config.*`."""
     types_output: str | None = None
+    """Configured `types.output` directory parsed from `vite.config.*`."""
     types_openapi_path: str | None = None
+    """Configured `types.openapiPath` parsed from `vite.config.*`."""
     types_routes_path: str | None = None
+    """Configured `types.routesPath` parsed from `vite.config.*`."""
     types_generate_zod: bool | None = None
+    """Configured `types.generateZod` flag parsed from `vite.config.*`."""
     types_generate_sdk: bool | None = None
+    """Configured `types.generateSdk` flag parsed from `vite.config.*`."""
     server_origin: str | None = None
+    """Explicit `server.origin` URL parsed from `vite.config.*`, if present."""
 
 
 class ViteDoctor:
@@ -262,6 +287,7 @@ class ViteDoctor:
             self._check_typegen_artifacts,
             self._check_realtime_config,
             self._check_env_alignment,
+            self._check_runtime_lockfile_alignment,
             self._check_mode_inertia_conflicts,
             self._check_ssr_reachability,
             self._check_static_props_secrets,
@@ -1244,6 +1270,34 @@ class ViteDoctor:
                     severity="warning",
                     message=mismatch_lines,
                     fix_hint="Unset conflicting env vars or align ViteConfig/runtime before running",
+                    auto_fixable=False,
+                )
+            )
+
+    def _check_runtime_lockfile_alignment(self) -> None:
+        """Warn when an explicitly configured executor conflicts with repository lockfiles."""
+        if not self.config.runtime.has_explicit_executor:
+            return
+
+        root = self.config.root_dir or Path.cwd()
+        marker = detect_runtime_marker(root)
+        if marker is None:
+            return
+        expected_executor, filename = marker
+        configured = self.config.runtime.executor or "node"
+        if configured != expected_executor:
+            self.issues.append(
+                DoctorIssue(
+                    check="Runtime / Lockfile Mismatch",
+                    severity="warning",
+                    message=(
+                        f"RuntimeConfig(executor={configured!r}) conflicts with {filename!r} "
+                        f"in {root} (expected executor={expected_executor!r})"
+                    ),
+                    fix_hint=(
+                        f"Set RuntimeConfig(executor={expected_executor!r}) or omit executor to "
+                        "allow automatic lockfile detection"
+                    ),
                     auto_fixable=False,
                 )
             )

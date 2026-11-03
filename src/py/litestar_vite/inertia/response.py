@@ -1,3 +1,5 @@
+"""Inertia.js v2 response (`InertiaResponse`) and redirect (`InertiaRedirect`, `InertiaBack`, `InertiaExternalRedirect`) classes."""
+
 import contextlib
 import itertools
 import logging
@@ -42,6 +44,7 @@ from litestar_vite.inertia.plugin import InertiaPlugin
 from litestar_vite.inertia.request import InertiaDetails, InertiaRequest
 from litestar_vite.inertia.state import consume_clear_history, persist_transient_state_for_redirect
 from litestar_vite.inertia.types import InertiaHeaderType, PageProps, ScrollPropsConfig
+from litestar_vite.loader import EarlyHintsASGIResponse
 from litestar_vite.plugin import VitePlugin
 
 if TYPE_CHECKING:
@@ -88,15 +91,13 @@ class InertiaResponse(Response[T]):
             template_str: A string representing the template, e.g. ``tmpl = "Hello <strong>World</strong>"``.
             component: The Inertia page component name. When omitted, the component
                 registered on the route handler (``request.inertia.route_component``) is used.
-            background: A :class:`BackgroundTask <.background_tasks.BackgroundTask>` instance or
-                :class:`BackgroundTasks <.background_tasks.BackgroundTasks>` to execute after the response is finished.
+            background: A `BackgroundTask` or `BackgroundTasks` instance to execute after the response finishes.
                 Defaults to ``None``.
             context: A dictionary of key/value pairs to be passed to the temple engine's render method.
-            cookies: A list of :class:`Cookie <.datastructures.Cookie>` instances to be set under the response
-                ``Set-Cookie`` header.
+            cookies: A list of `Cookie` instances to be set under the response ``Set-Cookie`` header.
             encoding: Content encoding
             headers: A string keyed dictionary of response headers. Header keys are insensitive.
-            media_type: A string or member of the :class:`MediaType <.enums.MediaType>` enum. If not set, Inertia JSON
+            media_type: A string or member of the `MediaType` enum. If not set, Inertia JSON
                 responses use ``application/json`` and HTML bootstrap responses use ``text/html``.
             status_code: A value for the response HTTP status code.
             type_encoders: A mapping of types to callables that transform them into types supported for serialization.
@@ -157,7 +158,7 @@ class InertiaResponse(Response[T]):
         """Create a context object for the template.
 
         Args:
-            request: A :class:`Request <.connection.Request>` instance.
+            request: A `Request` instance.
             page_props: A formatted object to return the inertia configuration.
             type_encoders: A mapping of types to callables that transform them into types supported for serialization.
 
@@ -419,7 +420,7 @@ class InertiaResponse(Response[T]):
     def _will_render_ssr(self, request: "Request[Any, Any, Any]", inertia_info: "_InertiaRequestInfo") -> bool:
         """Predict whether this response will hit the SSR HTTP server.
 
-        Used by the deferral gate in :meth:`to_asgi_response` to decide whether
+        Used by the deferral gate in `to_asgi_response` to decide whether
         async pre-pass is required. Conditions: Inertia is enabled, the request
         is NOT an Inertia JSON request, the plugin has SSR config, and the Vite
         plugin's render path can host the SSR fragment:
@@ -462,7 +463,7 @@ class InertiaResponse(Response[T]):
         Should run inside Litestar's ``_call_handler_function`` ``AsyncExitStack``
         frame so any yield-based DI dependencies (sqlspec asyncpg, advanced-alchemy,
         ...) are still alive when prop callbacks await them. The
-        :class:`~litestar_vite.inertia.plugin.InertiaPlugin` wraps each route
+        `InertiaPlugin` wraps each route
         handler at app init to call this method automatically; callers normally
         do not invoke it directly.
 
@@ -571,6 +572,7 @@ class InertiaResponse(Response[T]):
         status_code: "int | None" = None,
         type_encoders: "TypeEncodersMap | None" = None,
     ) -> "ASGIResponse":
+        """Serialize the `InertiaResponse` into an `ASGIResponse` (JSON for XHR or HTML/SSR for initial loads)."""
         inertia_info = _get_inertia_request_info(cast("Request[Any, Any, Any]", request))
 
         if not self._async_prepass_done:
@@ -699,17 +701,29 @@ class InertiaResponse(Response[T]):
         else:
             body = self._render_template(request, page_props, type_encoders, inertia_plugin)
 
-        return ASGIResponse(  # pyright: ignore[reportUnknownMemberType]
+        preload_headers = _resolve_inertia_preload_headers(vite_plugin)
+        html_headers = dict(headers)
+        if (
+            preload_headers
+            and vite_plugin.config.link_preload_headers
+            and not any(k.lower() == "link" for k in html_headers)
+        ):
+            html_headers["Link"] = ", ".join(preload_headers)
+
+        asgi_response = ASGIResponse(  # pyright: ignore[reportUnknownMemberType]
             background=self.background or background,
             body=body,
             cookies=cookies,
             encoded_headers=encoded_headers,
             encoding=self.encoding,
-            headers=headers,
+            headers=html_headers,
             is_head_response=is_head_response,
             media_type=resolved_media_type,
             status_code=resolved_status_code,
         )
+        if preload_headers and vite_plugin.config.early_hints:
+            return cast("ASGIResponse", EarlyHintsASGIResponse(asgi_response, preload_headers))
+        return asgi_response
 
 
 class InertiaExternalRedirect(Response[Any]):
@@ -808,6 +822,7 @@ class InertiaRedirect(Redirect):
         status_code: "int | None" = None,
         type_encoders: "TypeEncodersMap | None" = None,
     ) -> "ASGIResponse":
+        """Convert the `InertiaRedirect` into an `ASGIResponse`."""
         if self._uses_inertia_fragment_redirect:
             return Response.to_asgi_response(  # pyright: ignore[reportUnknownMemberType]
                 self,
@@ -877,13 +892,7 @@ class _InertiaRequestInfo:
 
 
 def _get_inertia_request_info(request: "Request[Any, Any, Any]") -> _InertiaRequestInfo:
-    """Return Inertia request state for both InertiaRequest and plain Request.
-
-    InertiaResponse is typically used together with InertiaMiddleware, which wraps
-    incoming requests in :class:`~litestar_vite.inertia.request.InertiaRequest`.
-
-    This helper preserves compatibility with plain :class:`litestar.Request` by
-    falling back to header parsing via :class:`~litestar_vite.inertia.request.InertiaDetails`.
+    """Return Inertia request state for both `InertiaRequest` and plain `Request`.
 
     Returns:
         Aggregated Inertia-related request flags and partial-render metadata.
@@ -1136,6 +1145,18 @@ def _dedupe_once_prop_entries(
             continue
         filtered.setdefault(key, entry)
     return list(filtered.values())
+
+
+def _resolve_inertia_preload_headers(vite_plugin: "VitePlugin") -> list[str]:
+    """Resolve RFC 8288 Link preload headers from ViteAssetLoader or AppHandler in production."""
+    if vite_plugin.config.is_dev_mode:
+        return []
+    if not (vite_plugin.config.link_preload_headers or vite_plugin.config.early_hints):
+        return []
+    preload_headers = vite_plugin.asset_loader.render_preload_headers()
+    if not preload_headers and vite_plugin.spa_handler is not None:
+        preload_headers = vite_plugin.spa_handler.get_preload_headers()
+    return preload_headers
 
 
 class _AsyncInertiaSSRResponse:

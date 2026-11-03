@@ -97,35 +97,32 @@ CURRENT_NPM_VERSION_RANGES: dict[str, str] = {
 
 @dataclass
 class FrameworkTemplate:
-    """Configuration for a frontend framework template.
-
-    Attributes:
-        name: Display name for the template
-        type: Framework type enum
-        description: Brief description shown in selection UI
-        vite_plugin: Name of the Vite plugin import (if any)
-        dependencies: NPM dependencies to install
-        dev_dependencies: NPM dev dependencies to install
-        files: List of template files to generate
-        uses_typescript: Whether TypeScript is used by default
-        has_ssr: Whether SSR is supported
-        inertia_compatible: Whether it works with Inertia.js
-        uses_vite: Whether the template is Vite-based (skip base files when False)
-        resource_dir: Preferred source directory name for the framework
-    """
+    """Configuration metadata for a built-in frontend framework scaffolding template."""
 
     name: str
+    """Human-readable display name for the template."""
     type: FrameworkType
+    """`FrameworkType` enum identifier for the template."""
     description: str
+    """Concise description shown in the CLI template selector."""
     vite_plugin: "str | None" = None
+    """Vite framework plugin package name imported in `vite.config.ts`, if any."""
     dependencies: list[str] = field(default_factory=_ListStrFactory)
+    """Runtime NPM package names added to `package.json` `dependencies`."""
     dev_dependencies: list[str] = field(default_factory=_ListStrFactory)
+    """Development NPM package names added to `package.json` `devDependencies`."""
     files: list[str] = field(default_factory=_ListStrFactory)
+    """Relative file paths rendered by `generate_project` for this template."""
     uses_typescript: bool = True
+    """Whether the template uses TypeScript by default."""
     has_ssr: bool = False
+    """Whether the template supports server-side rendering (SSR)."""
     inertia_compatible: bool = False
+    """Whether the template uses Inertia.js v2 page routing."""
     uses_vite: bool = True
+    """Whether the template builds with Vite (`False` for external CLI frameworks like Angular CLI)."""
     resource_dir: str = "resources"
+    """Default frontend source directory name for the template."""
 
 
 FRAMEWORK_TEMPLATES: dict[FrameworkType, FrameworkTemplate] = {

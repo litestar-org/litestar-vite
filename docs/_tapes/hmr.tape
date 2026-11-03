@@ -2,7 +2,7 @@
 # Demonstrates: litestar run with integrated Vite dev server
 # Uses: examples/react-inertia
 
-Output docs/_static/demos/hmr.gif
+Output docs/assets/demos/hmr.gif
 
 Set Shell "bash"
 Set FontSize 14

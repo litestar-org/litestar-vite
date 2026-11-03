@@ -32,16 +32,42 @@
 export interface RouteDefinition {
   path: string
   methods: readonly string[]
-  method: string
+  method?: string
   pathParams: readonly string[]
   queryParams: readonly string[]
   component?: string
+  protocol?: "http" | "websocket"
+  channelKey?: string
 }
 
 /**
  * Map of route names to their definitions.
  */
 export type RouteDefinitions = Record<string, RouteDefinition>
+
+/**
+ * Options for resolving WebSocket route URLs.
+ */
+export interface WsRouteOptions {
+  /** Explicit server or base URL (e.g. from AsyncAPI servers or VITE_API_URL). */
+  serverUrl?: string
+  /** Explicit WebSocket server URL override for `route.ws()` / `wsRoute()`. */
+  wsServerUrl?: string
+}
+
+/**
+ * Extract route names from a RouteDefinitions map that declare `protocol: "websocket"`.
+ */
+export type WebSocketRouteNames<TRoutes extends Record<string, RouteDefinition>> = {
+  [K in keyof TRoutes & string]: TRoutes[K] extends { protocol: "websocket" } ? K : never
+}[keyof TRoutes & string]
+
+/**
+ * Resolve the allowed route-name union for `wsRoute` / `route.ws`.
+ * Narrows to `protocol: "websocket"` routes when literal protocol metadata is present,
+ * and falls back to `keyof TRoutes & string` for untyped `Record<string, RouteDefinition>` maps.
+ */
+export type WsRouteName<TRoutes extends Record<string, RouteDefinition>> = [WebSocketRouteNames<TRoutes>] extends [never] ? keyof TRoutes & string : WebSocketRouteNames<TRoutes>
 
 /** Cache for compiled route patterns */
 const patternCache = new Map<string, RegExp>()
@@ -89,6 +115,93 @@ function compileWildcardPattern(pattern: string): RegExp {
   const regex = new RegExp(`^${escaped.replace(/\*/g, ".*")}$`)
   wildcardPatternCache.set(pattern, regex)
   return regex
+}
+
+/**
+ * Format a route path with path and query parameters.
+ */
+export function formatRouteUrl<TRoutes extends Record<string, RouteDefinition>, TName extends keyof TRoutes & string>(
+  name: TName,
+  routes: TRoutes,
+  params?: Record<string, unknown>,
+  apiUrl?: string,
+): string {
+  const def = routes[name]
+  if (!def) {
+    throw new Error(`Route "${String(name)}" not found`)
+  }
+  let url = def.path.replace(/\{([^:}]+):[^}]+\}/g, "{$1}")
+
+  if (params) {
+    for (const param of def.pathParams) {
+      const value = params[param]
+      if (value !== undefined) {
+        url = url.replaceAll(`{${param}}`, String(value))
+      }
+    }
+
+    const queryParts: string[] = []
+    for (const param of def.queryParams) {
+      const value = params[param]
+      if (value !== undefined) {
+        queryParts.push(`${encodeURIComponent(param)}=${encodeURIComponent(String(value))}`)
+      }
+    }
+    if (queryParts.length > 0) {
+      url += `?${queryParts.join("&")}`
+    }
+  }
+
+  return apiUrl ? `${apiUrl.replace(/\/$/, "")}${url}` : url
+}
+
+/**
+ * Resolve a relative or HTTP URL into a WebSocket URL (`ws://` or `wss://`).
+ */
+export function resolveWsUrl(pathOrUrl: string, serverUrl?: string): string {
+  if (/^wss?:\/\//i.test(pathOrUrl)) {
+    return pathOrUrl
+  }
+  if (/^https?:\/\//i.test(pathOrUrl)) {
+    return pathOrUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")
+  }
+  const normalizedPath = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`
+  if (serverUrl && serverUrl.trim()) {
+    const cleanServer = serverUrl.trim().replace(/\/$/, "")
+    if (/^wss?:\/\//i.test(cleanServer)) {
+      return `${cleanServer}${normalizedPath}`
+    }
+    if (/^https?:\/\//i.test(cleanServer)) {
+      return `${cleanServer.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}${normalizedPath}`
+    }
+    return `ws://${cleanServer}${normalizedPath}`
+  }
+  if (typeof window !== "undefined" && window.location && window.location.host) {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
+    return `${proto}//${window.location.host}${normalizedPath}`
+  }
+  return normalizedPath
+}
+
+/**
+ * Generate a WebSocket URL (`ws://` or `wss://`) for a named WebSocket route.
+ */
+export function wsRoute<TRoutes extends Record<string, RouteDefinition>, TName extends string = WsRouteName<TRoutes>>(
+  name: TName & WsRouteName<TRoutes>,
+  routes: TRoutes,
+  params?: Record<string, unknown>,
+  options?: WsRouteOptions,
+): string {
+  const def = routes[name]
+  if (!def) {
+    throw new Error(`Route "${String(name)}" not found`)
+  }
+  const isWsRoute = def.protocol === "websocket" || (!def.protocol && def.methods.some((m) => m.toUpperCase() === "WS"))
+  if (!isWsRoute) {
+    throw new Error(`Route "${String(name)}" is not a WebSocket route`)
+  }
+  const formatted = formatRouteUrl(name, routes, params)
+  return resolveWsUrl(formatted, options?.wsServerUrl ?? options?.serverUrl)
 }
 
 /**
@@ -192,9 +305,21 @@ export function __clearRouteHelperCachesForTest(): void {
 }
 
 /**
+ * Bound `route()` helper with `.ws()` attached for WebSocket route URL resolution.
+ */
+export interface BoundRouteFunction<T extends string, TRoutes extends Record<T, RouteDefinition> = Record<T, RouteDefinition>> {
+  (name: T, params?: Record<string, unknown>): string
+  ws: <TName extends string = WsRouteName<TRoutes>>(name: TName & WsRouteName<TRoutes>, params?: Record<string, unknown>, options?: WsRouteOptions) => string
+}
+
+/**
  * Route helpers interface returned by createRouteHelpers.
  */
-export interface RouteHelpers<T extends string> {
+export interface RouteHelpers<T extends string, TRoutes extends Record<T, RouteDefinition> = Record<T, RouteDefinition>> {
+  /** Generate URL for a route (with `.ws()` attached for WebSocket routes) */
+  route: BoundRouteFunction<T, TRoutes>
+  /** Generate WebSocket URL (`ws://` or `wss://`) for a WebSocket route */
+  wsRoute: <TName extends string = WsRouteName<TRoutes>>(name: TName & WsRouteName<TRoutes>, params?: Record<string, unknown>, options?: WsRouteOptions) => string
   /** Convert URL to route name */
   toRoute: (url: string) => T | null
   /** Get current route name (SSR-safe) */
@@ -212,6 +337,7 @@ export interface RouteHelpers<T extends string> {
  * so you don't need to pass routeDefinitions to every call.
  *
  * @param routes - The routeDefinitions object from your generated routes
+ * @param defaultOptions - Optional default server URL options for `route.ws()`
  * @returns Object with bound route helper functions
  *
  * @example
@@ -219,7 +345,7 @@ export interface RouteHelpers<T extends string> {
  * import { routeDefinitions } from '@/generated/routes'
  * import { createRouteHelpers } from 'litestar-vite-plugin/helpers'
  *
- * export const { isCurrentRoute, currentRoute, toRoute, isRoute } = createRouteHelpers(routeDefinitions)
+ * export const { route, isCurrentRoute, currentRoute, toRoute, isRoute } = createRouteHelpers(routeDefinitions)
  *
  * // Now use without passing routes:
  * if (isCurrentRoute('dashboard')) {
@@ -227,8 +353,22 @@ export interface RouteHelpers<T extends string> {
  * }
  * ```
  */
-export function createRouteHelpers<T extends string>(routes: Record<T, RouteDefinition>): RouteHelpers<T> {
+export function createRouteHelpers<T extends string, TRoutes extends Record<T, RouteDefinition> = Record<T, RouteDefinition>>(
+  routes: TRoutes,
+  defaultOptions?: WsRouteOptions,
+): RouteHelpers<T, TRoutes> {
+  const defaultWsServer = defaultOptions?.wsServerUrl ?? defaultOptions?.serverUrl
+  const boundWsRoute = <TName extends string = WsRouteName<TRoutes>>(name: TName & WsRouteName<TRoutes>, params?: Record<string, unknown>, options?: WsRouteOptions): string =>
+    wsRoute(name, routes, params, {
+      serverUrl: options?.wsServerUrl ?? options?.serverUrl ?? defaultWsServer,
+    })
+
+  const boundRoute = ((name: T, params?: Record<string, unknown>): string => formatRouteUrl(name, routes, params, defaultOptions?.serverUrl)) as BoundRouteFunction<T, TRoutes>
+  boundRoute.ws = boundWsRoute
+
   return {
+    route: boundRoute,
+    wsRoute: boundWsRoute,
     toRoute: (url: string) => toRoute(url, routes),
     currentRoute: () => currentRoute(routes),
     isRoute: (url: string, pattern: string) => isRoute(url, pattern, routes),

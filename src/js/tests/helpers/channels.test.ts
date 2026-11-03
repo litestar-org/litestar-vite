@@ -235,4 +235,81 @@ describe("createTypedChannels", () => {
     expect(sent).toBe(true)
     expect(FakeWebSocket.instances[0].sent).toEqual([JSON.stringify({ text: "hello world" })])
   })
+
+  it("resolves normalized channel keys and SSE channels using CHANNEL_METADATA", () => {
+    class FakeEventSource {
+      static instances: FakeEventSource[] = []
+      readonly url: string
+      close = vi.fn()
+      private readonly listeners = new Map<string, Set<EventListener>>()
+
+      constructor(url: string | URL) {
+        this.url = String(url)
+        FakeEventSource.instances.push(this)
+      }
+
+      addEventListener(type: string, listener: EventListener): void {
+        const set = this.listeners.get(type) ?? new Set<EventListener>()
+        set.add(listener)
+        this.listeners.set(type, set)
+      }
+
+      simulateMessage(data: string): void {
+        for (const listener of this.listeners.get("message") ?? []) {
+          listener(new MessageEvent("message", { data }))
+        }
+      }
+    }
+
+    interface GeneratedChannelMap extends ChannelMap {
+      ws__chat__p_room_id: {
+        address: "/ws/chat/{room_id}"
+        protocol: "websocket"
+        params: { room_id: string }
+        send: { message: string }
+        receive: { message: string; user: string }
+      }
+      sse__events: {
+        address: "/sse/events"
+        protocol: "sse"
+        params: Record<string, string>
+        send: never
+        receive: { tick: number }
+      }
+    }
+
+    const CHANNEL_METADATA = {
+      ws__chat__p_room_id: {
+        address: "/ws/chat/{room_id}",
+        protocol: "websocket",
+      },
+      sse__events: {
+        address: "/sse/events",
+        protocol: "sse",
+      },
+    } as const
+
+    const client = createTypedChannels<GeneratedChannelMap>({
+      metadata: CHANNEL_METADATA,
+    })
+
+    const wsStream = client.stream("ws__chat__p_room_id", {
+      params: { room_id: "general" },
+      onEvent: vi.fn(),
+      WebSocketCtor,
+    })
+    wsStream.connect()
+    expect(FakeWebSocket.instances[0]?.url).toBe("ws://localhost:3000/ws/chat/general")
+
+    const onSseEvent = vi.fn()
+    const sseStream = client.stream("sse__events", {
+      onEvent: onSseEvent,
+      EventSourceCtor: FakeEventSource as unknown as typeof EventSource,
+    })
+    sseStream.connect()
+    expect(FakeEventSource.instances[0]?.url).toBe("http://localhost:3000/sse/events")
+    FakeEventSource.instances[0]?.simulateMessage('{"tick":1}')
+    expect(onSseEvent).toHaveBeenCalledWith({ tick: 1 })
+    expect(sseStream.send(undefined as never)).toBe(false)
+  })
 })

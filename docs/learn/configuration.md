@@ -1,0 +1,113 @@
+# Configuration & Runtime Bridge
+
+Litestar Vite organizes its configuration into a root [`ViteConfig`](../reference/plugin-and-config.md#litestar_vite.config.ViteConfig) object backed by five focused sub-configurations. At application startup, `ViteConfig` serializes a deterministic `.litestar.json` runtime bridge file that `litestar-vite-plugin` reads automatically in TypeScript.
+
+---
+
+## Layered Configuration Architecture
+
+```mermaid
+flowchart LR
+    VC["ViteConfig"] --> PC["PathConfig\n(root, resource_dir, bundle_dir)"]
+    VC --> RC["RuntimeConfig\n(dev_mode, proxy_mode, executor)"]
+    VC --> IC["InertiaConfig\n(root_template, ssr, precognition)"]
+    VC --> TC["TypeGenConfig\n(output, openapi, routes, asyncapi)"]
+    VC --> DC["DeployConfig\n(storage_backend, asset_url)"]
+    VC ==>|"Startup Export"| LJ[".litestar.json"]
+    LJ ==>|"Read by Vite"| LVP["litestar-vite-plugin"]
+```
+
+| Config Class | Responsibility | Key Fields |
+| --- | --- | --- |
+| [`ViteConfig`](../reference/plugin-and-config.md#litestar_vite.config.ViteConfig) | Top-level mode, environment, and sub-config composition | `mode`, `dev_mode`, `paths`, `runtime`, `inertia`, `types`, `deploy`, `static_props` |
+| [`PathConfig`](../reference/plugin-and-config.md#litestar_vite.config.PathConfig) | Filesystem layout and URL prefix resolution | `root`, `resource_dir`, `bundle_dir`, `public_dir`, `ssr_output_dir`, `asset_url`, `manifest_name`, `hot_file` |
+| [`RuntimeConfig`](../reference/plugin-and-config.md#litestar_vite.config.RuntimeConfig) | Dev proxy, JS executor, subprocess management, SSR transport, and asset security | `dev_mode`, `proxy_mode`, `host`, `port`, `executor`, `provisioning_mode`, `ssr_transport`, `csp_nonce`, `link_preload_headers`, `early_hints`, `immutable_cache_headers`, `trusted_proxies` |
+| [`InertiaConfig`](../reference/plugin-and-config.md#litestar_vite.config.InertiaConfig) | Inertia.js protocol, shared props, SSR, and Precognition | `root_template`, `ssr`, `use_script_element`, `precognition`, `extra_static_page_props`, `shared_page_prop_types` |
+| [`TypeGenConfig`](../reference/plugin-and-config.md#litestar_vite.config.TypeGenConfig) | OpenAPI, route, Inertia page-props, and AsyncAPI codegen | `output`, `openapi_path`, `routes_path`, `page_props_path`, `schemas_path`, `generate_sdk`, `generate_routes`, `generate_channels` |
+| [`DeployConfig`](../reference/plugin-and-config.md#litestar_vite.config.DeployConfig) | Cloud object storage (`fsspec`) bundle upload and CDN URLs | `enabled`, `storage_backend`, `storage_options`, `asset_url`, `delete_orphaned` |
+
+---
+
+## Shorthand vs. Explicit Sub-Configs
+
+`ViteConfig` accepts convenient boolean or top-level shortcuts for rapid prototyping, and normalizes them into full sub-config instances inside `__post_init__`:
+
+```python
+from pathlib import Path
+from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig
+
+simple_config = ViteConfig(
+    mode="spa",
+    dev_mode=True,
+    types=True,
+)
+
+explicit_config = ViteConfig(
+    mode="spa",
+    paths=PathConfig(
+        root=Path("."),
+        resource_dir=Path("src"),
+        bundle_dir=Path("public/build"),
+        asset_url="/static/",
+    ),
+    runtime=RuntimeConfig(
+        dev_mode=True,
+        executor="pnpm",
+        port=5173,
+    ),
+    types=TypeGenConfig(
+        output=Path("src/generated"),
+        generate_sdk=True,
+        generate_routes=True,
+    ),
+)
+```
+
+---
+
+## Environment Variable Precedence
+
+Every runtime setting can be controlled via environment variables for container and CI deployments without modifying Python code:
+
+| Environment Variable | Maps To | Default |
+| --- | --- | --- |
+| `VITE_DEV_MODE` | `RuntimeConfig.dev_mode` | `"False"` (auto-enabled when running `litestar run --reload` or `--debug`) |
+| `VITE_PROXY_MODE` | `RuntimeConfig.proxy_mode` | Auto-derived from `ViteConfig.mode` (`"vite"` or `"proxy"`) |
+| `VITE_HOST` | `RuntimeConfig.host` | `"127.0.0.1"` |
+| `VITE_PORT` | `RuntimeConfig.port` | `5173` |
+| `LITESTAR_VITE_RUNTIME` / `VITE_EXECUTOR` | `RuntimeConfig.executor` | Auto-detected via `detect_runtime()` |
+| `ASSET_URL` | `PathConfig.asset_url` | `"/static/"` |
+| `VITE_DEPLOY_STORAGE` | `DeployConfig.storage_backend` | `None` |
+| `VITE_DEPLOY_ASSET_URL` | `DeployConfig.asset_url` | `None` |
+| `LITESTAR_TRUSTED_PROXIES` | `RuntimeConfig.trusted_proxies` | `None` (`"*"` or comma-separated CIDR/IP list) |
+
+---
+
+## JavaScript Runtime Auto-Detection & Provisioning
+
+When `RuntimeConfig.executor` is omitted, [`detect_runtime()`](../reference/plugin-and-config.md#litestar_vite.config.detect_runtime) inspects your project root (`PathConfig.root`) and selects the matching JavaScript executor automatically:
+
+1. `bun.lock` or `bun.lockb` → `"bun"` (`BunExecutor`)
+2. `deno.lock`, `deno.json`, or `deno.jsonc` → `"deno"` (`DenoExecutor` using `deno task`, `deno install`, `deno outdated --update`)
+3. `pnpm-lock.yaml` → `"pnpm"` (`PnpmExecutor`)
+4. `yarn.lock` → `"yarn"` (`YarnExecutor`)
+5. `package-lock.json` → `"node"` (`NodeExecutor`)
+6. `package.json` `"packageManager"` field (`bun@...`, `deno@...`, `pnpm@...`, `yarn@...`, `npm@...`)
+7. Fallback → `"node"`
+
+`RuntimeConfig.provisioning_mode` controls how the runtime binary is located:
+
+- **`"auto"` (default)**: Prefers a runtime binary installed inside the active Python virtual environment (via PEP 425 wheel extras `litestar-vite[node]`, `litestar-vite[bun]`, or `litestar-vite[deno]`) and falls back to the system `PATH`.
+- **`"wheel"`**: Requires the virtual-environment binary from a runtime wheel extra and raises `ViteExecutableNotFoundError` if missing.
+- **`"nodeenv"`**: Provisions a local Node environment inside the active virtual environment via `nodeenv`.
+- **`"system"`**: Uses only binaries found on the host `PATH`.
+
+---
+
+## How the Runtime Bridge Eliminates Config Drift
+
+Without a bridge, full-stack apps duplicate `bundle_dir`, `resource_dir`, `asset_url`, and `ssr_output_dir` across both `app.py` and `vite.config.ts`. In Litestar Vite:
+
+1. **Python is the Single Source of Truth**: On startup (or during `litestar assets generate-types` / `litestar assets build`), Litestar writes `.litestar.json` atomically using SHA-256 `write_if_changed`.
+2. **Vite Reads `.litestar.json` Automatically**: When `litestar-vite-plugin` initializes in `vite.config.ts`, it reads `.litestar.json` and configures `base`, `build.outDir`, `build.manifest`, `server.origin`, and codegen paths to match Python.
+3. **Diagnostic Verification**: Run `litestar assets doctor` at any time to verify that `vite.config.ts` does not contain hardcoded overrides that conflict with `.litestar.json`. See the [Cross-Language Wire Contracts Reference](../reference/contracts.md) for the complete `.litestar.json` schema.

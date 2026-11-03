@@ -2,6 +2,7 @@
 
 import itertools
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -113,3 +114,27 @@ def test_scaffold_nuxt_manifest_pins_vite_devtools_peer() -> None:
     )
 
     assert json.loads(text)["overrides"]["@vitejs/devtools"] == CURRENT_NPM_VERSION_RANGES["@vitejs/devtools"]
+
+
+@pytest.mark.parametrize("framework", list(FrameworkType))
+def test_scaffold_manifest_vite_version_floor_is_v7_plus(framework: FrameworkType) -> None:
+    """Verify the scaffold registry and every rendered manifest pin Vite at major version >= 7."""
+    vite_pin = CURRENT_NPM_VERSION_RANGES["vite"]
+    match = re.search(r"(\d+)", vite_pin)
+    assert match is not None and int(match.group(1)) >= 7
+
+    text = _render_package_json(
+        framework,
+        {
+            "use_tailwind": False,
+            "enable_ssr": False,
+            "enable_types": True,
+            "generate_zod": False,
+            "generate_client": False,
+        },
+    )
+    parsed = json.loads(text)
+    all_deps = {**parsed.get("dependencies", {}), **parsed.get("devDependencies", {})}
+    if "vite" in all_deps:
+        dep_match = re.search(r"(\d+)", str(all_deps["vite"]))
+        assert dep_match is not None and int(dep_match.group(1)) >= 7

@@ -1,3 +1,5 @@
+"""Litestar `InitPlugin` configuring Inertia.js v2 request/response classes, middleware, and SSR IPC."""
+
 import functools
 import inspect
 from collections.abc import Mapping
@@ -31,19 +33,20 @@ class InertiaPlugin(InitPlugin):
     - Shared IPC transport and circuit breaker for SSR
 
     Async Prop Resolution:
-        Async ``optional()``/``defer()``/``lazy()``/``once()`` callbacks are
-        pre-resolved by ``InertiaResponse`` on the request event loop before
+        Async `optional()`/`defer()`/`lazy()`/`once()` callbacks are
+        pre-resolved by `InertiaResponse` on the request event loop before
         the body is serialized. This guarantees they share the loop with
         request-scoped async resources (asyncpg/aiosqlite/sqlspec sessions),
         so callbacks can safely use those resources.
 
-    Example::
-
+    Example:
+        ```python
         from litestar_vite.inertia import InertiaPlugin, InertiaConfig
 
         app = Litestar(
             plugins=[InertiaPlugin(InertiaConfig())],
         )
+        ```
     """
 
     __slots__ = ("_circuit_breaker", "_ipc_transport", "config")
@@ -59,7 +62,7 @@ class InertiaPlugin(InitPlugin):
         """Lifespan to manage the shared SSR IPC transport and circuit breaker.
 
         Args:
-            app: The :class:`Litestar <litestar.app.Litestar>` instance.
+            app: The `Litestar` application instance.
 
         Yields:
             An asynchronous context manager.
@@ -83,18 +86,12 @@ class InertiaPlugin(InitPlugin):
                 vite_plugin = None
             is_dev_mode = vite_plugin.config.is_dev_mode if vite_plugin is not None else False
             if not is_dev_mode:
-                from litestar_vite.ipc import StdioIPCTransport
-
                 if vite_plugin is not None:
                     self._ipc_transport = vite_plugin.get_ipc_transport(ssr_config=ssr_config)
                 else:
-                    from litestar_vite.config import PathConfig
-                    from litestar_vite.config._paths import resolve_ssr_bundle_path
+                    from litestar_vite.ipc import resolve_ssr_transport
 
-                    self._ipc_transport = StdioIPCTransport(
-                        command=ssr_config.command or ["node", str(resolve_ssr_bundle_path(PathConfig()))],
-                        cwd=ssr_config.cwd,
-                    )
+                    self._ipc_transport = resolve_ssr_transport(None, ssr_config)
                     owns_transport = True
         try:
             yield
@@ -118,10 +115,10 @@ class InertiaPlugin(InitPlugin):
         """Configure application for use with Vite.
 
         Args:
-            app_config: The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
+            app_config: The `AppConfig` instance.
 
         Returns:
-            The :class:`AppConfig <litestar.config.app.AppConfig>` instance.
+            The `AppConfig` instance.
         """
         from litestar.exceptions import HTTPException, ValidationException
 

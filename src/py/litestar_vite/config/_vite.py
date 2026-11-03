@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
@@ -23,7 +24,11 @@ from litestar_vite.config._inertia import (  # pyright: ignore[reportPrivateUsag
     InertiaTypeGenConfig,
 )
 from litestar_vite.config._paths import PathConfig  # pyright: ignore[reportPrivateUsage]
-from litestar_vite.config._runtime import ExternalDevServer, RuntimeConfig  # pyright: ignore[reportPrivateUsage]
+from litestar_vite.config._runtime import (  # pyright: ignore[reportPrivateUsage]
+    ExternalDevServer,
+    RuntimeConfig,
+    detect_runtime,
+)
 from litestar_vite.config._spa import LoggingConfig, SPAConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._types import TypeGenConfig  # pyright: ignore[reportPrivateUsage]
 
@@ -52,7 +57,31 @@ __all__ = (
     "SPAConfig",
     "TypeGenConfig",
     "ViteConfig",
+    "detect_runtime",
 )
+
+_JSONC_COMMENT_RE = re.compile(r'("(?:\\.|[^"\\])*")|//[^\r\n]*|/\*[\s\S]*?\*/')
+_JSONC_TRAILING_COMMA_RE = re.compile(r",(\s*[}\]])")
+_REACT_MARKERS = frozenset({"@vitejs/plugin-react", "@vitejs/plugin-react-swc", "react", "react-dom"})
+
+
+def _strip_jsonc(raw: str) -> str:
+    """Strip line/block comments and trailing commas from a JSONC document."""
+    without_comments = _JSONC_COMMENT_RE.sub(lambda m: m.group(1) or "", raw)
+    return _JSONC_TRAILING_COMMA_RE.sub(r"\1", without_comments)
+
+
+def _mapping_contains_react(mapping: dict[str, Any]) -> bool:
+    """Check whether an import map dictionary references React or the Vite React plugin."""
+    for key, value in mapping.items():
+        if key in _REACT_MARKERS or key.startswith("react/"):
+            return True
+        if isinstance(value, str) and (
+            value.startswith(("npm:react@", "npm:react/", "npm:@vitejs/plugin-react"))
+            or value in {"npm:react", "npm:react-dom"}
+        ):
+            return True
+    return False
 
 
 @lru_cache(maxsize=128)
@@ -71,29 +100,39 @@ def _package_json_has_react_plugin(package_json_path: str, stat_mtime_ns: int, s
     return bool(isinstance(dev_deps_any, dict) and "@vitejs/plugin-react" in cast("dict[str, Any]", dev_deps_any))
 
 
+@lru_cache(maxsize=128)
+def _deno_config_has_react(deno_config_path: str, stat_mtime_ns: int, stat_size: int) -> bool:
+    """Cache React detection for a concrete deno.json or deno.jsonc snapshot."""
+    del stat_mtime_ns, stat_size
+    try:
+        raw = Path(deno_config_path).read_text(encoding="utf-8")
+        payload = decode_json(_strip_jsonc(raw))
+    except (OSError, UnicodeDecodeError, SerializationException):
+        return False
+
+    if not isinstance(payload, dict):
+        return False
+
+    typed_payload = cast("dict[str, Any]", payload)
+    imports_any = typed_payload.get("imports")
+    if isinstance(imports_any, dict) and _mapping_contains_react(cast("dict[str, Any]", imports_any)):
+        return True
+
+    scopes_any = typed_payload.get("scopes")
+    if isinstance(scopes_any, dict):
+        for scope_map in cast("dict[str, Any]", scopes_any).values():
+            if isinstance(scope_map, dict) and _mapping_contains_react(cast("dict[str, Any]", scope_map)):
+                return True
+
+    return False
+
+
 @runtime_checkable
 class PaginationContainer(Protocol):
-    """Protocol for pagination containers that can be unwrapped for Inertia scroll.
-
-    Any type that has `items` and pagination metadata can implement this protocol.
-    The response will extract items and calculate scroll_props automatically.
-
-    Built-in support:
-    - litestar.pagination.OffsetPagination
-    - litestar.pagination.ClassicPagination
-    - advanced_alchemy.service.OffsetPagination
-
-    Custom types can implement this protocol::
-
-        @dataclass
-        class MyPagination:
-            items: list[T]
-            total: int
-            limit: int
-            offset: int
-    """
+    """Protocol for pagination containers (`OffsetPagination`, `ClassicPagination`) unwrapped for Inertia scroll."""
 
     items: "Sequence[Any]"
+    """Paginated sequence of item records extracted for the response."""
 
 
 def _to_root_path(root_dir: Path, path: Path) -> Path:
@@ -111,153 +150,40 @@ def _to_root_path(root_dir: Path, path: Path) -> Path:
 
 @dataclass
 class ViteConfig:
-    """Root Vite configuration.
-
-    This is the main configuration class that combines all sub-configurations.
-    Supports shortcuts for common configurations:
-
-    - dev_mode: Shortcut for runtime.dev_mode
-    - types=True or TypeGenConfig(): Enable type generation (presence = enabled)
-    - inertia=True or InertiaConfig(): Enable Inertia.js (presence = enabled)
-
-    Mode auto-detection:
-
-    - If mode is not explicitly set:
-
-      - If Inertia is enabled and index.html exists -> Hybrid mode
-      - If Inertia is enabled without index.html -> Template mode
-      - Checks for index.html in common locations -> SPA mode
-      - Checks if Jinja2 template engine is configured -> Template mode
-      - Otherwise defaults to SPA mode
-
-    Dev-mode auto-enable:
-
-    - If mode="spa" and no built assets are found in bundle_dir, dev_mode is
-      enabled automatically (unless VITE_AUTO_DEV_MODE=False).
-
-    - Explicit mode parameter overrides auto-detection
-
-    Attributes:
-        mode: Serving mode. Four canonical values plus five aliases that normalize to
-            canonical values at ``__post_init__`` (so downstream code only ever switches
-            on canonical values).
-
-            Canonical (4):
-                - "spa": Litestar serves a single index.html catch-all; client-side router
-                  owns navigation.
-                - "hybrid": Litestar serves a prebuilt index.html with Vite scripts injected;
-                  user defines per-page handlers that return Inertia data.
-                - "template": Litestar serves per-route HTML. With Jinja2 + JinjaTemplateEngine
-                  TemplateConfig, ``vite``/``vite_hmr``/``vite_static``/``vite_routes`` callables
-                  are auto-registered. Without Jinja, return raw HTML strings or use a different
-                  template engine (Mako, Chameleon). HTMX flows use this mode.
-                - "framework": External dev server (Astro/Nuxt/SvelteKit/Angular CLI) owns HTML;
-                  Litestar proxies non-API routes via ``SSRProxyMiddleware``. Combine with
-                  ``runtime.external_dev_server=ExternalDevServer(...)`` for non-Vite tools.
-
-            Aliases (auto-translated at construction):
-                - "inertia" → "hybrid"
-                - "htmx" → "template"
-                - "ssr" / "ssg" → "framework"
-                - "external" → "framework" (requires ``runtime.external_dev_server``)
-
-            Auto-detected if not set.
-        paths: File system paths configuration.
-        runtime: Runtime execution settings.
-        types: Type generation settings (True/TypeGenConfig enables, False/None disables).
-        inertia: Inertia.js settings (True/InertiaConfig enables, False/None disables).
-        spa: SPA transformation settings (True enables with defaults, False disables).
-        logging: Logging configuration (True enables with defaults, None uses defaults).
-        dev_mode: Convenience shortcut for runtime.dev_mode.
-        base_url: Base URL for the app entry point.
-        deploy: Deployment configuration for CDN publishing.
-        enabled: Whether VitePlugin actively wires serving routes and lifespans.
-    """
+    """Root configuration combining operating mode, paths, runtime, Inertia, SPA, typegen, and deployment settings."""
 
     mode: "Literal['spa', 'template', 'htmx', 'hybrid', 'inertia', 'framework', 'ssr', 'ssg', 'external'] | None" = None
+    """Serving mode (`'spa'`, `'template'`, `'hybrid'`, or `'framework'`; aliases `'inertia'`, `'htmx'`, `'ssr'`, `'ssg'`, `'external'` normalize at init)."""
     paths: PathConfig = field(default_factory=PathConfig)
+    """Filesystem and URL path configuration (`root`, `bundle_dir`, `resource_dir`, `static_dir`, `asset_url`)."""
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
+    """Runtime execution, single-port proxy, and JS executor configuration."""
     types: "TypeGenConfig | bool | None" = None
+    """Type generation configuration (`True` for default `TypeGenConfig()`, `False`/`None` to disable)."""
     inertia: "InertiaConfig | bool | None" = None
+    """Inertia.js v2 configuration (`True` for default `InertiaConfig()`, `False`/`None` to disable)."""
     spa: "SPAConfig | bool | None" = None
+    """SPA HTML transformation settings (`True` for default `SPAConfig()`, `False` to disable)."""
     logging: "LoggingConfig | bool | None" = None
+    """Console output and banner logging settings (`True`/`None` for default `LoggingConfig()`)."""
     dev_mode: bool = False
+    """Shortcut flag that sets `runtime.dev_mode = True` when enabled."""
     base_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
+    """Base URL prefix for the application entrypoint (`VITE_BASE_URL`)."""
     deploy: "DeployConfig | bool" = False
+    """CDN deployment configuration (`True` for default `DeployConfig()`, `False` to disable)."""
     enabled: "bool | None" = None
-    """Whether the plugin actively serves assets/routes.
-
-    - ``None`` (default): auto-detect; serving apps behave as before and known non-serving
-      invocations such as ``litestar assets ...`` are inert.
-    - ``True``: force active; inference cannot disable the plugin.
-    - ``False``: fully inert; skip asset/route wiring, static routers, SPA handlers,
-      and Vite lifespans while leaving CLI/config access available.
-
-    When unset, ``VITE_ENABLED`` is consulted. An explicit constructor value wins over
-    the environment variable.
-    """
+    """Whether `VitePlugin` actively wires serving routes and lifespans (`None` auto-detects and skips non-serving CLI runs)."""
     static_props: "dict[str, Any]" = field(default_factory=empty_dict_factory)
-    """Static data to pass to the JavaScript application via the bridge file.
-
-    This data is written to ``.litestar.json`` and accessible via the
-    ``virtual:litestar-static-props`` module in JavaScript.
-
-    Warning:
-        Do not include sensitive data (API keys, secrets, passwords).
-        This data is written to disk and included in the client-side JavaScript
-        bundle, visible to all users.
-
-    Example::
-
-        ViteConfig(
-            static_props={
-                "appName": "My App",
-                "version": "1.0.0",
-                "features": {"darkMode": True},
-            }
-        )
-
-    TypeScript usage::
-
-        import staticProps from 'virtual:litestar-static-props'
-        console.log(staticProps.appName)
-
-        // Or with named imports (tree-shakeable)
-        import { appName, version } from 'virtual:litestar-static-props'
-    """
+    """Public build-time dictionary written to `.litestar.json` and exposed via `virtual:litestar-static-props`."""
     guards: "Sequence[Guard] | None" = None  # pyright: ignore[reportUnknownVariableType]
-    """Custom guards for the SPA catch-all route.
-
-    When set, these guards are applied to the SPA handler route that serves the
-    SPA index.html (mode="spa"/"framework" with spa_handler=True).
-    """
+    """Litestar route guards applied to the `AppHandler` catch-all SPA route."""
     exclude_static_from_auth: bool = True
-    """Exclude static file routes from authentication.
-
-    When True (default), static file routes are served with
-    opt={"exclude_from_auth": True}, which tells auth middleware to skip
-    authentication for asset requests. Set to False to omit that opt so auth
-    middleware treats asset requests like any other route.
-    """
+    """Set `opt={'exclude_from_auth': True}` on static asset routes so auth middleware skips static files."""
     spa_path: "str | None" = None
-    """Path where the SPA handler serves index.html.
-
-    Controls where AppHandler registers its catch-all routes.
-
-    - Default: "/" (root)
-    - Non-root (e.g. "/web/"): optionally set `include_root_spa_paths=True` to
-      also serve at "/" and "/{path:path}".
-    """
+    """Route path where `AppHandler` registers its catch-all SPA handler (`'/'` by default)."""
     include_root_spa_paths: bool = False
-    """Also register SPA routes at root when spa_path is non-root.
-
-    When True and spa_path is set to a non-root path (e.g., "/web/"),
-    the SPA handler will also serve at "/" and "/{path:path}" in addition
-    to the spa_path routes.
-
-    This is useful for Angular apps with --base-href /web/ that also
-    want to serve the SPA from the root path for convenience.
-    """
+    """Also register root `'/'` and `'/{path:path}'` SPA routes when `spa_path` is set to a non-root prefix."""
 
     _executor_instance: "JSExecutor | None" = field(default=None, repr=False)
     _mode_auto_detected: bool = field(default=False, repr=False)
@@ -271,6 +197,7 @@ class ViteConfig:
         self._normalize_spa_flag()
         self._normalize_logging()
         self._apply_dev_mode_shortcut()
+        self._auto_detect_executor()
         self._auto_detect_mode()
         self._auto_configure_inertia()
         self._auto_detect_react()
@@ -279,6 +206,15 @@ class ViteConfig:
         self._normalize_deploy()
         self._ensure_spa_default()
         self._auto_enable_dev_mode()
+
+    def _auto_detect_executor(self) -> None:
+        """Auto-detect the JS runtime executor from project lockfiles when not explicitly set."""
+        if self.runtime.has_explicit_executor:
+            return
+        detected = detect_runtime(self.root_dir)
+        if detected != self.runtime.executor:
+            self.runtime.apply_detected_executor(detected)
+            self._executor_instance = None
 
     def _resolve_enabled(self) -> None:
         """Resolve VITE_ENABLED only when enabled was not set explicitly."""
@@ -294,26 +230,35 @@ class ViteConfig:
         @vitejs/plugin-react requires the React preamble to be injected into the HTML.
         The asset loader handles this when `runtime.is_react` is enabled.
 
-        We auto-enable it when `@vitejs/plugin-react` is present in the project's package.json.
+        We auto-enable it when `@vitejs/plugin-react` is present in the project's package.json
+        or when React imports are present in `deno.json` / `deno.jsonc`.
         """
         if self.runtime.is_react:
             return
 
         package_json = self.root_dir / "package.json"
-        if not package_json.exists():
-            return
+        if package_json.exists():
+            try:
+                package_json_stat = package_json.stat()
+            except OSError:
+                package_json_stat = None
+            if package_json_stat is not None and _package_json_has_react_plugin(
+                str(package_json), package_json_stat.st_mtime_ns, package_json_stat.st_size
+            ):
+                self.runtime.is_react = True
+                return
 
-        try:
-            package_json_stat = package_json.stat()
-        except OSError:
-            return
-
-        has_react_plugin = _package_json_has_react_plugin(
-            str(package_json), package_json_stat.st_mtime_ns, package_json_stat.st_size
-        )
-
-        if has_react_plugin:
-            self.runtime.is_react = True
+        for deno_filename in ("deno.json", "deno.jsonc"):
+            deno_config = self.root_dir / deno_filename
+            if not deno_config.exists():
+                continue
+            try:
+                deno_stat = deno_config.stat()
+            except OSError:
+                continue
+            if _deno_config_has_react(str(deno_config), deno_stat.st_mtime_ns, deno_stat.st_size):
+                self.runtime.is_react = True
+                return
 
     def _normalize_mode(self) -> None:
         """Normalize mode aliases to canonical values.
@@ -660,18 +605,19 @@ class ViteConfig:
 
         executor_type = self.runtime.executor or "node"
         silent = self.logging_config.suppress_npm_output
+        mode = self.runtime.provisioning_mode
 
         if executor_type == "bun":
-            return BunExecutor(silent=silent)
+            return BunExecutor(silent=silent, provisioning_mode=mode)
         if executor_type == "deno":
-            return DenoExecutor(silent=silent)
+            return DenoExecutor(silent=silent, provisioning_mode=mode)
         if executor_type == "yarn":
-            return YarnExecutor(silent=silent)
+            return YarnExecutor(silent=silent, provisioning_mode=mode)
         if executor_type == "pnpm":
-            return PnpmExecutor(silent=silent)
+            return PnpmExecutor(silent=silent, provisioning_mode=mode)
         if self.runtime.detect_nodeenv:
             return NodeenvExecutor(self, silent=silent)
-        return NodeExecutor(silent=silent)
+        return NodeExecutor(silent=silent, provisioning_mode=mode)
 
     @property
     def bundle_dir(self) -> Path:
@@ -1095,6 +1041,33 @@ class ViteConfig:
             CSP nonce string when configured, otherwise None.
         """
         return self.runtime.csp_nonce
+
+    @property
+    def link_preload_headers(self) -> bool:
+        """Return whether RFC 8288 Link preload headers are emitted in production."""
+        return self.runtime.link_preload_headers
+
+    @property
+    def early_hints(self) -> bool:
+        """Return whether ASGI 103 Early Hints frames are emitted in production."""
+        return self.runtime.early_hints
+
+    @property
+    def immutable_cache_headers(self) -> bool:
+        """Return whether content-hashed static assets receive immutable Cache-Control headers."""
+        return self.runtime.immutable_cache_headers
+
+    @property
+    def ssr_transport(self) -> Literal["stdio", "wasm", "auto"]:
+        """Return the configured production SSR transport mode."""
+        return self.runtime.ssr_transport
+
+    @property
+    def ssr_enabled(self) -> bool:
+        """Return whether Server-Side Rendering (Inertia SSR or custom SSR output) is enabled."""
+        return (
+            isinstance(self.inertia, InertiaConfig) and self.inertia.ssr_config is not None
+        ) or self.paths.ssr_output_dir is not None
 
     @property
     def trusted_proxies(self) -> "list[str] | str | None":

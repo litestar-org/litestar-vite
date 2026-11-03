@@ -12,6 +12,7 @@ from litestar_vite.ipc._base import (
 from litestar_vite.ipc._circuit_breaker import CircuitState, SSRCircuitBreaker
 from litestar_vite.ipc._stdio import StdioIPCTransport
 from litestar_vite.ipc._tcp import TCPStreamIPCTransport
+from litestar_vite.ipc._wasm import WasmIPCTransport, is_wasm_available, resolve_ssr_transport
 
 __all__ = (
     "BaseIPCTransport",
@@ -25,4 +26,7 @@ __all__ = (
     "SSRCircuitBreaker",
     "StdioIPCTransport",
     "TCPStreamIPCTransport",
+    "WasmIPCTransport",
+    "is_wasm_available",
+    "resolve_ssr_transport",
 )

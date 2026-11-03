@@ -1,3 +1,5 @@
+"""Click CLI command group (`litestar assets`) for scaffolding, Vite dev/build, typegen, doctor, and deploy."""
+
 import contextlib
 import os
 import subprocess

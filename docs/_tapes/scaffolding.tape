@@ -1,8 +1,8 @@
-# Scaffolding Demo (FIXED)
+# Scaffolding Demo
 # Demonstrates: litestar assets init
 # Uses: temporary directory to show fresh project setup
 
-Output docs/_static/demos/scaffolding.gif
+Output docs/assets/demos/scaffolding.gif
 
 Set Shell "bash"
 Set FontSize 14
@@ -20,7 +20,6 @@ Hide
 Type "source .venv/bin/activate"
 Enter
 Sleep 500ms
-Hide
 Type "cd /tmp && rm -rf litestar-demo && mkdir litestar-demo && cd litestar-demo"
 Enter
 Sleep 500ms
@@ -55,7 +54,6 @@ Type "EOF"
 Enter
 Sleep 500ms
 Show
-
 
 Type "cat app.py"
 Enter

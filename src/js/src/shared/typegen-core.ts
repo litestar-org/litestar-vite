@@ -165,6 +165,23 @@ export function resolveHeyApiBin(projectRoot: string): { binPath: string } | nul
 }
 
 /**
+ * Build argv for executing a local JavaScript CLI script via ``process.execPath``.
+ *
+ * When ``process.execPath`` points to Deno, ``run -A`` must precede the script path.
+ *
+ * @param execPath - Runtime executable path (``process.execPath``)
+ * @param binPath - Resolved CLI entry script path
+ * @param args - CLI arguments to pass to the script
+ * @returns Argument array suitable for ``execFile``
+ */
+export function buildRuntimeExecArgs(execPath: string, binPath: string, args: string[]): string[] {
+  if (/(?:^|[\\/])deno(?:\.exe)?$/i.test(execPath)) {
+    return ["run", "-A", binPath, ...args]
+  }
+  return [binPath, ...args]
+}
+
+/**
  * Run @hey-api/openapi-ts to generate TypeScript types from OpenAPI spec.
  *
  * @param config - Type generation configuration
@@ -202,7 +219,7 @@ export async function runHeyApiGeneration(config: TypeGenCoreConfig, configPath:
 
   const local = resolveHeyApiBin(projectRoot)
   if (local) {
-    await execFileAsync(process.execPath, [local.binPath, ...args], { cwd: projectRoot })
+    await execFileAsync(process.execPath, buildRuntimeExecArgs(process.execPath, local.binPath, args), { cwd: projectRoot })
     return sdkOutput
   }
 

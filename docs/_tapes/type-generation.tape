@@ -2,7 +2,7 @@
 # Demonstrates: litestar assets generate-types with hey-api/openapi-ts
 # Uses: examples/react-inertia (has TypeGenConfig enabled)
 
-Output docs/_static/demos/type-generation.gif
+Output docs/assets/demos/type-generation.gif
 
 Set Shell "bash"
 Set FontSize 14

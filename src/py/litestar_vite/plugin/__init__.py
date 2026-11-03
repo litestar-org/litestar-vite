@@ -9,14 +9,15 @@ The plugin handles:
 - Async asset loader initialization
 - Development proxies for Vite HTTP and HMR WebSockets (with hop-by-hop header filtering)
 
-Example::
-
+Example:
+    ```python
     from litestar import Litestar
     from litestar_vite import VitePlugin, ViteConfig
 
     app = Litestar(
         plugins=[VitePlugin(config=ViteConfig(dev_mode=True))],
     )
+    ```
 """
 
 from litestar_vite.plugin._core import VitePlugin

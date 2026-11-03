@@ -32,20 +32,25 @@ class NpmBuildHook(BuildHookInterface):
 
 
 def _install_command(executor: str, root: Path) -> list[str]:
+    """Return the package installation command for the selected JS executor."""
     if executor == "bun":
         return ["bun", "install"]
+    if executor == "deno":
+        return ["deno", "install"]
     if executor == "pnpm":
         return ["pnpm", "install", "--frozen-lockfile"]
     if executor == "yarn":
         return ["yarn", "install", "--frozen-lockfile"]
 
-    # Default to npm semantics.
     if (root / "package-lock.json").exists():
         return ["npm", "ci", "--no-fund", "--quiet"]
     return ["npm", "install", "--no-fund", "--quiet"]
 
 
 def _build_command(executor: str) -> list[str]:
+    """Return the build command for the selected JS executor."""
+    if executor == "deno":
+        return ["deno", "task", "build"]
     if executor == "pnpm":
         return ["pnpm", "run", "build"]
     if executor == "yarn":

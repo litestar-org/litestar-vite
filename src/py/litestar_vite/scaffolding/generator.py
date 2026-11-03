@@ -45,42 +45,42 @@ def _package_version_resolver(package_versions: dict[str, str]) -> Callable[[str
 
 @dataclass
 class TemplateContext:
-    """Context variables for template rendering.
-
-    Attributes:
-        project_name: Name of the project
-        framework: The selected framework template
-        use_typescript: Whether to use TypeScript
-        use_tailwind: Whether to add TailwindCSS
-        vite_port: Vite dev server port
-        litestar_port: Litestar server port
-        asset_url: Base URL for assets
-        resource_dir: Source directory for frontend files
-        bundle_dir: Output directory for built files
-        enable_ssr: Whether SSR is enabled
-        enable_inertia: Whether Inertia.js is used
-        enable_types: Whether type generation is enabled
-        generate_zod: Whether to generate Zod schemas
-        generate_client: Whether to generate API client
-    """
+    """Context variables used when rendering frontend project scaffolding templates."""
 
     project_name: str
+    """Name of the project being scaffolded."""
     framework: "FrameworkTemplate"
+    """Selected frontend `FrameworkTemplate` definition."""
     use_typescript: bool = True
+    """Generate TypeScript configuration and `.ts`/`.tsx` entrypoints."""
     use_tailwind: bool = False
+    """Include Tailwind CSS v4 dependencies and Vite plugin configuration."""
     vite_port: int = 5173
+    """TCP port configured for the Vite development server."""
     litestar_port: int = 8000
+    """TCP port configured for the Litestar ASGI server."""
     asset_url: str = "/static/"
+    """Base URL prefix for static and compiled assets."""
     resource_dir: str = "resources"
+    """Frontend source directory relative to `base_dir`."""
     bundle_dir: str = "public"
+    """Compiled bundle output directory relative to `base_dir`."""
     static_dir: str = "public"
+    """Static public directory relative to `base_dir`."""
     base_dir: str = "."
+    """Target directory where scaffolded files are written."""
     enable_ssr: bool = False
+    """Include server-side rendering (SSR) entrypoints and configuration."""
     enable_inertia: bool = False
+    """Configure the project for Inertia.js v2 hybrid rendering."""
     enable_types: bool = True
+    """Enable automatic OpenAPI and route TypeScript code generation."""
     generate_zod: bool = False
+    """Enable Zod schema generation in `TypeGenConfig`."""
     generate_client: bool = False
+    """Enable `@hey-api/openapi-ts` SDK client generation in `TypeGenConfig`."""
     extra: dict[str, Any] = field(default_factory=_DictStrAnyFactory)
+    """Additional custom template context variables."""
 
     def has_dependency(self, package_name: str) -> bool:
         """Check whether the selected framework declares a package dependency."""

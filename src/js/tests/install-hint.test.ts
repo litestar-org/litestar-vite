@@ -75,6 +75,37 @@ describe("install-hint", () => {
       expect(detectExecutor()).toBe("deno")
     })
 
+    it("returns deno when deno.json exists without deno.lock", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).endsWith("deno.json"))
+
+      expect(detectExecutor()).toBe("deno")
+    })
+
+    it("returns deno when deno.jsonc exists without deno.lock", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).endsWith("deno.jsonc"))
+
+      expect(detectExecutor()).toBe("deno")
+    })
+
+    it("prefers deno over pnpm when both markers exist (parity with Python detect_runtime_marker)", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).endsWith("deno.json") || String(p).endsWith("pnpm-lock.yaml"))
+
+      expect(detectExecutor()).toBe("deno")
+    })
+
+    it("returns node when package-lock.json exists", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).endsWith("package-lock.json"))
+
+      expect(detectExecutor()).toBe("node")
+    })
+
+    it("falls back to package.json packageManager when no lockfile exists", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p) => String(p).endsWith("package.json"))
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ packageManager: "pnpm@9.1.0" }))
+
+      expect(detectExecutor()).toBe("pnpm")
+    })
+
     it("reads executor from .litestar.json", () => {
       vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes(".litestar.json"))
       vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ executor: "bun" }))
@@ -393,15 +424,35 @@ describe("install-hint", () => {
       expect(resolvePackageExecutorArgv(["--help"], "yarn", options)).toEqual(["yarn", "dlx", "-p", "@hey-api/openapi-ts@0.98.2", "-p", "typescript@6.0.3", "openapi-ts", "--help"])
     })
 
-    it("refuses unsafe multi-package fallbacks for bun and deno", () => {
+    it("supports multi-package fallbacks for bun and deno", () => {
       const options = {
         packageSpec: "@hey-api/openapi-ts@0.98.2",
         additionalPackageSpecs: ["typescript@6.0.3"],
         binName: "openapi-ts",
       }
 
-      expect(resolvePackageExecutorArgv(["--help"], "bun", options)).toEqual([])
-      expect(resolvePackageExecutorArgv(["--help"], "deno", options)).toEqual([])
+      expect(resolvePackageExecutorArgv(["--help"], "bun", options)).toEqual([
+        "bunx",
+        "--package",
+        "@hey-api/openapi-ts@0.98.2",
+        "--package",
+        "typescript@6.0.3",
+        "openapi-ts",
+        "--help",
+      ])
+      expect(resolvePackageExecutorArgv(["--help"], "deno", options)).toEqual(["deno", "run", "-A", "npm:@hey-api/openapi-ts@0.98.2", "--help"])
+      expect(
+        resolvePackageExecutorArgv(["openapi-ts", "-i", "schema.json"], "bun", {
+          packageSpec: "@hey-api/openapi-ts",
+          additionalPackageSpecs: ["@hey-api/client-fetch"],
+        }),
+      ).toEqual(["bunx", "--package", "@hey-api/openapi-ts", "--package", "@hey-api/client-fetch", "openapi-ts", "-i", "schema.json"])
+      expect(
+        resolvePackageExecutorArgv(["openapi-ts", "-i", "schema.json"], "deno", {
+          packageSpec: "@hey-api/openapi-ts",
+          additionalPackageSpecs: ["@hey-api/client-fetch"],
+        }),
+      ).toEqual(["deno", "run", "-A", "npm:@hey-api/openapi-ts", "-i", "schema.json"])
     })
 
     it("returns package-manager specific argv without changing resolvePackageExecutor string output", () => {

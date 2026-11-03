@@ -1,3 +1,5 @@
+"""Inertia.js v2 plugin, request/response primitives, prop helpers, and Precognition support."""
+
 from litestar_vite.config import InertiaConfig
 from litestar_vite.inertia import helpers
 from litestar_vite.inertia.exception_handler import create_inertia_exception_response, exception_to_http_response

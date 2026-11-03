@@ -1,3 +1,5 @@
+"""Filesystem, package resource, and `.litestar.json` bridge reading utilities."""
+
 __all__ = ("get_package_path", "get_static_resource_path", "read_bridge_config", "read_hotfile_url", "read_text_file")
 
 import os

@@ -1,3 +1,5 @@
+"""Request-scoped transient state and redirect session persistence for Inertia shared props, flash, and errors."""
+
 import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
@@ -27,21 +29,28 @@ def _empty_errors() -> "dict[str, str]":
 
 @dataclass
 class InertiaTransientState:
-    """Current-request state staged by Inertia helpers."""
+    """Current-request state staged by Inertia helpers (`share`, `flash`, `error`, `clear_history`)."""
 
     shared: dict[str, Any] = field(default_factory=_empty_shared)
+    """Shared prop key-value pairs staged for the current request via `share()`."""
     flash: dict[str, list[str]] = field(default_factory=_empty_flash)
+    """Flash messages grouped by category staged via `flash()`."""
     errors: dict[str, str] = field(default_factory=_empty_errors)
+    """Validation error messages keyed by field name staged via `error()`."""
     clear_history: bool = False
+    """Whether `clear_history()` was called to clear encrypted browser history on the next response."""
 
 
 @dataclass(frozen=True)
 class RedirectStatePersistence:
-    """Result of attempting to persist transient state across a redirect."""
+    """Result of attempting to persist transient Inertia state across a redirect."""
 
     had_pending: bool
+    """Whether any transient state (`shared`, `flash`, `errors`, `clear_history`) was pending before redirect."""
     persisted: bool
+    """Whether the pending transient state was written to the session store."""
     dropped_keys: tuple[str, ...] = ()
+    """Shared prop keys dropped because their values could not be serialized into the session."""
 
 
 def _scope(connection: "ASGIConnection[Any, Any, Any, Any]") -> "dict[str, Any]":

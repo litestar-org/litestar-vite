@@ -1,0 +1,124 @@
+<div class="lv-diag lv-diag--dev-proxy">
+  <style>
+    .lv-diag--dev-proxy {
+      --lv-surface: var(--md-default-bg-color, #ffffff);
+      --lv-card: var(--md-code-bg-color, #f8fafc);
+      --lv-border: rgba(148, 163, 184, 0.35);
+      --lv-text: var(--md-default-fg-color, #0f172a);
+      --lv-muted: var(--md-default-fg-color--light, #475569);
+      --lv-blue: #2563eb;
+      --lv-amber: #d97706;
+      --lv-emerald: #059669;
+      --lv-violet: #7c3aed;
+      margin: 1.5rem 0;
+      padding: 1rem;
+      border-radius: 0.75rem;
+      border: 1px solid var(--lv-border);
+      background: var(--lv-surface);
+    }
+    [data-md-color-scheme="slate"] .lv-diag--dev-proxy {
+      --lv-card: rgba(30, 41, 59, 0.85);
+      --lv-border: rgba(148, 163, 184, 0.24);
+      --lv-blue: #60a5fa;
+      --lv-amber: #fbbf24;
+      --lv-emerald: #34d399;
+      --lv-violet: #a78bfa;
+    }
+    .lv-diag--dev-proxy svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      font-family: var(--md-text-font-family, system-ui, -apple-system, sans-serif);
+    }
+    .lv-diag--dev-proxy .lv-flow-http {
+      stroke-dasharray: 8 6;
+      animation: lv-proxy-dash 1.8s linear infinite;
+    }
+    .lv-diag--dev-proxy .lv-flow-ws {
+      stroke-dasharray: 6 6;
+      animation: lv-proxy-dash-rev 1.4s linear infinite;
+    }
+    .lv-diag--dev-proxy .lv-flow-bridge {
+      stroke-dasharray: 4 5;
+      animation: lv-proxy-dash 2.6s linear infinite;
+    }
+    .lv-diag--dev-proxy .lv-pulse {
+      animation: lv-proxy-pulse 2.2s ease-in-out infinite;
+      transform-origin: center;
+      transform-box: fill-box;
+    }
+    @keyframes lv-proxy-dash {
+      to { stroke-dashoffset: -28; }
+    }
+    @keyframes lv-proxy-dash-rev {
+      to { stroke-dashoffset: 24; }
+    }
+    @keyframes lv-proxy-pulse {
+      0%, 100% { opacity: 0.55; transform: scale(0.92); }
+      50% { opacity: 1; transform: scale(1.12); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .lv-diag--dev-proxy .lv-flow-http,
+      .lv-diag--dev-proxy .lv-flow-ws,
+      .lv-diag--dev-proxy .lv-flow-bridge,
+      .lv-diag--dev-proxy .lv-pulse {
+        animation: none !important;
+      }
+    }
+  </style>
+  <svg viewBox="0 0 920 360" role="img" aria-labelledby="lv-dev-proxy-title lv-dev-proxy-desc">
+    <title id="lv-dev-proxy-title">Single-Port AnyIO Development Proxy and .litestar.json Bridge</title>
+    <desc id="lv-dev-proxy-desc">Shows browser traffic entering Litestar on port 8000, branching between Python route handlers and ViteProxyMiddleware over AnyIO TCP streams and wsproto WebSockets to the Vite dev server on port 5173, coordinated by .litestar.json and the hot file.</desc>
+
+    <!-- Browser Node -->
+    <rect x="20" y="95" width="165" height="145" rx="12" fill="var(--lv-card)" stroke="var(--lv-blue)" stroke-width="2" />
+    <text x="102" y="132" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Browser</text>
+    <text x="102" y="156" text-anchor="middle" fill="var(--lv-blue)" font-size="12" font-family="monospace">http://127.0.0.1:8000</text>
+    <text x="102" y="184" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Single Origin (No CORS)</text>
+    <text x="102" y="206" text-anchor="middle" fill="var(--lv-emerald)" font-size="11" font-family="monospace">/api/* &amp; /vite-hmr</text>
+
+    <!-- Litestar ASGI Server Box -->
+    <rect x="255" y="30" width="335" height="230" rx="14" fill="var(--lv-card)" stroke="var(--lv-amber)" stroke-width="2" />
+    <text x="422" y="58" text-anchor="middle" fill="var(--lv-text)" font-size="15" font-weight="700">Litestar ASGI Process (:8000)</text>
+
+    <!-- Python API & Page Routes -->
+    <rect x="280" y="76" width="285" height="68" rx="8" fill="var(--lv-surface)" stroke="var(--lv-border)" stroke-width="1.5" />
+    <text x="422" y="102" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="600">Route Handlers</text>
+    <text x="422" y="124" text-anchor="middle" fill="var(--lv-muted)" font-size="11.5">JSON APIs, Inertia &amp; Templates</text>
+
+    <!-- ViteProxyMiddleware -->
+    <rect x="280" y="162" width="285" height="80" rx="8" fill="var(--lv-surface)" stroke="var(--lv-blue)" stroke-width="1.8" />
+    <text x="422" y="190" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="700">ViteProxyMiddleware</text>
+    <text x="422" y="212" text-anchor="middle" fill="var(--lv-blue)" font-size="11.5" font-family="monospace">anyio.connect_tcp + WebSocket</text>
+
+    <!-- Vite 7+ Dev Server Box -->
+    <rect x="665" y="55" width="235" height="195" rx="14" fill="var(--lv-card)" stroke="var(--lv-violet)" stroke-width="2" />
+    <circle class="lv-pulse" cx="876" cy="78" r="6" fill="var(--lv-emerald)" />
+    <text x="782" y="83" text-anchor="middle" fill="var(--lv-text)" font-size="15" font-weight="700">Vite Dev Server</text>
+    <text x="782" y="103" text-anchor="middle" fill="var(--lv-violet)" font-size="12" font-family="monospace">127.0.0.1:5173</text>
+    <rect x="685" y="118" width="195" height="52" rx="7" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="782" y="140" text-anchor="middle" fill="var(--lv-text)" font-size="12" font-weight="600">litestar-vite-plugin</text>
+    <text x="782" y="158" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Asset Transform &amp; HMR</text>
+    <rect x="685" y="182" width="195" height="52" rx="7" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="782" y="204" text-anchor="middle" fill="var(--lv-text)" font-size="12" font-weight="600">Dev SSR Runner</text>
+    <text x="782" y="222" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">POST /__litestar_ssr__</text>
+
+    <!-- Bridge Files Bar -->
+    <rect x="255" y="285" width="645" height="54" rx="10" fill="var(--lv-card)" stroke="var(--lv-border)" stroke-width="1.5" />
+    <text x="577" y="308" text-anchor="middle" fill="var(--lv-text)" font-size="12" font-weight="700">Runtime Handshake</text>
+    <text x="577" y="326" text-anchor="middle" fill="var(--lv-muted)" font-size="11" font-family="monospace">.litestar.json  ⇄  hot file</text>
+
+    <!-- Animated Edges: Browser <-> Litestar -->
+    <line class="lv-flow-http" x1="185" y1="142" x2="255" y2="112" stroke="var(--lv-amber)" stroke-width="2.5" />
+    <line class="lv-flow-http" x1="185" y1="175" x2="280" y2="192" stroke="var(--lv-blue)" stroke-width="2.5" />
+    <line class="lv-flow-ws" x1="185" y1="205" x2="280" y2="220" stroke="var(--lv-emerald)" stroke-width="2.5" />
+
+    <!-- Animated Edges: ViteProxyMiddleware <-> Vite -->
+    <line class="lv-flow-http" x1="565" y1="190" x2="665" y2="145" stroke="var(--lv-blue)" stroke-width="2.5" />
+    <line class="lv-flow-ws" x1="565" y1="218" x2="665" y2="165" stroke="var(--lv-emerald)" stroke-width="2.5" />
+
+    <!-- Animated Edges: Bridge Files -->
+    <line class="lv-flow-bridge" x1="422" y1="260" x2="422" y2="285" stroke="var(--lv-amber)" stroke-width="2" />
+    <line class="lv-flow-bridge" x1="782" y1="250" x2="782" y2="285" stroke="var(--lv-violet)" stroke-width="2" />
+  </svg>
+</div>

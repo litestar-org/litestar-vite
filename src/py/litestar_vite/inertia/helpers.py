@@ -1,3 +1,5 @@
+"""Inertia.js v2 prop wrappers (`lazy`, `defer`, `once`, `optional`, `always`, `merge`, `scroll_props`) and state helpers."""
+
 import inspect
 import warnings
 from collections import defaultdict
@@ -90,19 +92,9 @@ def lazy(
 
         >>> lazy("permissions", lambda: Permission.all())
 
-    .. warning:: **False Lazy Pitfall**
-
-        Be careful not to accidentally call the function when passing it.
-
-        Wrong::
-
-            lazy("data", expensive_fn())
-
-        Correct::
-
-            lazy("data", expensive_fn)
-
-        This is a Python evaluation order issue, not a framework limitation.
+    Warning:
+        **False Lazy Pitfall** — pass the callable reference (`lazy("data", expensive_fn)`)
+        rather than invoking it eagerly (`lazy("data", expensive_fn())`).
 
     Args:
         key: The key to store the value under in the props dict.
@@ -113,22 +105,8 @@ def lazy(
     Returns:
         StaticProp if value_or_callable is not callable, DeferredProp otherwise.
 
-    Example::
-
-        from litestar_vite.inertia import lazy, InertiaResponse
-
-        @get("/dashboard", component="Dashboard")
-        async def dashboard() -> InertiaResponse:
-            props = {
-                "user": current_user,
-                "user_count": lazy("user_count", 42),
-                "permissions": lazy("permissions", lambda: Permission.all()),
-                "notifications": lazy("notifications", fetch_notifications),
-            }
-            return InertiaResponse(props)
-
     See Also:
-        - :func:`defer`: For v2 grouped deferred props loaded after page render
+        - `defer`: For v2 grouped deferred props loaded after page render
         - Inertia.js partial reloads: https://inertiajs.com/partial-reloads
     """
     if value_or_callable is None:
@@ -156,15 +134,15 @@ def defer(
     Returns:
         A DeferredProp instance.
 
-    Example::
-
+    Example:
+        ```python
         defer("permissions", lambda: Permission.all())
 
         defer("teams", lambda: Team.all(), group="attributes")
         defer("projects", lambda: Project.all(), group="attributes")
 
-        # Chain with .once() for lazy + cached behavior
         defer("stats", lambda: compute_expensive_stats()).once()
+        ```
     """
     return DeferredProp[str, T](key=key, value=callback, group=group)
 
@@ -192,8 +170,8 @@ def once(key: str, value_or_callable: "T | Callable[..., T | Coroutine[Any, Any,
     Returns:
         An OnceProp instance.
 
-    Example::
-
+    Example:
+        ```python
         from litestar_vite.inertia import once, InertiaResponse
 
         @get("/dashboard", component="Dashboard")
@@ -203,9 +181,10 @@ def once(key: str, value_or_callable: "T | Callable[..., T | Coroutine[Any, Any,
                 "settings": once("settings", lambda: Settings.for_user(user_id)),
                 "feature_flags": once("feature_flags", get_feature_flags()),
             })
+        ```
 
     See Also:
-        - :func:`defer`: For deferred props that support ``.once()`` chaining
+        - `defer`: For deferred props that support `.once()` chaining
         - Inertia.js once props: https://inertiajs.com/partial-reloads#once
     """
     return OnceProp[str, T](key=key, value=value_or_callable)
@@ -216,7 +195,7 @@ def optional(key: str, callback: "Callable[..., T | Coroutine[Any, Any, T]]") ->
 
     Optional props are NEVER included in initial page loads or standard
     partial reloads. They're only sent when the client explicitly requests
-    them via ``only: ['prop_name']`` in a partial reload.
+    them via `only: ['prop_name']` in a partial reload.
 
     This is designed for use with Inertia's WhenVisible component, which
     triggers a partial reload requesting specific props when an element
@@ -232,8 +211,8 @@ def optional(key: str, callback: "Callable[..., T | Coroutine[Any, Any, T]]") ->
     Returns:
         An OptionalProp instance.
 
-    Example::
-
+    Example:
+        ```python
         from litestar.params import FromPath
         from litestar_vite.inertia import optional, InertiaResponse
 
@@ -242,19 +221,21 @@ def optional(key: str, callback: "Callable[..., T | Coroutine[Any, Any, T]]") ->
             post = await Post.get(post_id)
             return InertiaResponse({
                 "post": post,
-                # Only loaded when WhenVisible triggers
                 "comments": optional("comments", lambda: Comment.for_post(post_id)),
                 "related_posts": optional("related_posts", lambda: Post.related(post_id)),
             })
+        ```
 
-    Frontend usage with WhenVisible::
+        Frontend usage with `WhenVisible`:
 
+        ```vue
         <WhenVisible data="comments" :params="{ only: ['comments'] }">
             <template #fallback>
                 <LoadingSpinner />
             </template>
             <CommentList :comments="comments" />
         </WhenVisible>
+        ```
 
     See Also:
         - Inertia.js WhenVisible: https://inertiajs.com/load-when-visible
@@ -281,41 +262,34 @@ def always(key: str, value: "T") -> "AlwaysProp[str, T]":
     Returns:
         An AlwaysProp instance.
 
-    Example::
-
+    Example:
+        ```python
         from litestar_vite.inertia import always, lazy, InertiaResponse
 
         @get("/dashboard", component="Dashboard")
         async def dashboard(request: Request) -> InertiaResponse:
             return InertiaResponse({
-                # Always sent, even during partial reloads for other props
                 "auth": always("auth", {"user": request.user, "can": permissions}),
-                # Only sent when explicitly requested
                 "analytics": lazy("analytics", get_analytics),
                 "reports": lazy("reports", get_reports),
             })
+        ```
 
     See Also:
-        - :func:`lazy`: For props excluded from initial load
-        - :func:`optional`: For props only included when explicitly requested
+        - `lazy`: For props excluded from initial load
+        - `optional`: For props only included when explicitly requested
     """
     return AlwaysProp[str, T](key=key, value=value)
 
 
 @dataclass
 class PropFilter:
-    """Configuration for prop filtering during partial reloads.
-
-    Used with ``only()`` and ``except_()`` helpers to explicitly control
-    which props are sent during partial reload requests.
-
-    Attributes:
-        include: Set of prop keys to include (only send these).
-        exclude: Set of prop keys to exclude (send all except these).
-    """
+    """Configuration for prop filtering (`only` / `except_`) during partial reloads."""
 
     include: "set[str] | None" = None
+    """Set of prop keys to explicitly include in the response."""
     exclude: "set[str] | None" = None
+    """Set of prop keys to explicitly exclude from the response."""
 
     def should_include(self, key: str) -> bool:
         """Return True when a prop key should be included.
@@ -342,8 +316,8 @@ def only(*keys: str) -> PropFilter:
     Returns:
         A PropFilter configured to include only the specified keys.
 
-    Example::
-
+    Example:
+        ```python
         from litestar_vite.inertia import only, InertiaResponse
 
         @get("/users", component="Users")
@@ -359,10 +333,11 @@ def only(*keys: str) -> PropFilter:
                 },
                 prop_filter=only("users"),
             )
+        ```
 
     Note:
         This is a server-side helper. The client should use Inertia's
-        ``router.reload({ only: ['users'] })`` for client-initiated filtering.
+        `router.reload({ only: ['users'] })` for client-initiated filtering.
     """
     return PropFilter(include=set(keys))
 
@@ -379,8 +354,8 @@ def except_(*keys: str) -> PropFilter:
     Returns:
         A PropFilter configured to exclude the specified keys.
 
-    Example::
-
+    Example:
+        ```python
         from litestar_vite.inertia import except_, InertiaResponse
 
         @get("/users", component="Users")
@@ -396,10 +371,11 @@ def except_(*keys: str) -> PropFilter:
                 },
                 prop_filter=except_("stats"),
             )
+        ```
 
     Note:
-        The function is named ``except_`` with a trailing underscore to avoid
-        conflicting with Python's ``except`` keyword.
+        The function is named `except_` with a trailing underscore to avoid
+        conflicting with Python's `except` keyword.
     """
     return PropFilter(exclude=set(keys))
 
@@ -433,18 +409,22 @@ class MergeProp(Generic[PropKeyT, T]):
 
     @property
     def key(self) -> "PropKeyT":
+        """Return the prop key."""
         return self._key
 
     @property
     def value(self) -> "T":
+        """Return the prop value to merge."""
         return self._value
 
     @property
     def strategy(self) -> "Literal['append', 'prepend', 'deep']":
+        """Return the configured merge strategy (`'append'`, `'prepend'`, or `'deep'`)."""
         return self._strategy  # pyright: ignore[reportReturnType]
 
     @property
     def match_on(self) -> "list[str] | None":
+        """Return the optional list of property keys used to deduplicate merged items."""
         return self._match_on
 
 
@@ -476,15 +456,13 @@ def merge(
     Returns:
         A MergeProp instance.
 
-    Example::
-
+    Example:
+        ```python
         merge("posts", new_posts)
-
         merge("messages", new_messages, strategy="prepend")
-
         merge("user_data", updates, strategy="deep")
-
         merge("posts", updated_posts, match_on="id")
+        ```
     """
     return MergeProp[str, T](key=key, value=value, strategy=strategy, match_on=match_on)
 
@@ -506,8 +484,8 @@ def scroll_props(
     Returns:
         A ScrollPropsConfig instance for use in InertiaResponse.
 
-    Example::
-
+    Example:
+        ```python
         from litestar.params import FromQuery
         from litestar_vite.inertia import scroll_props, InertiaResponse
 
@@ -522,6 +500,7 @@ def scroll_props(
                     next_page=page + 1 if posts.has_more else None,
                 ),
             )
+        ```
     """
     return ScrollPropsConfig(
         page_name=page_name, current_page=current_page, previous_page=previous_page, next_page=next_page
@@ -552,10 +531,10 @@ def extract_merge_props(props: "Mapping[str, Any]") -> "tuple[list[str], list[st
     Returns:
         A tuple of (merge_props, prepend_props, deep_merge_props, match_props_on)
         where each list contains the prop keys for that strategy, and match_props_on
-        is a flat list of property paths such as ``items.id``.
+        is a flat list of property paths such as `items.id`.
 
-    Example::
-
+    Example:
+        ```python
         props = {
             "users": [...],
             "posts": merge("posts", new_posts),
@@ -564,13 +543,14 @@ def extract_merge_props(props: "Mapping[str, Any]") -> "tuple[list[str], list[st
             "items": merge("items", items, match_on="id"),
         }
         merge_props, prepend_props, deep_merge_props, match_props_on = extract_merge_props(props)
+        ```
 
         The returned values then contain:
 
-        - merge_props: ["posts", "items"]
-        - prepend_props: ["messages"]
-        - deep_merge_props: ["data"]
-        - match_props_on: ["items.id"]
+        - `merge_props`: `["posts", "items"]`
+        - `prepend_props`: `["messages"]`
+        - `deep_merge_props`: `["data"]`
+        - `match_props_on`: `["items.id"]`
     """
     merge_list: "list[str]" = []
     prepend_list: "list[str]" = []
@@ -619,9 +599,11 @@ class StaticProp(Generic[PropKeyT, StaticT]):
 
     @property
     def key(self) -> "PropKeyT":
+        """Return the prop key."""
         return self._key
 
     def render(self) -> "StaticT":
+        """Return the static prop value."""
         return self._result
 
 
@@ -653,6 +635,7 @@ class DeferredProp(Generic[PropKeyT, T]):
 
     @property
     def key(self) -> "PropKeyT":
+        """Return the prop key."""
         return self._key
 
     @property
@@ -674,14 +657,15 @@ class DeferredProp(Generic[PropKeyT, T]):
         Returns:
             A new DeferredProp with is_once=True.
 
-        Example::
-
-            # Combine defer with once for lazy + cached behavior
+        Example:
+            ```python
             defer("stats", lambda: compute_expensive_stats()).once()
+            ```
         """
         return DeferredProp[PropKeyT, T](key=self._key, value=self._value, group=self._group, is_once=True)
 
     def render(self) -> "T | None":
+        """Evaluate and cache the deferred prop value synchronously."""
         if self._evaluated:
             return self._result
         if self._value is None or not callable(self._value):
@@ -699,7 +683,7 @@ class DeferredProp(Generic[PropKeyT, T]):
 
         No-op if already evaluated or if the callback is sync (``render()``
         handles those inline). Mutates ``_result``/``_evaluated`` in place so
-        the subsequent sync :meth:`render` short-circuits at the cache.
+        the subsequent sync `render` short-circuits at the cache.
         """
         if self._evaluated:
             return
@@ -738,6 +722,7 @@ class OnceProp(Generic[PropKeyT, T]):
 
     @property
     def key(self) -> "PropKeyT":
+        """Return the prop key."""
         return self._key
 
     def render(self) -> "T | None":
@@ -799,6 +784,7 @@ class OptionalProp(Generic[PropKeyT, T]):
 
     @property
     def key(self) -> "PropKeyT":
+        """Return the prop key."""
         return self._key
 
     def render(self) -> "T | None":
@@ -854,10 +840,12 @@ class AlwaysProp(Generic[PropKeyT, T]):
 
     @property
     def key(self) -> "PropKeyT":
+        """Return the prop key."""
         return self._key
 
     @property
     def value(self) -> "T":
+        """Return the eagerly evaluated prop value."""
         return self._value
 
     def render(self) -> "T":
@@ -966,8 +954,8 @@ def extract_deferred_props(props: "Mapping[str, Any]") -> "dict[str, list[str]]"
         A dict mapping group names to lists of prop keys in that group.
         Empty dict if no deferred props found.
 
-    Example::
-
+    Example:
+        ```python
         props = {
             "users": [...],
             "teams": defer("teams", get_teams, group="attributes"),
@@ -975,8 +963,9 @@ def extract_deferred_props(props: "Mapping[str, Any]") -> "dict[str, list[str]]"
             "permissions": defer("permissions", get_permissions),
         }
         result = extract_deferred_props(props)
+        ```
 
-        The result is {"default": ["permissions"], "attributes": ["teams", "projects"]}.
+        The result is `{"default": ["permissions"], "attributes": ["teams", "projects"]}`.
     """
     groups: "dict[str, list[str]]" = {}
 
@@ -1009,16 +998,17 @@ def extract_once_props(
         A list of prop keys that should be cached client-side.
         Empty list if no once props found.
 
-    Example::
-
+    Example:
+        ```python
         props = {
             "user": current_user,
             "settings": once("settings", get_settings),
             "stats": defer("stats", get_stats).once(),
         }
         result = extract_once_props(props)
+        ```
 
-        The result is ["settings", "stats"].
+        The result is `["settings", "stats"]`.
     """
     return [key for key, _ in _extract_once_prop_entries(props, partial_data, partial_except)]
 
@@ -1149,8 +1139,8 @@ def lazy_render(  # noqa: PLR0911
 
     For v2 protocol, partial_except takes precedence over partial_data.
 
-    Async-callback props must be pre-resolved by :func:`resolve_async_props`
-    before this function runs; otherwise their :meth:`render` will raise.
+    Async-callback props must be pre-resolved by `resolve_async_props`
+    before this function runs; otherwise their `render` will raise.
 
     Args:
         value: The value to filter
@@ -1224,7 +1214,7 @@ def has_unresolved_async_props(  # noqa: PLR0911
     """Return ``True`` if ``value`` (recursively) contains a prop that will be
     rendered for this request AND whose async callback hasn't been evaluated yet.
 
-    Mirrors :func:`should_render` filtering so out-of-scope props (an
+    Mirrors `should_render` filtering so out-of-scope props (an
     ``optional()`` on a full page load, a ``defer()`` not in ``partial_data``)
     don't count — preserving the laziness contract and preventing infinite
     re-deferral when ``InertiaResponse.to_asgi_response`` re-enters after
@@ -1273,12 +1263,12 @@ async def resolve_async_props(
 ) -> None:
     """Walk ``value`` and ``await`` async prop callbacks on the current loop.
 
-    Mirrors the filter logic of :func:`lazy_render` so we only evaluate props
+    Mirrors the filter logic of `lazy_render` so we only evaluate props
     that will actually be rendered for this request — preserving the laziness
     contract of ``defer()``/``optional()`` on full page loads.
 
-    Mutates :class:`DeferredProp`/:class:`OnceProp`/:class:`OptionalProp`
-    instances in place (see each class's :meth:`resolve_async`). Sync callbacks
+    Mutates `DeferredProp`, `OnceProp`, and `OptionalProp`
+    instances in place (see each class's `resolve_async`). Sync callbacks
     and already-evaluated props are left untouched.
 
     Args:
@@ -1541,14 +1531,15 @@ def flash(connection: "ASGIConnection[Any, Any, Any, Any]", message: "str", cate
     Returns:
         True when the flash message was staged for the current request.
 
-    Example::
-
+    Example:
+        ```python
         from litestar_vite.inertia import flash
 
         @post("/create")
         async def create_item(request: Request) -> InertiaResponse:
             flash(request, "Item created successfully!", "success")
             return InertiaResponse(...)
+        ```
     """
     stage_flash(connection, message, category)
     return True
@@ -1567,8 +1558,8 @@ def clear_history(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
     Args:
         connection: The ASGI connection (Request).
 
-    Example::
-
+    Example:
+        ```python
         from litestar_vite.inertia import clear_history
 
         @post("/logout")
@@ -1576,6 +1567,7 @@ def clear_history(connection: "ASGIConnection[Any, Any, Any, Any]") -> None:
             request.session.clear()
             clear_history(request)
             return InertiaRedirect(request, redirect_to="/login")
+        ```
     """
     stage_clear_history(connection)
 
@@ -1624,12 +1616,13 @@ def extract_pagination_scroll_props(value: "Any", page_param: str = "page") -> "
         A tuple of (items, scroll_props) where scroll_props is None if
         value is not a pagination container.
 
-    Example::
-
+    Example:
+        ```python
         items, scroll = extract_pagination_scroll_props(pagination)
+        ```
 
-        For OffsetPagination with limit=10, offset=20, total=50 the resulting scroll
-        props are: ScrollPropsConfig(current_page=3, previous_page=2, next_page=4).
+        For `OffsetPagination` with `limit=10, offset=20, total=50` the resulting scroll
+        props are `ScrollPropsConfig(current_page=3, previous_page=2, next_page=4)`.
     """
     if not is_pagination_container(value):
         return value, None
@@ -1668,27 +1661,28 @@ def pagination_to_dict(value: "Any") -> dict[str, Any]:
 
     Dynamically extracts known pagination attributes from any pagination
     container class. This supports custom pagination implementations as
-    long as they have an ``items`` attribute and standard pagination metadata.
+    long as they have an `items` attribute and standard pagination metadata.
 
-    The function checks for common pagination attributes like ``total``,
-    ``limit``, ``offset`` (for offset pagination), ``page_size``, ``current_page``,
-    ``total_pages`` (for classic pagination), and cursor-based attributes.
+    The function checks for common pagination attributes like `total`,
+    `limit`, `offset` (for offset pagination), `page_size`, `current_page`,
+    `total_pages` (for classic pagination), and cursor-based attributes.
     Any found attributes are included in the result dict with camelCase keys.
 
     Args:
-        value: A pagination container with ``items`` and metadata attributes.
+        value: A pagination container with `items` and metadata attributes.
 
     Returns:
-        A dict with ``items`` and any found pagination metadata (camelCase keys).
+        A dict with `items` and any found pagination metadata (camelCase keys).
 
-    Example::
-
+    Example:
+        ```python
         from litestar.pagination import OffsetPagination
 
         pagination = OffsetPagination(items=[1, 2, 3], limit=10, offset=0, total=50)
         result = pagination_to_dict(pagination)
+        ```
 
-        The result contains {"items": [1, 2, 3], "total": 50, "limit": 10, "offset": 0}.
+        The result contains `{"items": [1, 2, 3], "total": 50, "limit": 10, "offset": 0}`.
 
     Note:
         This function is used internally by InertiaResponse to preserve

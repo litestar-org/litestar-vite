@@ -5,10 +5,13 @@ from typing import Any
 from unittest.mock import patch
 from uuid import UUID
 
-from litestar import Litestar, get, post
+from litestar import Litestar, WebSocket, get, post, websocket
+from litestar.channels import ChannelsPlugin
+from litestar.channels.backends.memory import MemoryChannelsBackend
+from litestar.handlers import websocket_listener
 from litestar.params import FromPath, FromQuery
 
-from litestar_vite.codegen import generate_routes_ts
+from litestar_vite.codegen import generate_routes_json, generate_routes_ts
 from litestar_vite.codegen._routes import (
     collect_semantic_aliases,
     escape_ts_string,
@@ -977,3 +980,76 @@ def test_generate_routes_ts_path_param_non_enum_ref_degrades_to_string() -> None
 
     assert "widget_id: string;" in content
     assert "widget_id: WidgetIdentifier;" not in content
+
+
+def test_websocket_route_metadata_and_codegen() -> None:
+    """WebSocket and websocket_listener handlers are extracted with protocol='websocket' and channel_key."""
+
+    @get("/api/ping", name="ping", sync_to_thread=False)
+    def ping() -> dict[str, str]:
+        return {"ok": "1"}
+
+    @websocket("/ws/notifications", name="notifications_ws")
+    async def notifications_ws(socket: WebSocket) -> None:
+        await socket.accept()
+
+    @websocket_listener("/ws/chat/{room_id:str}")
+    def chat_room(data: str, room_id: FromPath[str]) -> str:
+        return f"{room_id}:{data}"
+
+    channels_plugin = ChannelsPlugin(
+        backend=MemoryChannelsBackend(),
+        channels=["alerts"],
+        create_ws_route_handlers=True,
+        ws_handler_base_path="/channels",
+    )
+
+    app = Litestar([ping, notifications_ws, chat_room], plugins=[channels_plugin])
+    metadata = extract_route_metadata(app)
+    by_name = {r.name: r for r in metadata}
+
+    assert "ping" in by_name
+    assert by_name["ping"].protocol == "http"
+    assert by_name["ping"].channel_key is None
+
+    assert "notifications_ws" in by_name
+    assert by_name["notifications_ws"].protocol == "websocket"
+    assert by_name["notifications_ws"].methods == ["WS"]
+    assert by_name["notifications_ws"].channel_key == "ws__notifications"
+
+    assert "chat_room" in by_name
+    assert by_name["chat_room"].protocol == "websocket"
+    assert by_name["chat_room"].params == {"room_id": "string"}
+    assert by_name["chat_room"].channel_key == "ws__chat__p_room_id"
+
+    for route_meta in metadata:
+        assert not route_meta.path.startswith("/channels"), (
+            f"Internal ChannelsPlugin handler leaked into routes: {route_meta}"
+        )
+
+    routes_json = generate_routes_json(
+        app,
+        openapi_schema=app.openapi_schema.to_schema(),
+        asyncapi_schema={"servers": {"dev": {"host": "localhost:8000", "protocol": "ws"}}},
+    )
+    assert routes_json["servers"] == {"dev": {"host": "localhost:8000", "protocol": "ws"}}
+    assert routes_json["routes"]["notifications_ws"]["protocol"] == "websocket"
+    assert routes_json["routes"]["notifications_ws"]["channel_key"] == "ws__notifications"
+    assert routes_json["routes"]["chat_room"]["protocol"] == "websocket"
+    assert routes_json["routes"]["chat_room"]["channel_key"] == "ws__chat__p_room_id"
+    assert "protocol" not in routes_json["routes"]["ping"]
+
+    ts_content = generate_routes_ts(
+        app,
+        openapi_schema=app.openapi_schema.to_schema(),
+        asyncapi_schema={"servers": {"dev": {"host": "localhost:8000", "protocol": "ws"}}},
+    )
+    assert "export const WS_SERVER_URL =" in ts_content
+    assert "|| 'ws://localhost:8000';" in ts_content
+    assert "export type WebSocketRouteName =" in ts_content
+    assert "'notifications_ws'" in ts_content
+    assert "'chat_room'" in ts_content
+    assert "export function wsRoute<" in ts_content
+    assert "route.ws = wsRoute;" in ts_content
+    assert "protocol: 'websocket' as const," in ts_content
+    assert "channelKey: 'ws__chat__p_room_id'," in ts_content

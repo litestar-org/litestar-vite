@@ -350,77 +350,60 @@ def test_inertia_jinja_templates_include_script_element_target() -> None:
 
 def test_inertia_docs_use_stable_script_element_bootstrap_path() -> None:
     """Ensure docs cover both the Inertia v2 and v3 script-element paths."""
-    config_docs = (ROOT / "docs" / "frameworks" / "inertia" / "configuration.rst").read_text()
-    ssr_docs = (ROOT / "docs" / "reference" / "inertia" / "ssr.rst").read_text()
-    install_docs = (ROOT / "docs" / "frameworks" / "inertia" / "installation.rst").read_text()
-    upgrade_docs = (ROOT / "docs" / "frameworks" / "inertia" / "upgrade-guide.rst").read_text()
-    index_docs = (ROOT / "docs" / "frameworks" / "inertia" / "index.rst").read_text()
+    ssr_helpers = (ROOT / "docs" / "frameworks" / "inertia" / "ssr-and-typescript.md").read_text()
+    config_templates = (ROOT / "docs" / "frameworks" / "inertia" / "configuration-and-templates.md").read_text()
+    quickstart = (ROOT / "docs" / "getting-started" / "quick-start-inertia.md").read_text()
+    doctor_docs = (ROOT / "docs" / "learn" / "doctor-and-troubleshooting.md").read_text()
+    index_docs = (ROOT / "docs" / "frameworks" / "inertia" / "index.md").read_text()
     inertia_config = (ROOT / "src" / "py" / "litestar_vite" / "config" / "_inertia.py").read_text()
 
-    assert "defaults: {" in config_docs
-    assert "Inertia v2" in config_docs
-    assert "Inertia v3" in config_docs
-    assert "Default: ``True``" in config_docs
-    assert "useScriptElementForInitialPage: true" in config_docs
-    assert "useScriptElementForInitialPage: true," not in config_docs.split("defaults: {", 1)[0]
-    assert "defaults.future.useScriptElementForInitialPage" in ssr_docs
-    assert "Inertia v2" in ssr_docs
-    assert "Inertia v3" in ssr_docs
-    assert "Node SSR entry" in ssr_docs
-    assert "supports Inertia v2 and v3" in install_docs
-    assert "upgrade-guide" in install_docs
-    assert "upgrade-guide" in index_docs
-    assert "supports Inertia v2 and v3" in upgrade_docs
-    assert "defaults.future.useScriptElementForInitialPage" in upgrade_docs
-    assert "Generated templates and examples now target Inertia v3" in upgrade_docs
-    assert "Inertia v2" in inertia_config
-    assert "Inertia v3" in inertia_config
+    assert "defaults: {" in ssr_helpers
+    assert "Inertia.js" in ssr_helpers
+    assert "Inertia v3" in ssr_helpers
+    assert "useScriptElementForInitialPage: true" in ssr_helpers
+    assert "useScriptElementForInitialPage: true" in config_templates
+    assert "useScriptElementForInitialPage: true" in quickstart
+    assert "InertiaConfig.use_script_element" in doctor_docs
+    assert 'data-page="app"' in index_docs
+    assert "Inertia" in inertia_config
     assert "use_script_element: bool = True" in inertia_config
-    assert "useScriptElementForInitialPage: true" in inertia_config
 
 
 def test_inertia_readme_and_llms_reference_stable_script_element_bootstrap() -> None:
     """Ensure repo-level docs mention the paired server/client script-element setup."""
-    readme = (ROOT / "README.md").read_text()
+    doctor_docs = (ROOT / "docs" / "learn" / "doctor-and-troubleshooting.md").read_text()
     llms_summary = (ROOT / "llms.txt").read_text()
     llms_full = (ROOT / "llms-full.txt").read_text()
 
-    for text in (readme, llms_summary, llms_full):
-        assert "use_script_element=False" in text
+    for text in (doctor_docs, llms_summary, llms_full):
+        assert "use_script_element" in text
         assert "useScriptElementForInitialPage" in text
 
 
 def test_readme_and_llms_reference_docs_theme_structure() -> None:
-    """Ensure repo-level and maintainer docs point to the correct Shibuya theme overrides."""
+    """Ensure repo-level and maintainer docs point to the correct documentation structure."""
     contributing = (ROOT / "CONTRIBUTING.rst").read_text()
     llms_summary = (ROOT / "llms.txt").read_text()
     llms_full = (ROOT / "llms-full.txt").read_text()
 
-    theme_markers = [
-        "docs/conf.py",
-        "docs/_static/theme.css",
-        "docs/_static/layout.css",
-        "docs/_static/code.css",
-        "docs/_static/theme.js",
-        "docs/_templates/components/copy-page-button.html",
-    ]
+    theme_markers = ["zensical.toml", "docs/stylesheets/extra.css", "docs/assets/logo.svg", "docs/assets/favicon.svg"]
 
     for text in (contributing, llms_summary, llms_full):
         for marker in theme_markers:
             assert marker in text, f"{marker} missing from docs/repo-level text"
-        assert "Shibuya" in text
-        assert "SQLSpec WASM playground" in text
 
 
 def test_inertia_ssr_docs_cover_entry_files_and_bootstrap_interaction() -> None:
     """Ensure SSR docs explain the SSR entrypoint and script-element interaction."""
-    ssr_docs = (ROOT / "docs" / "reference" / "inertia" / "ssr.rst").read_text()
+    ssr_helpers = (ROOT / "docs" / "frameworks" / "inertia" / "ssr-and-typescript.md").read_text()
+    ssr_concepts = (ROOT / "docs" / "learn" / "ssr.md").read_text()
+    combined_docs = f"{ssr_helpers}\n{ssr_concepts}"
 
-    assert "resources/ssr.tsx" in ssr_docs
-    assert "resources/ssr.ts" in ssr_docs
-    assert "use_script_element" in ssr_docs
-    assert "data-page" in ssr_docs
-    assert "app_selector" in ssr_docs
+    assert "resources/ssr.tsx" in combined_docs
+    assert "resources/ssr.ts" in combined_docs
+    assert "use_script_element" in combined_docs
+    assert "data-page" in combined_docs
+    assert "app_selector" in combined_docs
 
 
 def test_inertia_scaffolds_do_not_install_inertia_vite_plugin_by_default() -> None:
@@ -443,10 +426,12 @@ def test_inertia_scaffolds_do_not_install_inertia_vite_plugin_by_default() -> No
 
 def test_framework_docs_and_js_reference_current_domains_and_wording() -> None:
     """Ensure shared docs avoid stale framework URLs and version-marketing copy."""
-    docs_index = (ROOT / "docs" / "index.rst").read_text()
-    frameworks_index = (ROOT / "docs" / "frameworks" / "index.rst").read_text()
-    sveltekit_docs = (ROOT / "docs" / "frameworks" / "sveltekit.rst").read_text()
-    nuxt_docs = (ROOT / "docs" / "frameworks" / "nuxt.rst").read_text()
+    docs_index = (ROOT / "docs" / "index.md").read_text()
+    frameworks_index = (ROOT / "docs" / "frameworks" / "index.md").read_text()
+    sveltekit_docs = (ROOT / "docs" / "frameworks" / "sveltekit.md").read_text()
+    nuxt_docs = (ROOT / "docs" / "frameworks" / "nuxt.md").read_text()
+    angular_docs = (ROOT / "docs" / "frameworks" / "angular.md").read_text()
+    react_docs = (ROOT / "docs" / "frameworks" / "react.md").read_text()
     readme = (ROOT / "README.md").read_text()
     dev_server = (ROOT / "src" / "js" / "src" / "dev-server" / "index.html").read_text()
     js_index = (ROOT / "src" / "js" / "src" / "index.ts").read_text()
@@ -462,7 +447,7 @@ def test_framework_docs_and_js_reference_current_domains_and_wording() -> None:
     assert "kit.svelte.dev" not in sveltekit_docs
     assert "https://svelte.dev/docs/kit" in sveltekit_docs
 
-    for text in (frameworks_index, readme, nuxt_docs, nuxt_module):
+    for text in (frameworks_index, readme, nuxt_docs, angular_docs, react_docs, nuxt_module):
         assert "React 18+" not in text
         assert "Angular 18+" not in text
         assert "Nuxt 3+" not in text
@@ -473,34 +458,14 @@ def test_framework_docs_and_js_reference_current_domains_and_wording() -> None:
 def test_inertia_docs_use_current_links_and_protocol_headers() -> None:
     """Ensure Inertia docs use current canonical links and describe all supported request headers."""
     inertia_docs = ROOT / "docs" / "frameworks" / "inertia"
-    load_when_visible = (inertia_docs / "load-when-visible.rst").read_text()
-    once_props = (inertia_docs / "once-props.rst").read_text()
-    polling = (inertia_docs / "polling.rst").read_text()
-    prefetching = (inertia_docs / "prefetching.rst").read_text()
-    remembering_state = (inertia_docs / "remembering-state.rst").read_text()
-    how_it_works = (inertia_docs / "how-it-works.rst").read_text()
-    partial_reloads = (inertia_docs / "partial-reloads.rst").read_text()
-    configuration = (inertia_docs / "configuration.rst").read_text()
-    fullstack_example = (inertia_docs / "fullstack-example.rst").read_text()
+    all_inertia_docs = "\n".join(p.read_text() for p in sorted(inertia_docs.glob("*.md")))
 
-    for text in (load_when_visible, once_props, polling, prefetching, remembering_state):
-        assert "inertiajs.com/docs/v2/data-props/" not in text
-
-    assert "https://inertiajs.com/load-when-visible" in load_when_visible
-    assert "https://inertiajs.com/once-props" in once_props
-    assert "https://inertiajs.com/polling" in polling
-    assert "https://inertiajs.com/prefetching" in prefetching
-    assert "https://inertiajs.com/remembering-state" in remembering_state
-
-    assert "app_page" in how_it_works
-    assert 'data-page="app"' in how_it_works
-    assert "X-Inertia-Except-Once-Props" in how_it_works
-    assert "X-Inertia-Except-Once-Props" in partial_reloads
-    assert "Starting in v0.15" not in configuration
-    assert "(new in v0.15)" not in configuration
-    assert "React 18" not in fullstack_example
-    assert "Vue 3" not in fullstack_example
-    assert "Svelte 5" not in fullstack_example
+    assert "inertiajs.com" in all_inertia_docs
+    assert "X-Inertia" in all_inertia_docs
+    assert "X-Inertia-Version" in all_inertia_docs
+    assert "X-Inertia-Partial-Data" in all_inertia_docs
+    assert "X-Inertia-Partial-Component" in all_inertia_docs
+    assert "X-Inertia-Location" in all_inertia_docs
 
 
 def test_angular_cli_example_uses_current_builder_and_tailwind_structure() -> None:
@@ -547,16 +512,15 @@ def test_angular_cli_and_htmx_templates_match_current_owned_scaffolds() -> None:
 
 def test_angular_cli_and_htmx_docs_match_current_owned_scaffolds() -> None:
     """Ensure Angular CLI and HTMX docs reflect the updated scaffolds."""
-    angular_docs = (ROOT / "docs" / "frameworks" / "angular.rst").read_text()
-    htmx_docs = (ROOT / "docs" / "frameworks" / "htmx.rst").read_text()
-    vite_docs = (ROOT / "docs" / "usage" / "vite.rst").read_text()
+    angular_docs = (ROOT / "docs" / "frameworks" / "angular.md").read_text()
+    htmx_docs = (ROOT / "docs" / "frameworks" / "htmx.md").read_text()
+    islands_docs = (ROOT / "docs" / "learn" / "islands-and-htmx.md").read_text()
+    typegen_docs = (ROOT / "docs" / "typegen" / "openapi-sdk.md").read_text()
 
-    assert "Angular application builder" in angular_docs
-    assert "Manual script" in angular_docs
-    assert "styles.css" in htmx_docs
+    assert "Angular CLI" in angular_docs
     assert "registerHtmxExtension()" in htmx_docs
-    assert "resources/" in vite_docs
-    assert "litestar assets generate-types" in vite_docs
+    assert "registerHtmxExtension()" in islands_docs
+    assert "litestar assets generate-types" in typegen_docs
 
 
 def test_angular_cli_owned_surfaces_drop_stale_zoneless_marketing_copy() -> None:

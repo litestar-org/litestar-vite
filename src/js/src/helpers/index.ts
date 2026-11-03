@@ -46,6 +46,7 @@ export {
   createChannelsStream,
   createTypedChannels,
   type ChannelMap,
+  type ChannelMetadataEntry,
   type ChannelName,
   type ChannelsStreamOptions,
   type RealtimeChannelShape,
@@ -56,7 +57,23 @@ export { addDirective, registerHtmxExtension, setDebug as setHtmxDebug, swapJson
 // Litestar Queues utilities
 export { createQueueEventStream, QUEUE_SSE_EVENTS, type QueueEventStreamOptions, type QueueStreamTarget, type QueueStreamValue } from "./queues.js"
 // Route matching utilities
-export { createRouteHelpers, currentRoute, isCurrentRoute, isRoute, type RouteDefinition, type RouteDefinitions, type RouteHelpers, toRoute } from "./routes.js"
+export {
+  type BoundRouteFunction,
+  createRouteHelpers,
+  currentRoute,
+  formatRouteUrl,
+  isCurrentRoute,
+  isRoute,
+  resolveWsUrl,
+  type RouteDefinition,
+  type RouteDefinitions,
+  type RouteHelpers,
+  toRoute,
+  type WebSocketRouteNames,
+  wsRoute,
+  type WsRouteName,
+  type WsRouteOptions,
+} from "./routes.js"
 // Realtime stream utilities
 export { createEventStream, type EventStream, type EventStreamConfig, type EventStreamOptions, type StreamGap } from "./stream.js"
 // Declarative realtime stream element

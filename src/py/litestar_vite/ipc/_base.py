@@ -32,11 +32,14 @@ class CircuitBreakerOpenError(IPCError):
 
 @dataclass(slots=True)
 class IPCRequest:
-    """Structured representation of an outbound IPC request payload."""
+    """Structured representation of an outbound JSON-RPC/NDJSON IPC request payload."""
 
     id: int
+    """Monotonically increasing request correlation identifier."""
     method: str
+    """RPC method name (`'ssr'`, `'fragment'`, `'ping'`, or `'shutdown'`)."""
     params: dict[str, Any] | None = None
+    """Optional JSON-serializable parameters dictionary passed to the worker method."""
 
     def to_dict(self) -> dict[str, Any]:
         """Convert the request into a JSON-serializable dictionary.
@@ -52,11 +55,14 @@ class IPCRequest:
 
 @dataclass(slots=True)
 class IPCResponse:
-    """Structured representation of an inbound IPC response payload."""
+    """Structured representation of an inbound JSON-RPC/NDJSON IPC response payload."""
 
     id: int
+    """Correlation identifier matching the originating `IPCRequest.id`."""
     result: Any = None
+    """Decoded response payload returned by the worker when successful."""
     error: str | None = None
+    """Error message string returned by the worker when execution fails."""
 
 
 @runtime_checkable

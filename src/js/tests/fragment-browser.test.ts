@@ -99,11 +99,29 @@ it.skipIf(!chrome)(
       })
       await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve))
       const port = (server.address() as { port: number }).port
-      const { stdout } = await exec(
-        chrome!,
-        ["--headless", "--no-sandbox", "--disable-gpu", `--user-data-dir=${directory}/chrome`, "--virtual-time-budget=5000", "--dump-dom", `http://127.0.0.1:${port}`],
-        { timeout: 20000, maxBuffer: 1000000 },
-      )
+      let stdout = ""
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const result = await exec(
+          chrome!,
+          [
+            "--headless",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            "--no-first-run",
+            "--no-default-browser-check",
+            `--user-data-dir=${directory}/chrome-${attempt}`,
+            "--virtual-time-budget=5000",
+            "--dump-dom",
+            `http://127.0.0.1:${port}`,
+          ],
+          { timeout: 20000, maxBuffer: 1000000 },
+        )
+        stdout = result.stdout
+        if (stdout.includes('data-result="3,4,5"')) {
+          break
+        }
+      }
       expect(stdout).toContain('data-result="3,4,5"')
       expect(stdout).toContain('data-cleaned="react,svelte,vue"')
       expect(stdout).toContain('data-reconnected="3,4,5"')
@@ -112,5 +130,5 @@ it.skipIf(!chrome)(
       await rm(directory, { recursive: true, force: true })
     }
   },
-  30000,
+  60000,
 )

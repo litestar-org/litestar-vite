@@ -1,0 +1,90 @@
+<div class="lv-diag lv-diag--ssr-ipc">
+  <style>
+    .lv-diag--ssr-ipc {
+      --lv-surface: var(--md-default-bg-color, #ffffff);
+      --lv-card: var(--md-code-bg-color, #f8fafc);
+      --lv-border: rgba(148, 163, 184, 0.35);
+      --lv-text: var(--md-default-fg-color, #0f172a);
+      --lv-muted: var(--md-default-fg-color--light, #475569);
+      --lv-blue: #2563eb;
+      --lv-amber: #d97706;
+      --lv-emerald: #059669;
+      --lv-violet: #7c3aed;
+      margin: 1.5rem 0;
+      padding: 1rem;
+      border-radius: 0.75rem;
+      border: 1px solid var(--lv-border);
+      background: var(--lv-surface);
+    }
+    [data-md-color-scheme="slate"] .lv-diag--ssr-ipc {
+      --lv-card: rgba(30, 41, 59, 0.85);
+      --lv-border: rgba(148, 163, 184, 0.24);
+      --lv-blue: #60a5fa;
+      --lv-amber: #fbbf24;
+      --lv-emerald: #34d399;
+      --lv-violet: #a78bfa;
+    }
+    .lv-diag--ssr-ipc svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      font-family: var(--md-text-font-family, system-ui, -apple-system, sans-serif);
+    }
+    .lv-diag--ssr-ipc .lv-ipc-stream {
+      stroke-dasharray: 7 5;
+      animation: lv-ipc-dash 1.6s linear infinite;
+    }
+    @keyframes lv-ipc-dash {
+      to { stroke-dashoffset: -24; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .lv-diag--ssr-ipc .lv-ipc-stream {
+        animation: none !important;
+      }
+    }
+  </style>
+  <svg viewBox="0 0 920 350" role="img" aria-labelledby="lv-ssr-ipc-title lv-ssr-ipc-desc">
+    <title id="lv-ssr-ipc-title">Cross-Platform SSR and Server Fragment IPC Pipeline</title>
+    <desc id="lv-ssr-ipc-desc">Shows InertiaResponse and FragmentEngine guarded by SSRCircuitBreaker dispatching IPCRequest frames over TCPStreamIPCTransport (POST /__litestar_ssr__ to Vite 7 ServerModuleRunner in dev) or StdioIPCTransport (NDJSON over stdin/stdout with concurrent stderr ring buffer in prod), followed by _InertiaSlots HTML splicing and &lt;litestar-island&gt; hydration.</desc>
+
+    <!-- Left: Litestar Caller & Circuit Breaker -->
+    <rect x="20" y="65" width="230" height="220" rx="12" fill="var(--lv-card)" stroke="var(--lv-amber)" stroke-width="2" />
+    <text x="135" y="96" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Litestar SSR &amp; Fragments</text>
+    <text x="135" y="120" text-anchor="middle" fill="var(--lv-amber)" font-size="11" font-family="monospace">InertiaResponse / FragmentEngine</text>
+    <rect x="38" y="138" width="194" height="62" rx="8" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="135" y="162" text-anchor="middle" fill="var(--lv-text)" font-size="12" font-weight="700">SSRCircuitBreaker</text>
+    <text x="135" y="182" text-anchor="middle" fill="var(--lv-muted)" font-size="10.5">CLOSED → OPEN → HALF_OPEN</text>
+    <text x="135" y="224" text-anchor="middle" fill="var(--lv-muted)" font-size="11">CSR fallback on timeout/error</text>
+    <text x="135" y="246" text-anchor="middle" fill="var(--lv-blue)" font-size="11" font-family="monospace">BaseIPCTransport.request()</text>
+
+    <!-- Middle Top: Dev IPC Track -->
+    <rect x="315" y="45" width="305" height="105" rx="12" fill="var(--lv-card)" stroke="var(--lv-blue)" stroke-width="2" />
+    <text x="467" y="76" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="700">Development IPC: TCPStreamIPCTransport</text>
+    <text x="467" y="102" text-anchor="middle" fill="var(--lv-blue)" font-size="11" font-family="monospace">POST /__litestar_ssr__</text>
+    <text x="467" y="126" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Vite ServerModuleRunner execution</text>
+
+    <!-- Middle Bottom: Prod IPC Track -->
+    <rect x="315" y="200" width="305" height="105" rx="12" fill="var(--lv-card)" stroke="var(--lv-emerald)" stroke-width="2" />
+    <text x="467" y="231" text-anchor="middle" fill="var(--lv-text)" font-size="13" font-weight="700">Production IPC: Stdio / Wasm</text>
+    <text x="467" y="257" text-anchor="middle" fill="var(--lv-emerald)" font-size="11" font-family="monospace">startSsrWorker • QuickJS</text>
+    <text x="467" y="281" text-anchor="middle" fill="var(--lv-muted)" font-size="11">NDJSON stdio pipes or in-process WASM</text>
+
+    <!-- Right: HTML Splicing & Island Hydration -->
+    <rect x="680" y="65" width="220" height="220" rx="12" fill="var(--lv-card)" stroke="var(--lv-violet)" stroke-width="2" />
+    <text x="790" y="96" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">HTML Splicing &amp; Islands</text>
+    <rect x="698" y="114" width="184" height="68" rx="8" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="790" y="138" text-anchor="middle" fill="var(--lv-violet)" font-size="12" font-weight="600">_InertiaSlots Parser</text>
+    <text x="790" y="156" text-anchor="middle" fill="var(--lv-muted)" font-size="10.5">Right-to-left offset splicing</text>
+    <text x="790" y="172" text-anchor="middle" fill="var(--lv-muted)" font-size="10.5">head[] + body into shell</text>
+    <rect x="698" y="196" width="184" height="68" rx="8" fill="var(--lv-surface)" stroke="var(--lv-border)" />
+    <text x="790" y="220" text-anchor="middle" fill="var(--lv-emerald)" font-size="12" font-weight="600">&lt;litestar-island&gt;</text>
+    <text x="790" y="238" text-anchor="middle" fill="var(--lv-muted)" font-size="10.5">hydrateIslands() custom element</text>
+    <text x="790" y="254" text-anchor="middle" fill="var(--lv-muted)" font-size="10.5">Preserves SSR DOM on teardown</text>
+
+    <!-- Animated Connectors -->
+    <line class="lv-ipc-stream" x1="250" y1="135" x2="315" y2="95" stroke="var(--lv-blue)" stroke-width="2.5" />
+    <line class="lv-ipc-stream" x1="250" y1="215" x2="315" y2="255" stroke="var(--lv-emerald)" stroke-width="2.5" />
+    <line class="lv-ipc-stream" x1="620" y1="95" x2="680" y2="145" stroke="var(--lv-violet)" stroke-width="2.5" />
+    <line class="lv-ipc-stream" x1="620" y1="255" x2="680" y2="225" stroke="var(--lv-violet)" stroke-width="2.5" />
+  </svg>
+</div>

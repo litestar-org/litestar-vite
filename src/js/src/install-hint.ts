@@ -25,22 +25,49 @@ export function detectExecutor(): string {
     }
   }
 
-  // 3. Detect from lockfiles
+  // 3. Detect from lockfiles / manifests (same precedence as Python detect_runtime_marker)
   const cwd = process.cwd()
-  if (fs.existsSync(path.join(cwd, "bun.lockb")) || fs.existsSync(path.join(cwd, "bun.lock"))) {
-    return "bun"
+  for (const [marker, executor] of LOCKFILE_EXECUTORS) {
+    if (fs.existsSync(path.join(cwd, marker))) {
+      return executor
+    }
   }
-  if (fs.existsSync(path.join(cwd, "pnpm-lock.yaml"))) {
-    return "pnpm"
-  }
-  if (fs.existsSync(path.join(cwd, "yarn.lock"))) {
-    return "yarn"
-  }
-  if (fs.existsSync(path.join(cwd, "deno.lock"))) {
-    return "deno"
+
+  // 4. package.json "packageManager" field
+  const packageJsonPath = path.join(cwd, "package.json")
+  if (fs.existsSync(packageJsonPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as Record<string, unknown>
+      const packageManager = typeof pkg?.packageManager === "string" ? pkg.packageManager : ""
+      const normalized = packageManager.trim().toLowerCase().split("@", 1)[0] ?? ""
+      const mapped = PACKAGE_MANAGER_EXECUTORS[normalized]
+      if (mapped) return mapped
+    } catch {
+      // Ignore parse errors
+    }
   }
 
   return "node"
+}
+
+const LOCKFILE_EXECUTORS: ReadonlyArray<readonly [string, string]> = [
+  ["bun.lockb", "bun"],
+  ["bun.lock", "bun"],
+  ["deno.lock", "deno"],
+  ["deno.json", "deno"],
+  ["deno.jsonc", "deno"],
+  ["pnpm-lock.yaml", "pnpm"],
+  ["yarn.lock", "yarn"],
+  ["package-lock.json", "node"],
+]
+
+const PACKAGE_MANAGER_EXECUTORS: Readonly<Record<string, string>> = {
+  bun: "bun",
+  deno: "deno",
+  pnpm: "pnpm",
+  yarn: "yarn",
+  npm: "node",
+  node: "node",
 }
 
 export function resolveInstallHint(pkg: string | readonly string[] = "@hey-api/openapi-ts"): string {
@@ -68,7 +95,7 @@ export function resolveInstallHint(pkg: string | readonly string[] = "@hey-api/o
 
 /**
  * Resolves the package executor command based on runtime.
- * Priority: explicit executor > .litestar.json > LITESTAR_VITE_RUNTIME env > lockfile detection > 'npx'
+ * Priority: explicit executor > LITESTAR_VITE_RUNTIME env > .litestar.json > lockfile/packageManager detection > 'npx'
  *
  * @param pkg - The package command to execute (e.g., "@hey-api/openapi-ts -i schema.json -o src/types")
  * @param executor - Optional explicit executor override
@@ -78,13 +105,7 @@ export function resolvePackageExecutor(pkg: string, executor?: string): string {
   return resolvePackageExecutorArgv(pkg.split(" "), executor).join(" ")
 }
 
-/**
- * Resolves the package executor command as argv.
- *
- * This is used for actual process execution so package arguments are never
- * shell-joined. The string-returning ``resolvePackageExecutor`` remains the
- * display/back-compat helper.
- */
+/** Options controlling how a package executor argv is assembled. */
 export interface PackageExecutorArgvOptions {
   /**
    * Package spec to install for executors that support an explicit package
@@ -93,9 +114,6 @@ export interface PackageExecutorArgvOptions {
   packageSpec?: string
   /**
    * Additional package specs required in the temporary execution environment.
-   *
-   * npm, pnpm, and Yarn support this. Bun and Deno do not currently expose a
-   * reliable equivalent, so their resolver returns no fallback.
    */
   additionalPackageSpecs?: readonly string[]
   /** Binary command exposed by packageSpec. */
@@ -119,6 +137,13 @@ function resolveDenoPackageSpec(packageSpec: string, binName?: string): string {
   return defaultBinName === binName ? packageSpec : `${packageSpec}/${binName}`
 }
 
+/**
+ * Resolves the package executor command as argv.
+ *
+ * This is used for actual process execution so package arguments are never
+ * shell-joined. The string-returning ``resolvePackageExecutor`` remains the
+ * display/back-compat helper.
+ */
 export function resolvePackageExecutorArgv(args: string[], executor?: string, options: PackageExecutorArgvOptions = {}): string[] {
   const runtime = executor || detectExecutor()
   const { packageSpec, additionalPackageSpecs = [], binName } = options
@@ -126,12 +151,15 @@ export function resolvePackageExecutorArgv(args: string[], executor?: string, op
   const requiresMultiplePackages = packageSpecs.length > 1
   switch (runtime) {
     case "bun":
-      if (requiresMultiplePackages) return []
+      if (requiresMultiplePackages) {
+        return ["bunx", ...packageSpecs.flatMap((spec) => ["--package", spec]), ...(binName ? [binName, ...args] : args)]
+      }
       return ["bunx", ...(packageSpec ? [packageSpec, ...args] : args)]
     case "deno": {
-      if (requiresMultiplePackages) return []
       if (packageSpec) {
-        return ["deno", "run", "-A", `npm:${resolveDenoPackageSpec(packageSpec, binName)}`, ...args]
+        const defaultBinName = getPackageNameFromSpec(packageSpec).split("/").pop()
+        const effectiveArgs = !binName && defaultBinName && args[0] === defaultBinName ? args.slice(1) : args
+        return ["deno", "run", "-A", `npm:${resolveDenoPackageSpec(packageSpec, binName)}`, ...effectiveArgs]
       }
       const [firstArg, ...restArgs] = args
       return firstArg ? ["deno", "run", "-A", `npm:${firstArg}`, ...restArgs] : ["deno", "run", "-A"]

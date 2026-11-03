@@ -2,7 +2,7 @@
 # Demonstrates: litestar assets build workflow
 # Uses: examples/react-inertia
 
-Output docs/_static/demos/production-build.gif
+Output docs/assets/demos/production-build.gif
 
 Set Shell "bash"
 Set FontSize 14
