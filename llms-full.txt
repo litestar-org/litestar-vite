@@ -6719,6 +6719,7 @@ uv run litestar --app-dir examples/vue-inertia run --reload
 2. **Single-Port AnyIO Streaming Proxy**: `ViteProxyMiddleware` (`src/py/litestar_vite/handler/_proxy.py`) uses `anyio.connect_tcp` and `wsproto` for WebSocket HMR and `httpx2` for pooled HTTP proxying.
 3. **Granian `StaticPlacement.NATIVE` Compatibility**: Static metadata blocking (`BLOCKED_STATIC_METADATA_FILES`) and immutable caching use picklable slotted router-level hooks (`_StaticBeforeRequestHook`, `_StaticAfterRequestHook`) so `StaticFilesConfig.has_asgi_overrides()` stays `False`.
 4. **Private OpenAPI Seam**: All access to Litestar's internal OpenAPI schema builders is confined to `src/py/litestar_vite/codegen/_openapi.py`.
+5. **Documentation Structure**: The documentation site is configured in `zensical.toml` with custom styling in `docs/stylesheets/extra.css`, branding assets in `docs/assets/logo.svg` and `docs/assets/favicon.svg`, and reference generators under `tools/docs/`.
 
 ---
 

@@ -1,66 +1,126 @@
 # Litestar Vite
 
-> First-class Vite 7+, Inertia.js v2, Server-Rendered Islands, and End-to-End Type Generation for Litestar.
+> Vite plugin for Litestar
 
-## Documentation Index
+Litestar Vite connects the Litestar backend to a Vite toolchain. It supports SPA, Template, and Inertia flows, and can proxy Vite dev traffic through your ASGI port or run Vite directly. It includes an npm Vite plugin for type generation, route helpers, and framework integrations (Astro, Nuxt, SvelteKit).
 
-- [End-to-End TypeGen Pipeline](https://litestar-org.github.io/litestar-vite/architecture/codegen-pipeline/)
-- [Dev Proxy & Runtime Bridge](https://litestar-org.github.io/litestar-vite/architecture/dev-proxy-and-bridge/)
-- [Architecture Overview](https://litestar-org.github.io/litestar-vite/architecture/)
-- [SSR, Server Fragments, & IPC](https://litestar-org.github.io/litestar-vite/architecture/ssr-and-ipc/)
-- [Changelog](https://litestar-org.github.io/litestar-vite/changelog/)
-- [Angular](https://litestar-org.github.io/litestar-vite/frameworks/angular/)
-- [Astro](https://litestar-org.github.io/litestar-vite/frameworks/astro/)
-- [HTMX](https://litestar-org.github.io/litestar-vite/frameworks/htmx/)
-- [Web Frameworks](https://litestar-org.github.io/litestar-vite/frameworks/)
-- [Polling, Prefetching & Remembering State](https://litestar-org.github.io/litestar-vite/frameworks/inertia/client-visits/)
-- [Configuration & Root Templates](https://litestar-org.github.io/litestar-vite/frameworks/inertia/configuration-and-templates/)
-- [File Uploads](https://litestar-org.github.io/litestar-vite/frameworks/inertia/file-uploads/)
-- [Forms, Validation & Live Precognition](https://litestar-org.github.io/litestar-vite/frameworks/inertia/forms-and-validation/)
-- [Inertia.js Overview & Protocol Lifecycle](https://litestar-org.github.io/litestar-vite/frameworks/inertia/)
-- [Merging Props & Infinite Scroll](https://litestar-org.github.io/litestar-vite/frameworks/inertia/merging-and-infinite-scroll/)
-- [Pages & Responses](https://litestar-org.github.io/litestar-vite/frameworks/inertia/pages-and-responses/)
-- [Partial Reloads & Deferred Props](https://litestar-org.github.io/litestar-vite/frameworks/inertia/partial-reloads-and-deferred/)
-- [Routing, Links & Redirects](https://litestar-org.github.io/litestar-vite/frameworks/inertia/routing-and-links/)
-- [Security, History Encryption & Asset Versioning](https://litestar-org.github.io/litestar-vite/frameworks/inertia/security-and-versioning/)
-- [Shared Data & Flash Messages](https://litestar-org.github.io/litestar-vite/frameworks/inertia/shared-data-and-flash/)
-- [SSR, TypeScript & Upgrade Guide](https://litestar-org.github.io/litestar-vite/frameworks/inertia/ssr-and-typescript/)
-- [Nuxt](https://litestar-org.github.io/litestar-vite/frameworks/nuxt/)
-- [React](https://litestar-org.github.io/litestar-vite/frameworks/react/)
-- [Svelte 5](https://litestar-org.github.io/litestar-vite/frameworks/svelte/)
-- [SvelteKit](https://litestar-org.github.io/litestar-vite/frameworks/sveltekit/)
-- [Vue 3](https://litestar-org.github.io/litestar-vite/frameworks/vue/)
-- [Getting Started](https://litestar-org.github.io/litestar-vite/getting-started/)
-- [Quick Start: Inertia.js](https://litestar-org.github.io/litestar-vite/getting-started/quick-start-inertia/)
-- [Quick Start: Single-Page Application](https://litestar-org.github.io/litestar-vite/getting-started/quick-start-spa/)
-- [Quick Start: Jinja2 Templates & Islands](https://litestar-org.github.io/litestar-vite/getting-started/quick-start-templates/)
-- [Overview](https://litestar-org.github.io/litestar-vite/)
-- [Configuration & Runtime Bridge](https://litestar-org.github.io/litestar-vite/learn/configuration/)
-- [Development Server & Single-Port Proxy](https://litestar-org.github.io/litestar-vite/learn/development-and-proxy/)
-- [Doctor CLI & Troubleshooting](https://litestar-org.github.io/litestar-vite/learn/doctor-and-troubleshooting/)
-- [Core Concepts](https://litestar-org.github.io/litestar-vite/learn/)
-- [Islands Architecture & HTMX Fragments](https://litestar-org.github.io/litestar-vite/learn/islands-and-htmx/)
-- [Migrating to v0.32](https://litestar-org.github.io/litestar-vite/learn/migration-0-32/)
-- [Migrating to v0.33](https://litestar-org.github.io/litestar-vite/learn/migration-0-33/)
-- [Operating Modes](https://litestar-org.github.io/litestar-vite/learn/operating-modes/)
-- [Production Builds, Granian Native Static & CDN Deployment](https://litestar-org.github.io/litestar-vite/learn/production-and-deploy/)
-- [Server-Side Rendering](https://litestar-org.github.io/litestar-vite/learn/ssr/)
-- [Static Props](https://litestar-org.github.io/litestar-vite/learn/static-props/)
-- [CLI Reference (`litestar assets`)](https://litestar-org.github.io/litestar-vite/reference/cli/)
-- [Bridge & IPC Wire Contracts](https://litestar-org.github.io/litestar-vite/reference/contracts/)
-- [Contributing & Development Setup](https://litestar-org.github.io/litestar-vite/reference/contributing/)
-- [Fragments & SSR IPC Reference](https://litestar-org.github.io/litestar-vite/reference/fragments-and-ipc/)
-- [API & Tooling Reference](https://litestar-org.github.io/litestar-vite/reference/)
-- [Inertia.js Reference](https://litestar-org.github.io/litestar-vite/reference/inertia/)
-- [Plugin & Configuration Reference](https://litestar-org.github.io/litestar-vite/reference/plugin-and-config/)
-- [Runtime, Assets & Exceptions Reference](https://litestar-org.github.io/litestar-vite/reference/runtime-and-assets/)
-- [Tooling, Codegen, Deploy & Doctor Reference](https://litestar-org.github.io/litestar-vite/reference/tooling-and-codegen/)
-- [Server Fragments, Islands & SSR Runtimes](https://litestar-org.github.io/litestar-vite/reference/typescript/fragments/)
-- [Framework Bindings & Meta-Frameworks](https://litestar-org.github.io/litestar-vite/reference/typescript/frameworks/)
-- [Runtime & Inertia Helpers](https://litestar-org.github.io/litestar-vite/reference/typescript/helpers/)
-- [Vite Plugin & Core Types](https://litestar-org.github.io/litestar-vite/reference/typescript/)
-- [Browser & Framework Event Streams](https://litestar-org.github.io/litestar-vite/typegen/event-streams/)
-- [End-to-End Type Generation Overview](https://litestar-org.github.io/litestar-vite/typegen/)
-- [OpenAPI TypeScript SDK & Schema Helpers](https://litestar-org.github.io/litestar-vite/typegen/openapi-sdk/)
-- [AsyncAPI Channels, WebSockets & Server-Sent Events](https://litestar-org.github.io/litestar-vite/typegen/realtime-channels/)
-- [Typed Routes (`route` & `toRoute`)](https://litestar-org.github.io/litestar-vite/typegen/routes/)
+## Python Package
+
+- Package: `litestar-vite`
+- Version: 0.33.0
+- Python: >=3.10
+- Key dependencies: `litestar>=2.22.0`, `httpx2>=2.13.1`, `markupsafe>=2.0`, `websockets>=12.0`, `typing_extensions`
+- Optional extras: `jinja` (Jinja2 templates), `nodeenv` (auto-detected Node), `node` (`nodejs-wheel`), `bun` (`bun-wheel`), `deno` (`deno`), `wasm` (`quickjs`), `asyncapi` (`litestar-asyncapi`), `http2` (h2 for proxy)
+
+## npm Package
+
+- Package: `litestar-vite-plugin`
+- Version: 0.33.0
+- Node: `>=22.12.0`
+- Peer dependency: `vite ^7.0.0 || ^8.0.0`
+- Exports: `.` (main plugin), `./helpers` (route/csrf/htmx helpers), `./inertia-helpers`, `./astro`, `./sveltekit`, `./nuxt`, `./inertia` (types), `./virtual` (virtual module types)
+- Bin: `clean-orphaned-assets`, `litestar-vite-typegen`
+
+## Core Concepts
+
+**VitePlugin** (`litestar_vite.plugin.VitePlugin`): Main Litestar plugin implementing `InitPlugin` and `CLIPlugin`. Handles static file serving, Jinja2 template callable registration, Vite dev server process management, dev proxy middleware, and SPA handler initialization.
+
+**ViteConfig** (`litestar_vite.config.ViteConfig`): Root configuration dataclass. Key fields: `mode` (spa/template/htmx/hybrid/inertia/framework/ssr/ssg/external, auto-detected if unset), `dev_mode` (bool), `paths` (PathConfig), `runtime` (RuntimeConfig), `types` (TypeGenConfig|bool), `inertia` (InertiaConfig|bool), `spa` (SPAConfig|bool), `deploy` (DeployConfig|bool), `static_props` (dict written to `.litestar.json`), `guards` (Sequence[Guard] for the SPA catch-all), `exclude_static_from_auth` (bool), `spa_path` (str), `include_root_spa_paths` (bool).
+
+**ViteAssetLoader** (`litestar_vite.loader.ViteAssetLoader`): Reads the Vite manifest and generates HTML script/link tags for production assets. Lazily initialized and exposes a `version_id` derived from the manifest digest.
+
+**Proxy modes**: `vite` (default, proxies Vite assets only), `proxy` (meta-frameworks, proxies everything except Litestar routes), `None` (production, no proxy). `direct` is deprecated and coerced to `vite` (`VITE_PROXY_MODE=direct` emits a `DeprecationWarning`). Mode aliases (normalized at construction): `"ssr"`/`"ssg"` → `"framework"`, `"inertia"` → `"hybrid"`, `"htmx"` → `"template"`, and `"external"` → `"framework"` (requires `external_dev_server`). The four canonical modes after normalization are `spa`, `template`, `hybrid`, `framework`.
+
+**Code generation** (`litestar_vite.codegen`): Exports OpenAPI schema, route metadata (JSON + TypeScript), and Inertia page props metadata. Triggered via `ViteConfig(types=True)` or `litestar assets generate-types`.
+
+## Quick Start
+
+```python
+from pathlib import Path
+from litestar import Litestar
+from litestar_vite import VitePlugin, ViteConfig, PathConfig
+
+app = Litestar(
+    plugins=[VitePlugin(config=ViteConfig(
+        dev_mode=True,
+        paths=PathConfig(root=Path(__file__).parent),
+    ))]
+)
+```
+
+```bash
+pip install litestar-vite
+litestar assets init --template vue  # scaffold frontend (react, svelte, htmx, etc.)
+litestar run --reload                # Vite dev server proxied automatically
+```
+
+## CLI Commands
+
+- `litestar assets init --template <name>` -- scaffold frontend (vue, react, react-router, react-tanstack, svelte, htmx, react-inertia, vue-inertia, svelte-inertia, sveltekit, nuxt, astro, angular, angular-cli)
+- `litestar assets install` -- install frontend dependencies
+- `litestar assets update [--latest]` -- update frontend dependencies (pass `--latest` to ignore semver)
+- `litestar assets build` / `serve` -- build or watch (`serve --production` runs `serve_command` for SSR frameworks)
+- `litestar assets generate-types` -- export OpenAPI + routes + Inertia page props metadata, then run `extra_commands` plus `litestar-vite-typegen`
+- `litestar assets export-routes` -- export route metadata as JSON or `--typescript`/`--ts` to emit Ziggy-style `routes.ts`
+- `litestar assets deploy --storage <uri>` -- upload via fsspec (gcs://, s3://, abfs://, …)
+- `litestar assets doctor` -- diagnose/fix config (`--fix` to auto-repair, `--check` for CI exit codes, `--runtime-checks`, `--show-config`)
+- `litestar assets status` -- print dev mode/manifest/dev server reachability summary
+
+## Python Module Structure
+
+- `litestar_vite.config` -- ViteConfig, PathConfig, RuntimeConfig, TypeGenConfig, InertiaConfig, InertiaSSRConfig, InertiaTypeGenConfig, DeployConfig, SPAConfig, LoggingConfig, ExternalDevServer
+- `litestar_vite.plugin` -- VitePlugin, ViteProxyMiddleware, ProxyHeadersMiddleware, ViteProcess
+- `litestar_vite.inertia` -- InertiaPlugin, InertiaRequest, InertiaResponse, InertiaMiddleware, InertiaHeaders, InertiaBack, InertiaRedirect, InertiaExternalRedirect, helpers (defer, merge, share, lazy, once, optional, always, flash, error, scroll_props, only, except_, clear_history)
+- `litestar_vite.codegen` -- export_integration_assets, ExportResult, generate_routes_json, generate_routes_ts, generate_inertia_pages_json, extract_route_metadata, extract_inertia_pages, encode_deterministic_json, write_if_changed
+- `litestar_vite.loader` -- ViteAssetLoader
+- `litestar_vite.executor` -- JS runtime executors (NodeExecutor, BunExecutor, DenoExecutor, YarnExecutor, PnpmExecutor, NodeenvExecutor)
+- `litestar_vite.deploy` -- CDN deployment via fsspec (`ViteDeployer`)
+- `litestar_vite.doctor` -- diagnostic tooling (`ViteDoctor`)
+- `litestar_vite.cli` -- Click CLI command implementations
+- `litestar_vite.scaffolding` -- project generation (`TemplateContext`, `generate_project`)
+- `litestar_vite.handler` -- SPA catch-all route handler (`AppHandler`)
+- `litestar_vite.html_transform` -- HTML transformation utilities (inject scripts, set data attributes, transform asset URLs)
+- `litestar_vite.utils` -- Utility functions (static resource paths, hotfile reading)
+- `litestar_vite.scaffolding` -- Template scaffolding for `litestar assets init`
+- `litestar_vite.exceptions` -- Custom exception classes (e.g., `ViteExecutionError`, `ManifestNotFoundError`, `AssetNotFoundError`)
+
+## Documentation
+
+- Docs: https://litestar-org.github.io/litestar-vite/
+- Changelog: https://litestar-org.github.io/litestar-vite/changelog.html
+- Source: https://github.com/litestar-org/litestar-vite
+- Issues: https://github.com/litestar-org/litestar-vite/issues/
+- Discord: https://discord.gg/X3FJqy8d2j
+
+## Upstream Update Sources
+
+- Prefer official docs plus official GitHub releases/changelogs when checking for framework updates; npm `latest` alone is not enough for breaking-change tracking.
+- **Inertia**: docs https://inertiajs.com/ ; releases https://github.com/inertiajs/inertia/releases . Re-check `src/py/litestar_vite/inertia/`, `src/py/litestar_vite/handler/_app.py`, `src/py/litestar_vite/html_transform.py`, Inertia examples/templates, `docs/inertia/`, `docs/frameworks/inertia.rst`, and `llms*.txt`.
+- **React / react-dom**: docs https://react.dev/ ; releases https://github.com/facebook/react/releases . Re-check React examples/templates, React SSR entries, `docs/frameworks/react.rst`, and Inertia React scaffolds/docs.
+- **Vue / @vue/server-renderer**: docs https://vuejs.org/ ; releases https://github.com/vuejs/core/releases . Re-check Vue examples/templates, Vue SSR entries, `docs/frameworks/vue.rst`, and Inertia Vue scaffolds/docs.
+- **Svelte / SvelteKit**: docs https://svelte.dev/docs and https://svelte.dev/docs/kit ; releases https://github.com/sveltejs/svelte/releases and https://github.com/sveltejs/kit/releases . Re-check Svelte/SvelteKit examples/templates, `src/js/src/sveltekit.ts`, and framework docs.
+- **Astro / Nuxt / Nitro**: docs https://docs.astro.build/ , https://nuxt.com/docs , https://nitro.build/ ; releases https://github.com/withastro/astro/releases , https://github.com/nuxt/nuxt/releases , https://github.com/nitrojs/nitro/releases . Re-check `src/js/src/astro.ts`, `src/js/src/nuxt.ts`, corresponding examples/templates, and SSR proxy/HMR tests.
+- **Angular / Angular CLI / Analog**: docs https://angular.dev/ and https://angular.dev/update-guide ; releases https://github.com/angular/angular/releases and https://github.com/angular/angular-cli/releases ; Analog source https://github.com/analogjs/analog . Re-check Angular examples/templates, CLI proxy config, and `@analogjs/vite-plugin-angular` usage.
+- **HTMX**: docs https://htmx.org/docs/ ; releases https://github.com/bigskysoftware/htmx/releases . Re-check HTMX examples, `src/js/src/helpers/htmx.ts`, and HTMX docs.
+- **Core stack**: Litestar docs/releases https://docs.litestar.dev/latest/ + https://github.com/litestar-org/litestar/releases ; Vite https://vite.dev/ + https://github.com/vitejs/vite/releases ; Bun https://bun.com/docs + https://github.com/oven-sh/bun/releases ; Granian https://github.com/emmett-framework/granian + https://github.com/emmett-framework/granian/releases ; httpx https://www.python-httpx.org/ + https://github.com/encode/httpx/releases ; @hey-api/openapi-ts https://heyapi.dev/openapi-ts/get-started + https://github.com/hey-api/openapi-ts/releases . Re-check runtime/executor/proxy/typegen code and docs when these move.
+- **Docs theme / Shibuya**: docs https://shibuya.lepture.com/ ; releases https://github.com/lepture/shibuya/releases . Re-check `docs/conf.py`, `docs/_static/theme.css`, `docs/_static/layout.css`, `docs/_static/code.css`, `docs/_static/theme.js`, `docs/_templates/components/copy-page-button.html`, `CONTRIBUTING.rst`, `README.md`, and `llms*.txt`. The official docs code palette is based on the SQLSpec WASM playground reference; if the sibling workspace exists, inspect `../sqlspec/docs/_static/custom.css` and `../sqlspec/tools/sphinx_ext/playground_template.html`.
+
+## Optional Features
+
+- **Inertia.js integration**: Inertia v2 and v3 support via `InertiaPlugin` with session middleware, `InertiaRequest`/`InertiaResponse`, deferred/merge/once/optional/always props, infinite-scroll `scroll_props`, precognition (`InertiaConfig(precognition=True)` + `@precognition`), JSON script-element bootstrap by default (`InertiaConfig(use_script_element=False)` restores the legacy `data-page` path; Inertia v2 still needs `createInertiaApp({ defaults: { future: { useScriptElementForInitialPage: true } } })` when using the default transport), pooled SSR client (`httpx.AsyncClient` with HTTP/2-aware connection limits), async prop pre-resolution on the request loop, and exception handling.
+- **Type generation**: Export OpenAPI schema, typed route metadata (JSON + TypeScript), Inertia page props, and ergonomic `schemas.ts` form/response helpers. Enable with `ViteConfig(types=True)`. The npm plugin watches exported files and triggers `@hey-api/openapi-ts` plus the bundled `litestar-vite-typegen` CLI. Use `TypeGenConfig(extra_commands=[["tsr", "generate"]])` to run additional code-generation CLIs (e.g., TanStack Router) during `generate-types` and `build`; binaries are resolved through the project's JS executor (`node_modules/.bin` first, then npx/pnpm dlx/yarn dlx/bunx/deno run).
+- **Route helpers**: The `litestar-vite-plugin/helpers` npm export provides typed route generation functions (`createRouteHelpers`, `isCurrentRoute`, `currentRoute`, `isRoute`, `toRoute`) plus CSRF (`getCsrfToken`, `csrfHeaders`, `csrfFetch`) and HTMX helpers (`addDirective`, `registerHtmxExtension`, `setHtmxDebug`, `swapJson`).
+- **Meta-framework support**: Use `mode="ssr"`/`mode="ssg"` (alias for `mode="framework"`) for Astro, Nuxt, SvelteKit. Dedicated npm integrations at `litestar-vite-plugin/astro`, `/nuxt`, `/sveltekit`. For non-Vite tools (Angular CLI) that own their build output, use `mode="framework"` with `RuntimeConfig(external_dev_server=ExternalDevServer(...))`; or the equivalent `mode="external"` alias.
+- **CDN deployment**: `DeployConfig` with fsspec storage backends (GCS, S3, Azure, etc.) via `litestar assets deploy`. Set `DeployConfig.asset_url` to write `deployAssetUrl` into `.litestar.json` so production builds use the CDN base URL.
+- **Proxy headers**: `ProxyHeadersMiddleware` for X-Forwarded-* header handling behind reverse proxies. Configured via `RuntimeConfig.trusted_proxies` or the `LITESTAR_TRUSTED_PROXIES` env var.
+- **Static props bridge**: `ViteConfig(static_props={...})` writes a JSON payload into `.litestar.json` and exposes it on the JS side via the `virtual:litestar-static-props` virtual module.
+
+## Inertia Notes
+
+- Inertia apps default to a JSON script element payload for full-page HTML bootstrap (`InertiaConfig.use_script_element=True`). Inertia v3 clients use that transport automatically. If you pin Inertia v2, the browser entry must also enable `defaults.future.useScriptElementForInitialPage` in `createInertiaApp(...)`, and the SSR entry should mirror that setting when `InertiaConfig(ssr=True)` is enabled. Set `InertiaConfig(use_script_element=False)` to keep the legacy `data-page` attribute bootstrap.
+- `InertiaConfig(ssr=True)` enables Inertia's separate Node SSR renderer for initial HTML responses (default URL `http://127.0.0.1:13714/render`, configurable via `InertiaSSRConfig`). This is distinct from framework proxy mode (`mode="framework"` / alias `mode="ssr"` for Astro, Nuxt, SvelteKit).
+- The plugin maintains a shared `httpx.AsyncClient` (`InertiaPlugin.ssr_client`) for SSR fan-out and pre-resolves async `defer`/`lazy`/`once`/`optional` callbacks on the request loop so they share scope with DI-managed resources.
+
+## Documentation Structure
+
+The documentation is configured in `zensical.toml` with custom styling in `docs/stylesheets/extra.css`, branding assets in `docs/assets/logo.svg` and `docs/assets/favicon.svg`, and autodoc reference generators (`tools/docs/generate_cli_docs.py`, `tools/docs/generate_ts_docs.py`).
