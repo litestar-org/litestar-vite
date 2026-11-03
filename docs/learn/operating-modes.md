@@ -30,7 +30,7 @@ Every full-stack Python + JavaScript application must answer four architectural 
 For readability across different frontend stacks, `ViteConfig.mode` accepts descriptive aliases that normalize to the canonical mode:
 
 - **`"spa"`** — Single-Page Application (`index.html` catch-all route served by Litestar).
-- **`"hybrid"`** or **`"inertia"`** — Inertia.js v2 / v3 server-driven SPA.
+- **`"hybrid"`** or **`"inertia"`** — Inertia.js server-driven SPA.
 - **`"template"`** or **`"htmx"`** — Server-rendered Jinja2 templates, HTMX partials, and `<litestar-island>` fragments.
 - **`"framework"`**, **`"ssr"`**, or **`"ssg"`** — Meta-frameworks (Astro, Nuxt, SvelteKit) where Litestar proxies non-API routes in development.
 - **`"external"`** — Non-Vite build tools (such as Angular CLI `ng serve`) managed via `RuntimeConfig(external_dev_server=ExternalDevServer(...))`.

@@ -2,7 +2,7 @@
 
 Litestar Vite pairs two packages that work together across the `.litestar.json` contract:
 
-- **Litestar Vite** (Python): The Litestar plugin (`VitePlugin`), configuration models (`ViteConfig`), AnyIO dev proxy (`ViteProxyMiddleware`), Inertia v2 protocol engine, fragment renderer, and `litestar assets` CLI.
+- **Litestar Vite** (Python): The Litestar plugin (`VitePlugin`), configuration models (`ViteConfig`), AnyIO dev proxy (`ViteProxyMiddleware`), Inertia.js protocol engine, fragment renderer, and `litestar assets` CLI.
 - **`litestar-vite-plugin`** (TypeScript): The Vite 7+ plugin that reads `.litestar.json`, writes `<bundle_dir>/hot`, runs `@hey-api/openapi-ts` and AsyncAPI codegen, and registers the dev SSR / fragment RPC middleware (`/__litestar_ssr__`).
 
 ---
@@ -104,5 +104,5 @@ INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 Choose the walkthrough that matches your architecture:
 
 1. [**Quick Start: Single-Page Application (`mode="spa"`)**](quick-start-spa.md) — Litestar serves JSON/OpenAPI routes and injects Vite scripts into `index.html` for a client-routed SPA.
-2. [**Quick Start: Inertia.js v2 (`mode="hybrid"`)**](quick-start-inertia.md) — Server-driven routing with React, Vue, or Svelte page components and typed `PageProps`.
+2. [**Quick Start: Inertia.js (`mode="hybrid"`)**](quick-start-inertia.md) — Server-driven routing with React, Vue, or Svelte page components and typed `PageProps`.
 3. [**Quick Start: Jinja2 Templates & Islands (`mode="template"`)**](quick-start-templates.md) — Server-rendered HTML templates with `vite_hmr()`, `vite()`, `<litestar-island>` hydration, and HTMX `ComponentResponse` fragments.

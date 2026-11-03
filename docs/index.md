@@ -5,17 +5,14 @@ hide:
 ---
 
 <div class="lv-home-hero" align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-inline-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="assets/banner-inline-light.svg">
-    <img alt="Litestar Vite" src="assets/banner-inline-light.svg" width="58%">
-  </picture>
-  <p><strong>First-class Vite 7+, Inertia.js v2, Server-Rendered Islands, and End-to-End Type Generation for Litestar.</strong></p>
+  <img class="lv-hero-banner lv-hero-banner--light" alt="Litestar Vite" src="assets/banner-inline-light.svg" width="58%">
+  <img class="lv-hero-banner lv-hero-banner--dark" alt="Litestar Vite" src="assets/banner-inline-dark.svg" width="58%">
+  <p><strong>First-class Vite 7+, Inertia.js, Server-Rendered Islands, and End-to-End Type Generation for Litestar.</strong></p>
 </div>
 
 ---
 
-**Litestar Vite** bridges [Litestar](https://litestar.dev) (Python ASGI) and [Vite 7+](https://vite.dev) into a unified full-stack runtime. During development, your browser connects solely to Litestar (`:8000`) while `ViteProxyMiddleware` streams frontend modules and `/vite-hmr` WebSocket updates from a managed Vite process. In production, `ViteAssetLoader` and `GranianPlugin` serve hashed, immutable bundles with zero-copy speed.
+**Litestar Vite** bridges [Litestar](https://litestar.dev) (Python ASGI) and [Vite 7+](https://vite.dev) into a unified full-stack runtime. During development, your browser connects solely to Litestar (`:8000`) while `ViteProxyMiddleware` streams frontend modules and `/vite-hmr` WebSocket updates from a managed Vite process. In production, `ViteAssetLoader` serves hashed, immutable bundles directly from the Vite manifest.
 
 --8<-- "tools/docs/includes/diagram-dev-proxy.html"
 
@@ -35,13 +32,13 @@ Litestar Vite adapts to your frontend architecture through a single `ViteConfig(
 
     [→ Quick Start: SPA](getting-started/quick-start-spa.md)
 
--   **Inertia.js v2 Hybrid (`mode="hybrid"`)**
+-   **Inertia.js Hybrid (`mode="hybrid"`)**
 
     ---
 
     Build React, Vue, or Svelte single-page apps without writing a client API layer. Return Python dicts or `msgspec.Struct` models directly as typed `PageProps`.
 
-    [→ Quick Start: Inertia v2](getting-started/quick-start-inertia.md)
+    [→ Quick Start: Inertia.js](getting-started/quick-start-inertia.md)
 
 -   **Jinja2 + Islands (`mode="template"`)**
 
@@ -144,9 +141,9 @@ When `litestar run --reload` starts:
 
 | Section | What You Will Learn |
 | --- | --- |
-| [**Getting Started**](getting-started/index.md) | Installation, CLI scaffolding (`litestar assets init`), and end-to-end walkthroughs for SPA, Inertia v2, and Jinja2 + Islands |
-| [**Core Concepts**](learn/index.md) | The four operating modes, layered `ViteConfig` sub-configs, build-time Static Props, Islands & HTMX fragments, Dev/Prod SSR, and production CDN/Granian deployment |
-| [**Frameworks & Inertia**](frameworks/index.md) | Deep dive into Inertia.js v2 (`defer`, `merge`, `once`, shared props, Precognition), React/Vue/Svelte setup, and Astro/Nuxt/SvelteKit integration |
+| [**Getting Started**](getting-started/index.md) | Installation, CLI scaffolding (`litestar assets init`), and end-to-end walkthroughs for SPA, Inertia.js, and Jinja2 + Islands |
+| [**Core Concepts**](learn/index.md) | The four operating modes, layered `ViteConfig` sub-configs, build-time Static Props, Islands & HTMX fragments, Dev/Prod SSR, and production CDN deployment |
+| [**Frameworks & Inertia**](frameworks/index.md) | Deep dive into Inertia.js (`defer`, `merge`, `once`, shared props, Precognition), React/Vue/Svelte setup, and Astro/Nuxt/SvelteKit integration |
 | [**TypeGen & Realtime**](typegen/index.md) | Zero-drift OpenAPI SDK generation (`@hey-api/openapi-ts`), type-safe `route()` / `toRoute()` URL builders, and AsyncAPI WebSocket channel typing |
-| [**Architecture**](architecture/index.md) | Interactive animated SVG/CSS diagrams of the Single-Port AnyIO Proxy, Operating Modes, Inertia v2 Lifecycle, SSR IPC, and TypeGen Pipeline |
+| [**Architecture**](architecture/index.md) | Interactive animated SVG/CSS diagrams of the Single-Port AnyIO Proxy, Operating Modes, Inertia.js Lifecycle, SSR IPC, and TypeGen Pipeline |
 | [**Reference**](reference/index.md) | Complete Python API (`litestar_vite`), TypeScript 18-subpath API (`litestar-vite-plugin`), `litestar assets` CLI reference, and wire contracts |

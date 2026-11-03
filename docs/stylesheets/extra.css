@@ -501,6 +501,15 @@ body:has(.lv-hero) .md-header__topic + .md-header__topic {
   display: none;
 }
 
+:root:not([data-md-color-scheme="slate"]) .lv-hero-banner--dark,
+[data-md-color-scheme="default"] .lv-hero-banner--dark {
+  display: none !important;
+}
+
+[data-md-color-scheme="slate"] .lv-hero-banner--light {
+  display: none !important;
+}
+
 .md-nav--secondary .md-nav__list {
   padding-inline-end: 0.25rem;
 }

@@ -1,6 +1,6 @@
 # SSR, TypeScript & Upgrade Guide
 
-This guide covers Server-Side Rendering (`InertiaSSRConfig`), client helpers (`resolvePageComponent`, `unwrapPageProps`), end-to-end `PageProps` TypeScript generation, and upgrading from Inertia v2 to v3.
+This guide covers Server-Side Rendering (`InertiaSSRConfig`), client helpers (`resolvePageComponent`, `unwrapPageProps`), end-to-end `PageProps` TypeScript generation, and Inertia v3 compatibility.
 
 ---
 
@@ -100,11 +100,11 @@ declare module "litestar-vite-plugin/inertia" {
 
 ---
 
-## Inertia v2 to v3 Upgrade Guide
+## Inertia v3 Compatibility
 
-| Feature | Inertia v2 | Inertia v3 (`@inertiajs/*` v3) |
+| Feature | Standard Inertia.js | Inertia v3 (`@inertiajs/*` v3) |
 | --- | --- | --- |
 | **Script-Element Bootstrap** | Opt-in on client via `defaults: { future: { useScriptElementForInitialPage: true } }` | **Default behavior** when `InertiaConfig(use_script_element=True)` is active (`defaults: {}`). |
 | **Document `<title>` Tag** | `<title inertia>` or `<title data-inertia>` | Plain `<title>App</title>` (v3 replaces the single `<title>` element automatically without marker attributes). |
 | **HTTP Client** | Axios | Native `fetch` / XHR (no `axios` dependency required). |
-| **Top-Level Flash** | Supported in v2.3+ (`page.flash`) | Standard (`page.flash`). |
+| **Top-Level Flash** | Supported (`page.flash`) | Standard (`page.flash`). |

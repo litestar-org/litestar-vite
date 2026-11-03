@@ -31,9 +31,10 @@
     }
     .lv-diag--modes .lv-mode-tabs {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 0.5rem;
       margin-bottom: 1rem;
+      overflow-x: auto;
     }
     .lv-diag--modes .lv-mode-tabs label {
       cursor: pointer;
@@ -44,6 +45,8 @@
       color: var(--lv-text);
       font-size: 0.82rem;
       font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
       transition: border-color 0.15s ease, background-color 0.15s ease;
     }
     #lv-mode-spa:checked ~ .lv-mode-tabs label[for="lv-mode-spa"],
@@ -89,10 +92,10 @@
   <input type="radio" name="lv-operating-mode" id="lv-mode-framework" />
 
   <div class="lv-mode-tabs" role="tablist" aria-label="Operating Mode Switcher">
-    <label for="lv-mode-spa">SPA Mode (mode="spa")</label>
-    <label for="lv-mode-hybrid">Hybrid / Inertia (mode="hybrid")</label>
-    <label for="lv-mode-template">Template + Islands (mode="template")</label>
-    <label for="lv-mode-framework">Meta-Framework (mode="framework")</label>
+    <label for="lv-mode-spa">SPA Mode</label>
+    <label for="lv-mode-hybrid">Hybrid / Inertia.js</label>
+    <label for="lv-mode-template">Template + Islands</label>
+    <label for="lv-mode-framework">Meta-Framework</label>
   </div>
 
   <div class="lv-mode-panels">
@@ -126,8 +129,8 @@
 
     <div class="lv-mode-panel lv-panel-hybrid">
       <svg viewBox="0 0 880 220" role="img" aria-labelledby="lv-modes-hybrid-title lv-modes-hybrid-desc">
-        <title id="lv-modes-hybrid-title">Hybrid Inertia v2 Architecture (mode="hybrid")</title>
-        <desc id="lv-modes-hybrid-desc">Litestar controllers own routing and return component PageProps; Inertia v2 swaps components via X-Inertia JSON and supports SSR via _InertiaSlots.</desc>
+        <title id="lv-modes-hybrid-title">Hybrid Inertia.js Architecture (mode="hybrid")</title>
+        <desc id="lv-modes-hybrid-desc">Litestar controllers own routing and return component PageProps; Inertia.js swaps components via X-Inertia JSON and supports SSR via _InertiaSlots.</desc>
         <rect x="20" y="30" width="235" height="160" rx="12" fill="var(--lv-card)" stroke="var(--lv-amber)" stroke-width="2" />
         <text x="137" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">HTML Shell &amp; SSR</text>
         <text x="137" y="90" text-anchor="middle" fill="var(--lv-amber)" font-size="12" font-family="monospace">AppHandler / Jinja + SSR</text>
@@ -145,7 +148,7 @@
         <line class="lv-mode-flow" x1="560" y1="110" x2="625" y2="110" stroke="var(--lv-violet)" stroke-width="2.5" />
 
         <rect x="625" y="30" width="235" height="160" rx="12" fill="var(--lv-card)" stroke="var(--lv-violet)" stroke-width="2" />
-        <text x="742" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Inertia v2 Protocol</text>
+        <text x="742" y="64" text-anchor="middle" fill="var(--lv-text)" font-size="14" font-weight="700">Inertia.js Protocol</text>
         <text x="742" y="90" text-anchor="middle" fill="var(--lv-violet)" font-size="12" font-family="monospace">PageProps[T] JSON</text>
         <text x="742" y="116" text-anchor="middle" fill="var(--lv-muted)" font-size="11">defer() • merge() • lazy() • once()</text>
         <text x="742" y="138" text-anchor="middle" fill="var(--lv-muted)" font-size="11">Generated page-props.ts types</text>

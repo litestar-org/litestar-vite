@@ -91,4 +91,4 @@ Optional protocol keys (`flash`, `deferredProps`, `mergeProps`, `prependProps`, 
 | [**Merging Props & Infinite Scroll**](merging-and-infinite-scroll.md) | Append, prepend, and deep-merge strategies, key deduplication, `scroll_props()`, and `infinite_scroll=True` |
 | [**Polling, Prefetching & Remembering State**](client-visits.md) | Periodic polling (`usePoll`), link prefetching, and local history state (`useRemember`) |
 | [**Security, History Encryption & Versioning**](security-and-versioning.md) | HttpOnly CSRF protection, automatic CSRF headers, browser history encryption, and rolling asset versioning |
-| [**SSR, TypeScript & Upgrade Guide**](ssr-and-typescript.md) | Server-side rendering (`InertiaSSRConfig`), `resolvePageComponent`, generated `PageProps` types, and Inertia v2 to v3 migration |
+| [**SSR, TypeScript & Upgrade Guide**](ssr-and-typescript.md) | Server-side rendering (`InertiaSSRConfig`), `resolvePageComponent`, generated `PageProps` types, and Inertia v3 compatibility |

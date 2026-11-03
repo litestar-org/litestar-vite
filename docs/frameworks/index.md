@@ -8,7 +8,7 @@ Litestar Vite supports every major frontend UI library, hypermedia library, and 
 
 | Framework | Mode | Integration & Helpers | Guide |
 | --- | --- | --- | --- |
-| **Inertia.js v2 / v3** | `hybrid` (`inertia`) | `litestar-vite-plugin`, `inertia-pages.json` | [Inertia Guide](inertia/index.md) |
+| **Inertia.js** | `hybrid` (`inertia`) | `litestar-vite-plugin`, `inertia-pages.json` | [Inertia Guide](inertia/index.md) |
 | **React** | `spa` / `hybrid` / `template` | `@vitejs/plugin-react`, `litestar-vite-plugin/react` | [React Guide](react.md) |
 | **Vue 3** | `spa` / `hybrid` / `template` | `@vitejs/plugin-vue`, `litestar-vite-plugin/vue` | [Vue 3 Guide](vue.md) |
 | **Svelte 5** | `spa` / `hybrid` / `template` | `@sveltejs/vite-plugin-svelte`, `litestar-vite-plugin/svelte` | [Svelte 5 Guide](svelte.md) |
@@ -26,7 +26,7 @@ Litestar Vite supports every major frontend UI library, hypermedia library, and 
 
 Pair **React**, **Vue 3**, or **Svelte 5** with **Inertia.js** (`mode="hybrid"`) when you want a rich single-page frontend without maintaining a separate REST API layer, client router, or state store. Litestar route handlers return typed Python models (`msgspec.Struct`, `dataclass`, Pydantic) directly to your page components.
 
-- [→ Inertia.js v2 / v3 Overview](inertia/index.md)
+- [→ Inertia.js Overview](inertia/index.md)
 
 ### Client-Routed SPAs
 

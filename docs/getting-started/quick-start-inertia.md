@@ -1,4 +1,4 @@
-# Quick Start: Inertia.js v2
+# Quick Start: Inertia.js
 
 In **Inertia Hybrid mode** (`mode="hybrid"`), Litestar owns server-side routing, authentication, and data loading while React, Vue, or Svelte renders each page component. Route handlers declare `component="Dashboard/Index"` and return a Python `dict` or `msgspec.Struct` directly — no client REST or GraphQL boilerplate required.
 
@@ -30,7 +30,7 @@ In **Inertia Hybrid mode** (`mode="hybrid"`), Litestar owns server-side routing,
     poetry add litestar-vite
     ```
 
-Install `litestar-vite-plugin` and your Inertia.js v2 adapter:
+Install `litestar-vite-plugin` and your Inertia.js adapter:
 
 === "npm"
 
@@ -75,7 +75,7 @@ In `mode="hybrid"`, `index.html` needs only `<div id="app"></div>` and your modu
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Litestar + Inertia v2</title>
+    <title>Litestar + Inertia.js</title>
   </head>
   <body>
     <div id="app"></div>
@@ -120,4 +120,4 @@ litestar run --reload
 
 - On initial visit to `GET /`, Litestar renders `index.html` with the initial `PageProps` JSON and Vite asset scripts.
 - On subsequent `<Link href="...">` clicks, Inertia sends `X-Inertia: true` and swaps only the JSON `PageProps` payload.
-- See the [Inertia.js v2 Guide](../frameworks/inertia/index.md) for deferred props (`defer`), infinite scroll (`merge`), shared session data (`share`), and SSR.
+- See the [Inertia.js Guide](../frameworks/inertia/index.md) for deferred props (`defer`), infinite scroll (`merge`), shared session data (`share`), and SSR.

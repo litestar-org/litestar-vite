@@ -1,6 +1,6 @@
 [project]
 site_name = "Litestar Vite"
-site_description = "Connect Litestar ASGI applications with Vite 7+, Inertia.js v2, cross-platform SSR, island fragments, and end-to-end OpenAPI + AsyncAPI type generation."
+site_description = "Connect Litestar ASGI applications with Vite 7+, Inertia.js, cross-platform SSR, island fragments, and end-to-end OpenAPI + AsyncAPI type generation."
 site_url = "https://litestar-org.github.io/litestar-vite/"
 repo_url = "https://github.com/litestar-org/litestar-vite"
 repo_name = "litestar-org/litestar-vite"
@@ -20,7 +20,7 @@ nav = [
   { "Getting Started" = [
     { "Installation & Setup" = "getting-started/index.md" },
     { "Quick Start: SPA Mode" = "getting-started/quick-start-spa.md" },
-    { "Quick Start: Inertia v2" = "getting-started/quick-start-inertia.md" },
+    { "Quick Start: Inertia.js" = "getting-started/quick-start-inertia.md" },
     { "Quick Start: Jinja & Islands" = "getting-started/quick-start-templates.md" },
   ] },
   { "Core Concepts" = [

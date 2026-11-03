@@ -72,7 +72,7 @@ In Litestar Vite projects, **`litestar-vite-plugin` is the sole Vite bridge owne
 
 Inertia works in two HTML shell modes:
 
-=== "SPA Mode (`mode='hybrid'`, no Jinja2 required)"
+=== "Hybrid SPA Shell"
 
     In `mode="hybrid"` without `TemplateConfig`, Litestar reads your plain `index.html` (from the project root or `resources/index.html`) and transforms it at runtime — injecting the Vite HMR client, module scripts, and the `<script type="application/json" id="app_page" data-page="app">` payload around `<div id="app"></div>`:
 
@@ -91,7 +91,7 @@ Inertia works in two HTML shell modes:
     </html>
     ```
 
-=== "Jinja2 Template Mode (`TemplateConfig`)"
+=== "Jinja2 Template"
 
     When you configure Litestar's `TemplateConfig(engine=JinjaTemplateEngine)`, `InertiaResponse` renders `root_template` through Jinja2 using the `vite_hmr()`, `vite()`, and `inertia` template callables:
 
@@ -117,10 +117,31 @@ Inertia works in two HTML shell modes:
 
 By default, `InertiaConfig(use_script_element=True)` serializes initial page props into `<script type="application/json" id="app_page" data-page="app">{...}</script><div id="app"></div>` rather than an HTML-escaped `data-page="&quot;...&quot;"` attribute. This cuts initial HTML payload size by ~30% and avoids HTML entity decoding overhead.
 
-- **Inertia v3 clients** read the `<script type="application/json" data-page="app">` element automatically with `defaults: {}`.
-- **Inertia v2 clients** enable script-element parsing by setting `defaults: { future: { useScriptElementForInitialPage: true } }` in `createInertiaApp(...)`:
+- **Standard Inertia clients** enable script-element parsing by setting `defaults: { future: { useScriptElementForInitialPage: true } }` in `createInertiaApp(...)`.
+- **Inertia v3 clients** read the `<script type="application/json" data-page="app">` element automatically with `defaults: {}`:
 
-=== "Inertia v3 Client (`resources/main.tsx`)"
+=== "Standard Client"
+
+    ```tsx title="resources/main.tsx"
+    import { createInertiaApp } from "@inertiajs/react";
+    import { createRoot } from "react-dom/client";
+    import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
+
+    createInertiaApp({
+      defaults: {
+        future: {
+          useScriptElementForInitialPage: true,
+        },
+      },
+      resolve: (name: string) =>
+        resolvePageComponent(`./pages/${name}.tsx`, import.meta.glob("./pages/**/*.tsx")),
+      setup({ el, App, props }: { el: HTMLElement; App: any; props: any }) {
+        createRoot(el).render(<App {...props} />);
+      },
+    });
+    ```
+
+=== "Inertia v3 Client"
 
     ```tsx title="resources/main.tsx"
     import { createInertiaApp } from "@inertiajs/react";
@@ -133,27 +154,6 @@ By default, `InertiaConfig(use_script_element=True)` serializes initial page pro
         visitOptions: (_href: string, options: { headers?: Record<string, string> }) => ({
           headers: csrfHeaders(options.headers ?? {}),
         }),
-      },
-      resolve: (name: string) =>
-        resolvePageComponent(`./pages/${name}.tsx`, import.meta.glob("./pages/**/*.tsx")),
-      setup({ el, App, props }: { el: HTMLElement; App: any; props: any }) {
-        createRoot(el).render(<App {...props} />);
-      },
-    });
-    ```
-
-=== "Inertia v2 Client (`resources/main.tsx`)"
-
-    ```tsx title="resources/main.tsx"
-    import { createInertiaApp } from "@inertiajs/react";
-    import { createRoot } from "react-dom/client";
-    import { resolvePageComponent } from "litestar-vite-plugin/inertia-helpers";
-
-    createInertiaApp({
-      defaults: {
-        future: {
-          useScriptElementForInitialPage: true,
-        },
       },
       resolve: (name: string) =>
         resolvePageComponent(`./pages/${name}.tsx`, import.meta.glob("./pages/**/*.tsx")),

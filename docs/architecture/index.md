@@ -21,7 +21,7 @@ Use the interactive switcher below to inspect how HTML shell ownership, routing,
 | Operating Mode | HTML Shell Owner | Router Owner | Primary Data Transport | Typical Stack |
 | :--- | :--- | :--- | :--- | :--- |
 | `mode="spa"` | `AppHandler` (`index.html`) | Client router | `@hey-api/openapi-ts` + `route()` | React Router, Vue Router, TanStack Router |
-| `mode="hybrid"` | `AppHandler` / Jinja + SSR | Litestar (`component=`) | Inertia v2 `PageProps` JSON | `@inertiajs/react`, `@inertiajs/vue3`, `@inertiajs/svelte` |
+| `mode="hybrid"` | `AppHandler` / Jinja + SSR | Litestar (`component=`) | Inertia.js `PageProps` JSON | `@inertiajs/react`, `@inertiajs/vue3`, `@inertiajs/svelte` |
 | `mode="template"` | Jinja2 (`vite()`, `vite_hmr()`) | Litestar controllers | Server HTML + `<litestar-island>` + HTMX | Jinja2, HTMX (`hx-swap="json"`), WebSocket/SSE |
 | `mode="framework"` | Meta-framework server | Meta-framework router | `/api/*` proxy + shared TypeGen | Astro 5, SvelteKit, Nuxt 4 |
 
@@ -29,7 +29,7 @@ Use the interactive switcher below to inspect how HTML shell ownership, routing,
 
 ## Development vs. Production Execution
 
-During development (`dev_mode=True`), Litestar proxies asset and HMR WebSocket traffic to a live Vite 7+ process over a single browser origin (`127.0.0.1:8000`). In production (`dev_mode=False`), Node is not required for static assets: `ViteAssetLoader` resolves hashed bundles from `manifest.json` while Granian or Litestar serves immutable static files directly.
+During development (`dev_mode=True`), Litestar proxies asset and HMR WebSocket traffic to a live Vite 7+ process over a single browser origin (`127.0.0.1:8000`). In production (`dev_mode=False`), Node is not required for static assets: `ViteAssetLoader` resolves hashed bundles from `manifest.json` while Litestar serves immutable static files directly.
 
 --8<-- "tools/docs/includes/diagram-dev-vs-prod.html"
 

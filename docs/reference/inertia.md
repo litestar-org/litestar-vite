@@ -1,6 +1,6 @@
-# Inertia.js v2 Reference
+# Inertia.js Reference
 
-API reference for the Inertia.js v2 plugin, request/response primitives, deferred/merged prop wrappers, session state helpers, and Laravel Precognition support.
+API reference for the Inertia.js plugin, request/response primitives, deferred/merged prop wrappers, session state helpers, and Laravel Precognition support.
 
 ---
 

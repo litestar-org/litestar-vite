@@ -1,6 +1,6 @@
 # Server-Side Rendering
 
-Litestar Vite provides unified Server-Side Rendering (SSR) for both **Inertia.js v2 pages** (`mode="hybrid"`) and **UI component islands/fragments** (`mode="template"`). Instead of requiring you to manage a separate Node HTTP server process, Litestar Vite manages the SSR IPC lifecycle automatically in both development and production.
+Litestar Vite provides unified Server-Side Rendering (SSR) for both **Inertia.js pages** (`mode="hybrid"`) and **UI component islands/fragments** (`mode="template"`). Instead of requiring you to manage a separate Node HTTP server process, Litestar Vite manages the SSR IPC lifecycle automatically in both development and production.
 
 --8<-- "tools/docs/includes/diagram-ssr-ipc.html"
 

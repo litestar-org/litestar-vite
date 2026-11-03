@@ -1,11 +1,11 @@
 ---
 title: SSR, Server Fragments, & IPC
-description: Internal architecture of Inertia v2 lifecycle, Dev TCP vs. Prod Stdio SSR IPC transports, SSRCircuitBreaker, and <litestar-island> hydration.
+description: Internal architecture of Inertia.js lifecycle, Dev TCP vs. Prod Stdio SSR IPC transports, SSRCircuitBreaker, and <litestar-island> hydration.
 ---
 
 # SSR, Server Fragments, & IPC
 
-Litestar Vite provides a unified inter-process communication (IPC) engine (`BaseIPCTransport`) shared by both **Inertia v2 Server-Side Rendering (`InertiaResponse`)** and **Standalone Server Fragments (`FragmentEngine` / `vite_fragment`)**.
+Litestar Vite provides a unified inter-process communication (IPC) engine (`BaseIPCTransport`) shared by both **Inertia.js Server-Side Rendering (`InertiaResponse`)** and **Standalone Server Fragments (`FragmentEngine` / `vite_fragment`)**.
 
 --8<-- "tools/docs/includes/diagram-ssr-ipc.html"
 
@@ -40,8 +40,8 @@ Once the JavaScript runtime returns `{ head: string[], body: string }` (for Iner
 
 ---
 
-## Inertia v2 Request & Prop Evaluation Lifecycle
+## Inertia.js Request & Prop Evaluation Lifecycle
 
-In `mode="hybrid"`, `InertiaPlugin` and `InertiaResponse` implement the complete Inertia v2 wire protocol across initial HTML visits, `X-Inertia` JSON transitions, deferred prop groups, partial reloads, and 303/409 status codes:
+In `mode="hybrid"`, `InertiaPlugin` and `InertiaResponse` implement the complete Inertia.js wire protocol across initial HTML visits, `X-Inertia` JSON transitions, deferred prop groups, partial reloads, and 303/409 status codes:
 
 --8<-- "tools/docs/includes/diagram-inertia-lifecycle.html"
