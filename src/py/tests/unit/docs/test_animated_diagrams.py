@@ -6,7 +6,12 @@ REPO_ROOT = Path(__file__).resolve().parents[5]
 
 EXPECTED_DIAGRAMS: dict[str, tuple[str, ...]] = {
     "diagram-dev-proxy.html": ("ViteProxyMiddleware", "anyio.connect_tcp", "/vite-hmr", ".litestar.json"),
-    "diagram-dev-vs-prod.html": ("Development Mode", "Production Mode", "manifest.json", "Immutable caching + metadata blocking"),
+    "diagram-dev-vs-prod.html": (
+        "Development Mode",
+        "Production Mode",
+        "manifest.json",
+        "Immutable caching + metadata blocking",
+    ),
     "diagram-operating-modes.html": (
         "lv-mode-spa",
         "lv-mode-hybrid",
