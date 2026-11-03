@@ -1,76 +1,76 @@
 # Core Concepts
 
-Litestar Vite is built around a small set of explicit mental models that govern how Python and Vite communicate during development, build time, and production execution.
+Litestar Vite coordinates how your Python ASGI backend and Vite frontend communicate across local development, static asset builds, server-side rendering, and production deployment.
 
 ---
 
-## Core Mental Models
+## Architecture & Guides
 
 <div class="grid cards" markdown>
 
--   **Operating Modes (`spa`, `hybrid`, `template`, `framework`)**
+-   :lucide-layers: **Operating Modes**
 
     ---
 
-    Understand how `ViteConfig(mode=...)` determines who owns the HTML shell, client routing, asset injection, and data transport.
+    Understand how SPA, Inertia hybrid, Jinja template, and meta-framework modes determine HTML shell ownership, routing, asset injection, and data transport.
 
     [→ Operating Modes](operating-modes.md)
 
--   **Configuration & `.litestar.json` Bridge**
+-   :lucide-sliders-horizontal: **Configuration & Bridge**
 
     ---
 
-    Configure `ViteConfig` and its five focused sub-configs (`PathConfig`, `RuntimeConfig`, `InertiaConfig`, `TypeGenConfig`, `DeployConfig`) while `.litestar.json` keeps Vite in sync.
+    Configure paths, runtime execution, Inertia options, type generation, and cloud deployment in Python while keeping Vite automatically synchronized.
 
     [→ Configuration Guide](configuration.md)
 
--   **Development Workflow & Single-Port Proxy**
+-   :lucide-network: **Development Server & Proxy**
 
     ---
 
-    How `ViteProxyMiddleware` streams Vite modules and `/vite-hmr` WebSocket upgrades through Litestar on a single port, plus `mode="external"` for non-Vite dev servers.
+    Stream Vite modules and HMR WebSocket upgrades through Litestar on a single port, or proxy external frontend dev servers without CORS overhead.
 
     [→ Development & Proxy](development-and-proxy.md)
 
--   **Static Props (`virtual:litestar-static-props`)**
+-   :lucide-database: **Static Props**
 
     ---
 
-    Expose typed build-time constants, feature flags, and environment metadata from Python to your Vite bundle with zero HTTP round-trips.
+    Expose typed build-time constants, feature flags, and environment metadata from Python directly to your frontend bundle with zero HTTP round-trips.
 
     [→ Static Props](static-props.md)
 
--   **Islands Architecture & HTMX Fragments**
+-   :lucide-puzzle: **Islands & HTMX Fragments**
 
     ---
 
-    Combine server-rendered Jinja2 HTML and HTMX partial swaps with `<litestar-island>` partial hydration and `ComponentResponse` server fragments.
+    Combine server-rendered Jinja2 HTML and HTMX partial swaps with interactive island hydration and server-rendered UI component fragments.
 
     [→ Islands & HTMX](islands-and-htmx.md)
 
--   **Server-Side Rendering (Dev vs. Prod IPC)**
+-   :lucide-server: **Server-Side Rendering**
 
     ---
 
-    How `TCPStreamIPCTransport` (Vite 7+ `RunnableDevEnvironment` in dev) and `StdioIPCTransport` (persistent NDJSON worker in prod) render Inertia pages and UI islands with `SSRCircuitBreaker` fallback.
+    Render Inertia pages and UI islands on the server using Vite's dev runner during development and a persistent worker pool or QuickJS runtime in production.
 
     [→ SSR & IPC Lifecycle](ssr.md)
 
--   **Production Builds, Granian Native Static & CDN**
+-   :lucide-package-check: **Production & Deployment**
 
     ---
 
-    Serve immutable fingerprinted bundles with `ViteAssetLoader`, offload static files to Granian's Rust HTTP server (`StaticPlacement.NATIVE`), or push to S3/GCS/R2 via `litestar assets deploy`.
+    Serve immutable fingerprinted bundles from the Vite manifest, offload static files to Granian's Rust HTTP server, or deploy assets to S3, GCS, or R2.
 
     [→ Production & Deploy](production-and-deploy.md)
 
--   **Diagnostics & v0.32 Migration**
+-   :lucide-stethoscope: **Diagnostics & Upgrades**
 
     ---
 
-    Run 9 automated health checks with `litestar assets doctor`, or upgrade from `0.30.x` / `0.31.x` to v0.32.
+    Run automated health checks across your Python and Vite configuration with the doctor CLI, or follow step-by-step release migration guides.
 
-    [→ Doctor & Troubleshooting](doctor-and-troubleshooting.md) · [v0.32 Migration Guide](migration-0-32.md)
+    [→ Doctor & Troubleshooting](doctor-and-troubleshooting.md) · [v0.33 Migration](migration-0-33.md) · [v0.32 Migration](migration-0-32.md)
 
 </div>
 
@@ -78,6 +78,6 @@ Litestar Vite is built around a small set of explicit mental models that govern 
 
 ## Diagnostics & Troubleshooting
 
-When paths, ports, or generated types drift out of sync, run `litestar assets doctor` to run 9 automated health checks across `ViteConfig`, `.litestar.json`, `vite.config.ts`, and `package.json`:
+When paths, ports, or generated types drift out of sync, use the built-in doctor CLI to run automated health checks across your Python configuration, Vite config, and frontend package metadata:
 
 - [**Doctor CLI & Troubleshooting Guide**](doctor-and-troubleshooting.md)

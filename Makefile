@@ -294,34 +294,34 @@ docs-clean:                                        ## Clean documentation build
 .PHONY: docs-gen
 docs-gen:                                          ## Regenerate CLI and TypeScript API reference pages
 	@echo "${INFO} Generating CLI and TypeScript reference pages... 📝"
-	@PYTHONPATH=. uv run python tools/docs/generate_cli_docs.py
-	@PYTHONPATH=. uv run python tools/docs/generate_ts_docs.py
+	@PYTHONPATH=. uv run --group doc python tools/docs/generate_cli_docs.py
+	@PYTHONPATH=. uv run --group doc python tools/docs/generate_ts_docs.py
 	@echo "${OK} Reference pages generated"
 
 .PHONY: docs-serve
 docs-serve: docs-clean                             ## Serve documentation locally
 	@echo "${INFO} Starting documentation server... 📚"
-	@uv run zensical serve -a localhost:8000
+	@uv run --group doc zensical serve -a localhost:8000
 
 .PHONY: docs
 docs: docs-clean                                   ## Build and verify documentation
 	@echo "${INFO} Building documentation... 📝"
-	@PYTHONPATH=. uv run python tools/docs/generate_cli_docs.py --check
-	@PYTHONPATH=. uv run python tools/docs/generate_ts_docs.py --check
-	@PYTHONPATH=. uv run python tools/docs/scan_public_docstrings.py
-	@uv run zensical build --clean
-	@PYTHONPATH=. uv run python tools/docs/postbuild.py
-	@PYTHONPATH=. uv run python tools/docs/verify_docs_artifacts.py --strict-warnings --no-build
+	@PYTHONPATH=. uv run --group doc python tools/docs/generate_cli_docs.py --check
+	@PYTHONPATH=. uv run --group doc python tools/docs/generate_ts_docs.py --check
+	@PYTHONPATH=. uv run --group doc python tools/docs/scan_public_docstrings.py
+	@uv run --group doc zensical build --clean
+	@PYTHONPATH=. uv run --group doc python tools/docs/postbuild.py
+	@PYTHONPATH=. uv run --group doc python tools/docs/verify_docs_artifacts.py --strict-warnings --no-build
 	@echo "${OK} Documentation built successfully"
 
 .PHONY: docs-check
 docs-check: docs                                   ## Build documentation and run strict example checks
-	@DOCS_EXAMPLES_STRICT=1 uv run python tools/check_docs_examples.py
+	@DOCS_EXAMPLES_STRICT=1 uv run --group doc python tools/check_docs_examples.py
 
 .PHONY: docs-linkcheck
 docs-linkcheck:                                    ## Check documentation links and artifacts
 	@echo "${INFO} Checking documentation links and artifacts... 🔗"
-	@PYTHONPATH=. uv run python tools/docs/verify_docs_artifacts.py --strict-warnings --no-build
+	@PYTHONPATH=. uv run --group doc python tools/docs/verify_docs_artifacts.py --strict-warnings --no-build
 	@echo "${OK} Link check complete"
 
 .PHONY: docs-linkcheck-full

@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, cast, get_origin
 
 from litestar._openapi.datastructures import _get_normalized_schema_key  # pyright: ignore[reportPrivateUsage]
 from litestar.handlers import HTTPRouteHandler
@@ -449,11 +449,12 @@ def should_register_value_schema(value: Any) -> bool:
 
 
 def process_session_props(
-    session_props: "set[str] | dict[str, type]",
+    session_props: "set[str] | dict[str, Any]",
     shared_props: dict[str, dict[str, Any]],
     shared_schema_keys: dict[str, tuple[str, ...]],
     openapi_support: OpenAPISupport,
     fallback_ts_type: str,
+    shared_schema_dicts: dict[str, dict[str, Any]] | None = None,
 ) -> None:
     """Process session props and add them to shared_props.
 
@@ -463,19 +464,29 @@ def process_session_props(
         for key, prop_type_class in session_props.items():
             if not key:
                 continue
+            raw_name = getattr(prop_type_class, "__name__", "")
+            default_type_name = (
+                python_type_to_typescript(raw_name, fallback=fallback_ts_type)[0] if raw_name else fallback_ts_type
+            )
             if openapi_support.enabled and openapi_support.schema_creator:
                 try:
                     field_def = FieldDefinition.from_annotation(prop_type_class)
                     schema_result = openapi_support.schema_creator.for_field_definition(field_def)
                     if isinstance(schema_result, Reference):
                         shared_schema_keys[key] = _get_normalized_schema_key(field_def)
-                    type_name = prop_type_class.__name__ if hasattr(prop_type_class, "__name__") else fallback_ts_type
+                        type_name = default_type_name
+                    elif isinstance(prop_type_class, type) and get_origin(prop_type_class) is None:
+                        type_name = default_type_name
+                    else:
+                        schema_dict = schema_result.to_schema()
+                        if shared_schema_dicts is not None:
+                            shared_schema_dicts[key] = schema_dict
+                        type_name = ts_type_from_openapi(schema_dict)
                     shared_props.setdefault(key, {"type": type_name, "optional": True})
                 except (AttributeError, TypeError, ValueError):  # pragma: no cover - defensive
                     shared_props.setdefault(key, {"type": fallback_ts_type, "optional": True})
             else:
-                type_name = prop_type_class.__name__ if hasattr(prop_type_class, "__name__") else fallback_ts_type
-                shared_props.setdefault(key, {"type": type_name, "optional": True})
+                shared_props.setdefault(key, {"type": default_type_name, "optional": True})
     else:
         for key in session_props:
             if not key:
@@ -504,20 +515,23 @@ def process_shared_prop_types(
         if not key:
             continue
 
-        type_name = fallback_ts_type
+        raw_name = getattr(annotation, "__name__", "")
+        default_type_name = (
+            python_type_to_typescript(raw_name, fallback=fallback_ts_type)[0] if raw_name else fallback_ts_type
+        )
+        type_name = default_type_name
         if openapi_support.enabled and openapi_support.schema_creator:
             try:
                 field_def = FieldDefinition.from_annotation(annotation)
                 schema_result = openapi_support.schema_creator.for_field_definition(field_def)
                 if isinstance(schema_result, Reference):
                     shared_schema_keys[key] = _get_normalized_schema_key(field_def)
-                    type_name = getattr(annotation, "__name__", fallback_ts_type)
-                else:
-                    shared_schema_dicts[key] = schema_result.to_schema()
+                elif not (isinstance(annotation, type) and get_origin(annotation) is None):
+                    schema_dict = schema_result.to_schema()
+                    shared_schema_dicts[key] = schema_dict
+                    type_name = ts_type_from_openapi(schema_dict)
             except (AttributeError, TypeError, ValueError):  # pragma: no cover - defensive
                 type_name = fallback_ts_type
-        else:
-            type_name = getattr(annotation, "__name__", fallback_ts_type)
 
         shared_props[key] = {"type": type_name, "optional": True}
 
@@ -574,11 +588,16 @@ def build_inertia_shared_props(
             except (AttributeError, TypeError, ValueError):  # pragma: no cover - defensive
                 pass
 
+    shared_schema_dicts: dict[str, dict[str, Any]] = {}
     process_session_props(
-        inertia_config.extra_session_page_props, shared_props, shared_schema_keys, openapi_support, fallback_ts_type
+        inertia_config.extra_session_page_props,
+        shared_props,
+        shared_schema_keys,
+        openapi_support,
+        fallback_ts_type,
+        shared_schema_dicts,
     )
 
-    shared_schema_dicts: dict[str, dict[str, Any]] = {}
     if inertia_config.shared_page_prop_types:
         process_shared_prop_types(
             inertia_config.shared_page_prop_types,

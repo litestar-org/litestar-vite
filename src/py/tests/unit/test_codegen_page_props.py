@@ -1,6 +1,7 @@
 """Unit tests for Inertia page props extraction in codegen module."""
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, TypedDict
 
 import pytest
@@ -705,6 +706,43 @@ def test_generate_inertia_pages_json_shared_page_prop_types_ignores_empty_key() 
     )
 
     assert "" not in result["sharedProps"]
+
+
+@pytest.mark.parametrize(
+    ("py_type", "expected_ts_type"),
+    [
+        (str, "string"),
+        (int, "number"),
+        (float, "number"),
+        (bool, "boolean"),
+        (bytes, "string"),
+        (bytearray, "string"),
+        (Path, "string"),
+        (dict, "Record<string, unknown>"),
+        (list, "unknown[]"),
+        (set, "unknown[]"),
+        (tuple, "unknown[]"),
+        (frozenset, "unknown[]"),
+        (list[str], "string[]"),
+    ],
+)
+@pytest.mark.parametrize("with_openapi_schema", [True, False])
+def test_generate_inertia_pages_json_maps_builtin_types_in_session_and_shared_props(
+    py_type: Any, expected_ts_type: str, with_openapi_schema: bool
+) -> None:
+    """Built-in Python types in extra_session_page_props and shared_page_prop_types map to TypeScript primitives."""
+    app = _shared_prop_types_app()
+    openapi_schema = app.openapi_schema.to_schema() if with_openapi_schema else None
+    result = generate_inertia_pages_json(
+        app,
+        openapi_schema=openapi_schema,
+        inertia_config=InertiaConfig(
+            extra_session_page_props={"session_prop": py_type}, shared_page_prop_types={"shared_prop": py_type}
+        ),
+    )
+
+    assert result["sharedProps"]["session_prop"] == {"type": expected_ts_type, "optional": True}
+    assert result["sharedProps"]["shared_prop"] == {"type": expected_ts_type, "optional": True}
 
 
 # =============================================================================

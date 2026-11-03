@@ -52,14 +52,11 @@ Use **Astro**, **Nuxt**, or **SvelteKit** when you want file-based routing, stat
 
 Generate a complete, ready-to-run project for any supported framework using `litestar assets init`:
 
-<!-- termynal -->
-
 ```console
 $ litestar assets init --template react-inertia
 ✓ Created vite.config.ts, package.json, tsconfig.json
 ✓ Created resources/main.tsx and resources/pages/Home.tsx
 $ litestar assets install
----> 100%
 ✓ Frontend dependencies installed
 $ litestar run --reload
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)

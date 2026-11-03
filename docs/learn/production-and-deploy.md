@@ -10,13 +10,10 @@ Moving a Litestar Vite application from development to production swaps the live
 
 Run `litestar assets build` during your container or CI build stage:
 
-<!-- termynal -->
-
 ```console
 $ litestar assets build
 ✓ Exported .litestar.json, openapi.json, and routes.json
 ✓ Running vite build...
----> 100%
 public/.vite/manifest.json                0.42 kB
 public/assets/main-D4f1A9.css            12.84 kB │ gzip:  3.12 kB
 public/assets/main-B9x8K2.js            148.20 kB │ gzip: 46.50 kB

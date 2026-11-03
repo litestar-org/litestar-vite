@@ -6,7 +6,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Mapping
 from dataclasses import FrozenInstanceError, fields
 from pathlib import Path
 from typing import Any, cast
@@ -19,6 +19,7 @@ from litestar.datastructures import CacheControlHeader
 from litestar.exceptions import WebSocketDisconnect
 from litestar.middleware import DefineMiddleware
 from litestar.params import FromPath
+from litestar.routes import HTTPRoute
 from litestar.template.config import TemplateConfig
 from litestar.testing import TestClient
 
@@ -2250,11 +2251,7 @@ async def test_vite_plugin_lifespan_parses_manifest_once_across_loader_and_handl
 
 
 def test_static_router_emits_opt_on_handlers_only(tmp_path: Path) -> None:
-    """Static route opts (default + user) land on individual handlers, never on parent layers."""
-    from collections.abc import Mapping
-
-    from litestar.routes import HTTPRoute
-
+    """Static route opts (default + user) are scoped to the static route handlers rather than parent layers."""
     plugin = _build_manifest_only_plugin(
         tmp_path,
         static_files_config=StaticFilesConfig(opt={"custom_opt_key": "custom_val"}),
@@ -2273,8 +2270,6 @@ def test_static_router_emits_opt_on_handlers_only(tmp_path: Path) -> None:
     for handler in static_handlers:
         assert handler.opt.get("exclude_from_auth") is True
         assert handler.opt.get("custom_opt_key") == "custom_val"
-        # Mirrors litestar-security's layer check: exclude_from_auth on any parent
-        # layer (router/app) fails app startup even when the handler also has it.
         for layer in handler.ownership_layers[:-1]:
             layer_opt = getattr(layer, "opt", None)
             if isinstance(layer_opt, Mapping):

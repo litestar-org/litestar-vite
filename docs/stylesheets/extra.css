@@ -470,6 +470,11 @@ body:has(.lv-hero) .md-header__topic + .md-header__topic {
   max-width: 86rem;
 }
 
+body:has(.lv-home-hero) .md-main__inner.md-grid,
+.md-main__inner.md-grid:has(> .md-sidebar--primary[hidden]) {
+  max-width: 72rem;
+}
+
 @media screen and (min-width: 76.25em) {
   .md-sidebar--primary {
     width: 11rem;
@@ -501,13 +506,32 @@ body:has(.lv-hero) .md-header__topic + .md-header__topic {
   display: none;
 }
 
-:root:not([data-md-color-scheme="slate"]) .lv-hero-banner--dark,
+.lv-hero-banner {
+  display: block;
+  width: min(100%, 24rem);
+  max-width: 384px;
+  height: auto;
+  margin: 0.25rem auto 0.5rem;
+}
+
+body:not([data-md-color-scheme="slate"]) .lv-hero-banner--dark,
 [data-md-color-scheme="default"] .lv-hero-banner--dark {
   display: none !important;
 }
 
 [data-md-color-scheme="slate"] .lv-hero-banner--light {
   display: none !important;
+}
+
+.md-typeset .grid.cards > ul > li > p:first-child .twemoji {
+  color: var(--md-typeset-a-color);
+  margin-right: 0.35rem;
+  vertical-align: -0.15em;
+}
+
+.md-typeset .grid.cards > ul > li > p:first-child .twemoji svg {
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 .md-nav--secondary .md-nav__list {
@@ -824,148 +848,4 @@ body:has(.lv-hero) .md-header__topic + .md-header__topic {
 
 .md-footer-meta:not(:has(.md-copyright__highlight, .md-social)) {
   display: none;
-}
-
-.lv-termynal {
-  margin: 1.25rem 0;
-  border-radius: 10px;
-  border: 1px solid var(--lv-code-block-border);
-  background-color: var(--md-code-bg-color);
-  color: var(--md-code-fg-color);
-  font-family: var(--md-code-font-family, "JetBrains Mono", monospace);
-  font-size: 0.78rem;
-  line-height: 1.6;
-  overflow: hidden;
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
-}
-
-[data-md-color-scheme="slate"] .lv-termynal {
-  box-shadow: 0 6px 22px rgba(2, 6, 23, 0.45);
-}
-
-.lv-termynal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.48rem 0.85rem;
-  background-color: var(--lv-code-header-bg);
-  border-bottom: 1px solid var(--lv-code-block-border);
-}
-
-.lv-termynal__dots {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.lv-termynal__dot {
-  width: 0.62rem;
-  height: 0.62rem;
-  border-radius: 9999px;
-  display: inline-block;
-}
-
-.lv-termynal__dot--red {
-  background-color: #ef4444;
-}
-
-.lv-termynal__dot--yellow {
-  background-color: #f59e0b;
-}
-
-.lv-termynal__dot--green {
-  background-color: #10b981;
-}
-
-.lv-termynal__title {
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--md-default-fg-color--lighter);
-}
-
-.lv-termynal__actions {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.lv-termynal__btn {
-  appearance: none;
-  border: 1px solid var(--lv-inline-code-border);
-  background-color: var(--md-default-bg-color);
-  color: var(--md-default-fg-color--light);
-  border-radius: 5px;
-  padding: 0.14rem 0.5rem;
-  font-family: var(--md-text-font-family);
-  font-size: 0.68rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
-}
-
-.lv-termynal__btn:hover {
-  border-color: var(--md-typeset-a-color);
-  color: var(--md-typeset-a-color);
-}
-
-.lv-termynal__body {
-  padding: 0.85rem 1rem;
-  min-height: 5.5rem;
-  overflow-x: auto;
-}
-
-.lv-termynal__line {
-  white-space: pre;
-  min-height: 1.35em;
-}
-
-.lv-termynal__line--input {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  font-weight: 600;
-  color: var(--md-code-fg-color);
-}
-
-.lv-termynal__prompt {
-  color: var(--md-accent-fg-color);
-  user-select: none;
-  font-weight: 700;
-}
-
-.lv-termynal__line--typing .lv-termynal__command::after {
-  content: "▋";
-  margin-left: 0.12rem;
-  color: var(--md-accent-fg-color);
-  animation: lvTermCursor 0.8s steps(2, start) infinite;
-}
-
-@keyframes lvTermCursor {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0;
-  }
-}
-
-.lv-termynal__line--output {
-  color: var(--md-default-fg-color--light);
-}
-
-.lv-termynal__line--success {
-  color: var(--md-code-hl-string-color);
-}
-
-.lv-termynal__line--progress {
-  color: var(--md-code-hl-special-color);
-  font-weight: 600;
-}
-
-.lv-termynal__line--comment {
-  color: var(--md-code-hl-comment-color);
-  font-style: italic;
 }
