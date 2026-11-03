@@ -5,14 +5,14 @@ hide:
 ---
 
 <div class="lv-home-hero" align="center">
-  <img class="lv-hero-banner lv-hero-banner--light" alt="Litestar Vite" src="assets/banner-inline-light.svg" width="58%">
-  <img class="lv-hero-banner lv-hero-banner--dark" alt="Litestar Vite" src="assets/banner-inline-dark.svg" width="58%">
+  <img class="lv-hero-banner lv-hero-banner--light" alt="Litestar Vite" src="assets/banner-inline-light.svg">
+  <img class="lv-hero-banner lv-hero-banner--dark" alt="Litestar Vite" src="assets/banner-inline-dark.svg">
   <p><strong>First-class Vite 7+, Inertia.js, Server-Rendered Islands, and End-to-End Type Generation for Litestar.</strong></p>
 </div>
 
 ---
 
-**Litestar Vite** bridges [Litestar](https://litestar.dev) (Python ASGI) and [Vite 7+](https://vite.dev) into a unified full-stack runtime. During development, your browser connects solely to Litestar (`:8000`) while `ViteProxyMiddleware` streams frontend modules and `/vite-hmr` WebSocket updates from a managed Vite process. In production, `ViteAssetLoader` serves hashed, immutable bundles directly from the Vite manifest.
+**Litestar Vite** bridges [Litestar](https://litestar.dev) (Python ASGI) and [Vite 7+](https://vite.dev) into a unified full-stack runtime. During development, your browser connects solely to Litestar (`:8000`) while the single-port proxy streams frontend modules and hot-reload WebSocket updates from a managed Vite process. In production, the asset loader serves hashed, immutable bundles directly from the Vite manifest.
 
 --8<-- "tools/docs/includes/diagram-dev-proxy.html"
 
@@ -20,35 +20,35 @@ hide:
 
 ## Choose Your Operating Mode
 
-Litestar Vite adapts to your frontend architecture through a single `ViteConfig(mode=...)` setting:
+Litestar Vite adapts to your frontend architecture through a single mode setting on `ViteConfig`:
 
 <div class="grid cards" markdown>
 
--   **Single-Page Application (`mode="spa"`)**
+-   :lucide-layout-grid: **Single-Page Application**
 
     ---
 
-    Litestar serves your JSON/OpenAPI routes and transforms `index.html` with Vite asset tags for React, Vue, Svelte, or Angular SPAs.
+    Litestar serves your JSON and OpenAPI routes while transforming `index.html` with Vite asset tags for React, Vue, Svelte, or Angular SPAs.
 
     [→ Quick Start: SPA](getting-started/quick-start-spa.md)
 
--   **Inertia.js Hybrid (`mode="hybrid"`)**
+-   :lucide-repeat: **Inertia.js Hybrid**
 
     ---
 
-    Build React, Vue, or Svelte single-page apps without writing a client API layer. Return Python dicts or `msgspec.Struct` models directly as typed `PageProps`.
+    Build React, Vue, or Svelte single-page applications without maintaining a separate client API layer. Return Python models directly as typed page props.
 
     [→ Quick Start: Inertia.js](getting-started/quick-start-inertia.md)
 
--   **Jinja2 + Islands (`mode="template"`)**
+-   :lucide-blocks: **Jinja2 & Islands**
 
     ---
 
-    Server-rendered Jinja2 templates enhanced with Vite HMR, `<litestar-island>` partial hydration, and `ComponentResponse` fragments for HTMX swaps.
+    Render server-side Jinja2 templates enhanced with Vite HMR, interactive island hydration, and server component fragments for HTMX swaps.
 
     [→ Quick Start: Templates & Islands](getting-started/quick-start-templates.md)
 
--   **Meta-Frameworks (`mode="framework"`)**
+-   :lucide-globe: **Meta-Frameworks**
 
     ---
 
@@ -116,13 +116,10 @@ Install the paired Vite 7+ plugin in your frontend workspace:
 
 ### Scaffold and Run on a Single Port
 
-<!-- termynal -->
-
 ```console
 $ litestar assets init --template react
 ✓ Created vite.config.ts, package.json, tsconfig.json
 $ litestar assets install
----> 100%
 ✓ Frontend dependencies installed
 $ litestar run --reload
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
@@ -131,9 +128,9 @@ INFO:     Vite dev server started on http://127.0.0.1:5173 (proxied via :8000)
 
 When `litestar run --reload` starts:
 
-1. `VitePlugin` writes `.litestar.json` (the deterministic contract consumed by `litestar-vite-plugin`) and exports `openapi.json` and `routes.json` when `types=True`.
-2. `VitePlugin` spawns the Vite dev server and reads its bound address from `<bundle_dir>/hot`.
-3. Every browser request hits `http://127.0.0.1:8000` — Python API routes execute in Litestar, while Vite asset and `/vite-hmr` WebSocket traffic streams transparently through `ViteProxyMiddleware`.
+1. `VitePlugin` writes `.litestar.json` (the configuration bridge read by the Vite plugin) and exports OpenAPI and route schemas when type generation is enabled.
+2. `VitePlugin` spawns the Vite dev server and reads its bound address from the `hot` file in your bundle directory.
+3. Every browser request hits `http://127.0.0.1:8000` — Python API routes execute in Litestar, while Vite asset and HMR WebSocket traffic streams transparently through the single-port proxy.
 
 ---
 

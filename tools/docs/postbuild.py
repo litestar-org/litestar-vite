@@ -26,6 +26,7 @@ import litestar_vite.ipc
 import litestar_vite.loader
 import litestar_vite.plugin
 import litestar_vite.scaffolding
+from litestar_vite.__metadata__ import __version__
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SITE_DIR = REPO_ROOT / "site"
@@ -252,11 +253,11 @@ def build_objects_inv(site_dir: Path = DEFAULT_SITE_DIR, docs_dir: Path = DEFAUL
     """Write a Sphinx v2 ``objects.inv`` file to ``site/objects.inv``."""
     entries = _collect_inventory_entries(docs_dir)
     header = (
-        b"# Sphinx inventory version 2\n"
-        b"# Project: litestar-vite\n"
-        b"# Version: 0.32.0\n"
-        b"# The remainder of this file is compressed using zlib.\n"
-    )
+        f"# Sphinx inventory version 2\n"
+        f"# Project: litestar-vite\n"
+        f"# Version: {__version__}\n"
+        f"# The remainder of this file is compressed using zlib.\n"
+    ).encode()
     payload_lines = [f"{e.name} {e.domain_role} {e.priority} {e.uri} {e.dispname}\n" for e in entries]
     compressed = zlib.compress("".join(payload_lines).encode("utf-8"), level=9)
     inv_path = site_dir / "objects.inv"

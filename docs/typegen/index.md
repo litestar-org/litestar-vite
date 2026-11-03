@@ -43,8 +43,6 @@ All intermediate schemas and generated TypeScript files are written under `TypeG
 
 In CI pipelines or before running `tsc --noEmit`, run `litestar assets generate-types` to export all JSON schemas and execute TypeScript code generation without starting the HTTP server:
 
-<!-- termynal -->
-
 ```console
 $ litestar assets generate-types
 ✓ Exported openapi.json (unchanged, skipped write)

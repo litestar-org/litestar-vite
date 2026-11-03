@@ -67,14 +67,11 @@ Install the Vite plugin in your frontend directory (`package.json`):
 
 The fastest way to bootstrap a new frontend workspace is `litestar assets init`, which generates `package.json`, `vite.config.ts`, `tsconfig.json`, and framework entrypoints aligned with your `ViteConfig`:
 
-<!-- termynal -->
-
 ```console
 $ litestar assets init --template react-inertia
 ✓ Created vite.config.ts, package.json, tsconfig.json
 ✓ Created resources/main.tsx and resources/pages/Home.tsx
 $ litestar assets install
----> 100%
 ✓ Frontend dependencies installed
 $ litestar run --reload
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)

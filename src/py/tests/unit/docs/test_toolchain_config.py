@@ -40,8 +40,11 @@ def test_zensical_toml_configuration() -> None:
     assert project["site_url"] == "https://litestar-org.github.io/litestar-vite/"
     assert "examples/**" in project["exclude_docs"]
     assert project["extra_css"] == ["stylesheets/extra.css"]
-    assert project["extra_javascript"] == ["javascripts/termynal.js"]
+    assert "extra_javascript" not in project
     assert project["extra"]["generator"] is False
+    emoji_cfg = project["markdown_extensions"]["pymdownx"]["emoji"]
+    assert emoji_cfg["emoji_index"] == "zensical.extensions.emoji.twemoji"
+    assert emoji_cfg["emoji_generator"] == "zensical.extensions.emoji.to_svg"
 
     theme = project["theme"]
     assert theme["variant"] == "modern"

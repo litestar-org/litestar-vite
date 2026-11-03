@@ -35,7 +35,9 @@ Notable changes to this project are documented in this file.
 - Added WebSocket route metadata extraction (`WebSocketRoute` with `protocol="websocket"` and
   AsyncAPI `channel_key` alignment) and type-safe `wsRoute()` / `route.ws()` helpers in generated
   `routes.ts` and `litestar-vite-plugin/helpers`. ([#390](https://github.com/litestar-org/litestar-vite/pull/390))
-- Redesigned the documentation with modular framework and Inertia.js guides, interactive SVG architecture diagrams, animated terminal walkthroughs, runnable standalone examples, and automated Python/TypeScript/CLI reference generation. ([#390](https://github.com/litestar-org/litestar-vite/pull/390))
+- Redesigned the documentation with modular framework and Inertia.js guides, interactive SVG architecture diagrams, runnable standalone examples, and automated Python/TypeScript/CLI reference generation. ([#390](https://github.com/litestar-org/litestar-vite/pull/390))
+- Fixed `process_session_props()` and `process_shared_prop_types()` in `litestar_vite.codegen` emitting raw Python built-in type names (`str`, `int`, `float`, `bool`, `dict`, `list`) into `page-props.ts` instead of mapping them through `python_type_to_typescript()`. ([#389](https://github.com/litestar-org/litestar-vite/issues/389))
+- Updated `_configure_static_files()` documentation and static router handler tests to reflect handler-level `opt` scoping without stale `litestar-security` parent-layer exclusion comments. ([#356](https://github.com/litestar-org/litestar-vite/issues/356))
 
 ## 0.32.0 - 2026-09-28
 

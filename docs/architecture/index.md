@@ -39,27 +39,27 @@ During development (`dev_mode=True`), Litestar proxies asset and HMR WebSocket t
 
 <div class="grid cards" markdown>
 
--   **Single-Port Dev Proxy & `.litestar.json` Bridge**
+-   :lucide-network: **Single-Port Dev Proxy & Bridge**
 
     ---
 
-    How `ViteProxyMiddleware` streams HTTP/1.1 assets (`anyio.connect_tcp`) and tunnels `/vite-hmr` WebSockets (`wsproto`) without CORS, coordinated by `.litestar.json` and the `hot` file.
+    How the development proxy streams HTTP/1.1 assets and tunnels HMR WebSockets without CORS overhead, coordinated by `.litestar.json` and the `hot` file.
 
     [Explore Dev Proxy & Bridge](dev-proxy-and-bridge.md)
 
--   **SSR, Server Fragments, & IPC Transports**
+-   :lucide-cpu: **SSR, Server Fragments, & IPC Transports**
 
     ---
 
-    How `InertiaResponse` and `FragmentEngine` render components across `TCPStreamIPCTransport` (`/__litestar_ssr__` in dev) and `StdioIPCTransport` (NDJSON worker pool in prod) with `SSRCircuitBreaker`.
+    How Inertia responses and server fragments render components across Vite's dev runner in development and persistent worker pools in production with circuit-breaker fallback.
 
     [Explore SSR & IPC](ssr-and-ipc.md)
 
--   **End-to-End TypeGen Pipeline**
+-   :lucide-workflow: **End-to-End TypeGen Pipeline**
 
     ---
 
-    How Python route and schema introspection emits deterministic `openapi.json`, `routes.json`, `inertia-pages.json`, and `asyncapi.json` artifacts consumed by the Vite plugin.
+    How Python route and schema introspection emits deterministic OpenAPI, route, Inertia page-props, and AsyncAPI artifacts consumed by the Vite plugin.
 
     [Explore Codegen Pipeline](codegen-pipeline.md)
 

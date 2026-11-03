@@ -571,6 +571,12 @@ class VitePlugin(InitPlugin, CLIPlugin):
         The static files router serves real files (JS, CSS, images). SPA fallback (serving
         index.html for client-side routes) is handled by the AppHandler.
 
+        Handler-level ``opt`` metadata (``_vite_static_handler`` and ``exclude_from_auth``
+        when ``exclude_static_from_auth`` is enabled, merged with any user-supplied
+        ``StaticFilesConfig.opt``) is attached directly to the static route handlers because
+        ``create_static_files_router`` does not accept ``opt`` and handler-level attachment
+        scopes the metadata strictly to the static asset routes.
+
         Args:
             app_config: The Litestar application configuration.
         """

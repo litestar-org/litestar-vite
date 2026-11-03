@@ -12,7 +12,6 @@ examples/**
 _tapes/**
 """
 extra_css = ["stylesheets/extra.css"]
-extra_javascript = ["javascripts/termynal.js"]
 nav = [
   { "Home" = [
     { "Overview" = "index.md" },
@@ -203,6 +202,10 @@ toc = { permalink = true, toc_depth = "2-3" }
 [project.markdown_extensions.pymdownx.details]
 [project.markdown_extensions.pymdownx.inlinehilite]
 [project.markdown_extensions.pymdownx.keys]
+
+[project.markdown_extensions.pymdownx.emoji]
+emoji_index = "zensical.extensions.emoji.twemoji"
+emoji_generator = "zensical.extensions.emoji.to_svg"
 
 [project.markdown_extensions.pymdownx.highlight]
 anchor_linenums = true

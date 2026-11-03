@@ -2,8 +2,6 @@
 
 During local development (`dev_mode=True`), Litestar Vite manages the Vite child process inside Litestar's ASGI lifespan and streams all Vite module requests and HMR WebSockets through your single Litestar port (`http://127.0.0.1:8000`).
 
-<!-- termynal -->
-
 ```console
 $ litestar run --reload
 INFO:     Exported .litestar.json, openapi.json, and routes.json
