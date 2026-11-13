@@ -13,8 +13,8 @@
     "generate-types": "openapi-ts --config openapi-ts.config.ts"
   },
   "dependencies": {
-    "astro": "6.2.1",
-    "zod": "4.4.3"
+    "astro": "7.4.7",
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.9",
