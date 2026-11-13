@@ -13,7 +13,7 @@
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "@tanstack/react-router": "1.170.16",
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "6.0.2",
