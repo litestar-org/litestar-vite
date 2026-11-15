@@ -20,9 +20,8 @@ litestar run --reload
 my-project/
 ├── app.py                  # Litestar API + ViteConfig(mode="ssr")
 ├── package.json
-├── svelte.config.js        # @sveltejs/adapter-node configuration
 ├── tsconfig.json
-├── vite.config.ts          # litestarSvelteKit() + sveltekit()
+├── vite.config.ts          # litestarSvelteKit() + sveltekit({ adapter: adapter() })
 └── src/
     ├── app.html
     ├── hooks.server.ts     # Server-side /api/* proxy forwarding during SSR load()
@@ -105,8 +104,8 @@ Use SvelteKit's universal `load` function (`+page.ts`) with the generated `route
 
     <!-- docs-example: skip -->
     ```typescript title="src/routes/+page.ts"
-    import { route } from "$lib/generated/routes";
-    import type { Summary } from "$lib/generated/api";
+    import { route } from "#lib/generated/routes";
+    import type { Summary } from "#lib/generated/api";
     import type { PageLoad } from "./$types";
 
     export const load: PageLoad = async ({ fetch }) => {

@@ -1,4 +1,6 @@
+import adapter from "@sveltejs/adapter-node"
 import { sveltekit } from "@sveltejs/kit/vite"
+import { vitePreprocess } from "@sveltejs/vite-plugin-svelte"
 import tailwindcss from "@tailwindcss/vite"
 import { litestarSvelteKit } from "litestar-vite-plugin/sveltekit"
 import { defineConfig, type PluginOption } from "vite"
@@ -13,5 +15,12 @@ const litestarPlugins = litestarSvelteKit({
 }) as PluginOption[]
 
 export default defineConfig({
-  plugins: [tailwindcss(), ...litestarPlugins, sveltekit()],
+  plugins: [
+    tailwindcss(),
+    ...litestarPlugins,
+    sveltekit({
+      adapter: adapter(),
+      preprocess: vitePreprocess({ script: true }),
+    }),
+  ],
 })

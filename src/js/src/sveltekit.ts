@@ -98,8 +98,8 @@ function resolveConfig(config: LitestarSvelteKitConfig = {}): ResolvedIntegratio
  * ```typescript
  * // src/routes/users/[id]/+page.ts
  * import type { PageLoad } from './$types';
- * import type { User } from '$lib/generated/api/types.gen';
- * import { route } from '$lib/generated/routes';
+ * import type { User } from '#lib/generated/api/types.gen';
+ * import { route } from '#lib/generated/routes';
  *
  * export const load: PageLoad = async ({ params, fetch }) => {
  *   const response = await fetch(route('users.show', { id: params.id }));

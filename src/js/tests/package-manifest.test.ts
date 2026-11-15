@@ -34,7 +34,7 @@ describe("package manifest", () => {
       peerDependenciesMeta?: Record<string, { optional?: boolean }>
     }
 
-    expect(packageJson.peerDependencies?.["@hey-api/openapi-ts"]).toMatch(/^\^0\.98\./)
+    expect(packageJson.peerDependencies?.["@hey-api/openapi-ts"]).toMatch(/^\^0\.99\./)
     expect(packageJson.peerDependenciesMeta?.["@hey-api/openapi-ts"]?.optional).toBe(true)
   })
 

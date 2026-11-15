@@ -715,11 +715,11 @@ def test_cli_get_package_executor_cmd_uses_package_flag_for_typegen() -> None:
 
 
 def test_cli_get_package_executor_cmd_deno_skips_suffix_when_package_default_bin_matches() -> None:
-    assert _get_package_executor_cmd("deno", "openapi-ts", package_name="@hey-api/openapi-ts@0.98.2") == [
+    assert _get_package_executor_cmd("deno", "openapi-ts", package_name="@hey-api/openapi-ts@0.99.0") == [
         "deno",
         "run",
         "-A",
-        "npm:@hey-api/openapi-ts@0.98.2",
+        "npm:@hey-api/openapi-ts@0.99.0",
     ]
     assert _get_package_executor_cmd("deno", "litestar-vite-typegen", package_name="litestar-vite-plugin") == [
         "deno",

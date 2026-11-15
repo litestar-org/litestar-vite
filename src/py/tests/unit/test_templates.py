@@ -556,12 +556,13 @@ def test_svelte_templates_use_current_svelte_5_entrypoints() -> None:
 
 def test_sveltekit_templates_use_current_adapter_and_hooks() -> None:
     """Ensure the SvelteKit scaffold matches current adapter-node and hook patterns."""
-    sveltekit_config = (TEMPLATE_ROOT / "sveltekit" / "svelte.config.js.j2").read_text()
+    sveltekit_config = (TEMPLATE_ROOT / "sveltekit" / "vite.config.ts.j2").read_text()
     sveltekit_hooks = (TEMPLATE_ROOT / "sveltekit" / "src" / "hooks.server.ts.j2").read_text()
     sveltekit_layout = (TEMPLATE_ROOT / "sveltekit" / "src" / "routes" / "+layout.svelte.j2").read_text()
 
     assert "@sveltejs/adapter-node" in sveltekit_config
     assert "@sveltejs/adapter-auto" not in sveltekit_config
+    assert not (TEMPLATE_ROOT / "sveltekit" / "svelte.config.js.j2").exists()
 
     assert "@ts-expect-error" not in sveltekit_hooks
     assert 'duplex?: "half"' in sveltekit_hooks

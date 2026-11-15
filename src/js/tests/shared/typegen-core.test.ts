@@ -182,7 +182,7 @@ describe("typegen-core", () => {
     await runHeyApiGeneration(createConfig(), null, ["@hey-api/typescript"], logger)
 
     expect(mocks.resolvePackageExecutorArgv).toHaveBeenCalledWith(["-i", "openapi.json", "-o", "src/generated/api", "--plugins", "@hey-api/typescript"], undefined, {
-      packageSpec: "@hey-api/openapi-ts@0.98.2",
+      packageSpec: "@hey-api/openapi-ts@0.99.0",
       additionalPackageSpecs: ["typescript@6.0.3"],
       binName: "openapi-ts",
     })
@@ -192,7 +192,7 @@ describe("typegen-core", () => {
         "exec",
         "--yes",
         "--package",
-        "@hey-api/openapi-ts@0.98.2",
+        "@hey-api/openapi-ts@0.99.0",
         "--package",
         "typescript@6.0.3",
         "--",
@@ -233,7 +233,7 @@ describe("typegen-core", () => {
 
     const result = await runTypeGeneration(createConfig({ generateZod: true }), { logger })
 
-    expect(result.errors[0]).toContain("@hey-api/openapi-ts@0.98.2 typescript@6.0.3 zod")
+    expect(result.errors[0]).toContain("@hey-api/openapi-ts@0.99.0 typescript@6.0.3 zod")
   })
 
   it("skips SDK generation when openapi.json does not exist", async () => {

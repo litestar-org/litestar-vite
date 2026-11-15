@@ -44,9 +44,9 @@
       "label": "deno_default_bin_matches_scoped_package",
       "executor": "deno",
       "binary": "openapi-ts",
-      "package_name": "@hey-api/openapi-ts@0.98.2",
-      "python": ["deno", "run", "-A", "npm:@hey-api/openapi-ts@0.98.2"],
-      "js": ["deno", "run", "-A", "npm:@hey-api/openapi-ts@0.98.2"]
+      "package_name": "@hey-api/openapi-ts@0.99.0",
+      "python": ["deno", "run", "-A", "npm:@hey-api/openapi-ts@0.99.0"],
+      "js": ["deno", "run", "-A", "npm:@hey-api/openapi-ts@0.99.0"]
     },
     {
       "label": "deno_default_bin_differs",
