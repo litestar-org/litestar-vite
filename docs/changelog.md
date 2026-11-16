@@ -2,6 +2,17 @@
 
 Notable changes to this project are documented in this file.
 
+## 0.33.1 - 2026-11-16
+
+### Fixed
+
+- Fixed AsyncAPI normalization in `normalize_asyncapi_document()` and `_rewrite_operation_references()` so `operation.reply.channel.$ref` and `operation.reply.messages[].$ref` rewrite to re-keyed channel keys alongside `operation.channel` and `operation.messages`, while keeping component-level `$ref` replies intact. ([#395](https://github.com/litestar-org/litestar-vite/issues/395))
+
+### Changed
+
+- Updated `litestar-vite-plugin` optional peer dependency `@hey-api/openapi-ts` to `^0.99.0` with `typescript` pinned below `7.0.0` in Dependabot, updated `sveltekit` scaffolding templates to SvelteKit 3 / `@sveltejs/adapter-node` 6 (`#lib/*` imports and inline `sveltekit()` options in `vite.config.ts` without `svelte.config.js`), updated `astro` scaffolding templates to Astro 7 (`@tailwindcss/vite`), and aligned all example `package.json` manifests.
+- Updated `.github/workflows/e2e-examples.yml` to run on Node 24 for Astro 7 compatibility and refreshed Python, JavaScript, and pre-commit dependencies (`uv.lock`, `package-lock.json`, `.pre-commit-config.yaml`).
+
 ## 0.33.0 - 2026-11-03
 
 - Added first-class Deno 2.x and Bun runtime support: `RuntimeConfig.executor` is detected from
