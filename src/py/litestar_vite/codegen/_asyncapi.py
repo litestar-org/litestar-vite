@@ -309,11 +309,67 @@ def _resolve_mapped_channel_key(raw_ref_key: str, old_to_new_keys: dict[str, str
     return old_to_new_keys.get(unescaped)
 
 
-def _rewrite_operation_references(raw_operations: dict[str, Any], old_to_new_keys: dict[str, str]) -> dict[str, Any]:
-    """Rewrite operation channel and message references to target normalized keys.
+def _rewrite_channel_ref(raw_channel: Any, old_to_new_keys: dict[str, str]) -> Any:
+    """Rewrite a channel reference object's ``$ref`` target using ``old_to_new_keys``.
 
-    Updates channel $ref and message $ref paths in each operation to use newly
-    allocated channel keys.
+    Args:
+        raw_channel: Raw channel object from an operation or reply entry.
+        old_to_new_keys: Mapping of old channel keys to normalized channel keys.
+
+    Returns:
+        Copied dictionary with rewritten ``$ref`` when matched, otherwise ``raw_channel`` unchanged.
+    """
+    if not isinstance(raw_channel, dict):
+        return raw_channel
+    ch_ref_dict = cast("dict[str, Any]", raw_channel).copy()
+    ch_ref = ch_ref_dict.get("$ref")
+    if isinstance(ch_ref, str) and ch_ref.startswith("#/channels/"):
+        old_ref_key = ch_ref.removeprefix("#/channels/")
+        mapped_ch_key = _resolve_mapped_channel_key(old_ref_key, old_to_new_keys)
+        if mapped_ch_key is not None:
+            ch_ref_dict["$ref"] = f"#/channels/{mapped_ch_key}"
+    return ch_ref_dict
+
+
+def _rewrite_message_refs(raw_messages: Any, old_to_new_keys: dict[str, str]) -> Any:
+    """Rewrite a list of message reference objects whose ``$ref`` targets renamed channels.
+
+    Args:
+        raw_messages: Raw messages list from an operation or reply entry.
+        old_to_new_keys: Mapping of old channel keys to normalized channel keys.
+
+    Returns:
+        Updated list of message entries when ``raw_messages`` is a list, otherwise unchanged.
+    """
+    if not isinstance(raw_messages, list):
+        return raw_messages
+    new_messages: list[Any] = []
+    for item in cast("list[Any]", raw_messages):
+        if isinstance(item, dict):
+            msg_dict = cast("dict[str, Any]", item).copy()
+            msg_ref = msg_dict.get("$ref")
+            if isinstance(msg_ref, str) and msg_ref.startswith("#/channels/"):
+                remainder = msg_ref.removeprefix("#/channels/")
+                parts = remainder.rsplit("/messages/", 1)
+                ref_channel_key = parts[0]
+                mapped_key = _resolve_mapped_channel_key(ref_channel_key, old_to_new_keys)
+                if mapped_key is not None:
+                    if len(parts) > 1:
+                        msg_key = _unescape_json_pointer(parts[1])
+                        msg_dict["$ref"] = f"#/channels/{mapped_key}/messages/{msg_key}"
+                    else:
+                        msg_dict["$ref"] = f"#/channels/{mapped_key}"
+            new_messages.append(msg_dict)
+        else:
+            new_messages.append(item)
+    return new_messages
+
+
+def _rewrite_operation_references(raw_operations: dict[str, Any], old_to_new_keys: dict[str, str]) -> dict[str, Any]:
+    """Rewrite operation channel, message, and reply references to target normalized keys.
+
+    Updates ``channel.$ref``, ``messages[].$ref``, ``reply.channel.$ref``, and
+    ``reply.messages[].$ref`` paths in each operation to use newly allocated channel keys.
 
     Args:
         raw_operations: Dictionary of raw operations.
@@ -329,39 +385,20 @@ def _rewrite_operation_references(raw_operations: dict[str, Any], old_to_new_key
             continue
 
         op: dict[str, Any] = cast("dict[str, Any]", raw_op).copy()
-        ch_ref_raw = op.get("channel")
-        if isinstance(ch_ref_raw, dict):
-            ch_ref_dict = cast("dict[str, Any]", ch_ref_raw).copy()
-            ch_ref = ch_ref_dict.get("$ref")
-            if isinstance(ch_ref, str) and ch_ref.startswith("#/channels/"):
-                old_ref_key = ch_ref.removeprefix("#/channels/")
-                mapped_ch_key = _resolve_mapped_channel_key(old_ref_key, old_to_new_keys)
-                if mapped_ch_key is not None:
-                    ch_ref_dict["$ref"] = f"#/channels/{mapped_ch_key}"
-            op["channel"] = ch_ref_dict
+        if isinstance(op.get("channel"), dict):
+            op["channel"] = _rewrite_channel_ref(op["channel"], old_to_new_keys)
 
-        raw_messages = op.get("messages")
-        if isinstance(raw_messages, list):
-            new_messages: list[Any] = []
-            for item in cast("list[Any]", raw_messages):
-                if isinstance(item, dict):
-                    msg_dict = cast("dict[str, Any]", item).copy()
-                    msg_ref = msg_dict.get("$ref")
-                    if isinstance(msg_ref, str) and msg_ref.startswith("#/channels/"):
-                        remainder = msg_ref.removeprefix("#/channels/")
-                        parts = remainder.rsplit("/messages/", 1)
-                        ref_channel_key = parts[0]
-                        mapped_key = _resolve_mapped_channel_key(ref_channel_key, old_to_new_keys)
-                        if mapped_key is not None:
-                            if len(parts) > 1:
-                                msg_key = _unescape_json_pointer(parts[1])
-                                msg_dict["$ref"] = f"#/channels/{mapped_key}/messages/{msg_key}"
-                            else:
-                                msg_dict["$ref"] = f"#/channels/{mapped_key}"
-                    new_messages.append(msg_dict)
-                else:
-                    new_messages.append(item)
-            op["messages"] = new_messages
+        if isinstance(op.get("messages"), list):
+            op["messages"] = _rewrite_message_refs(op["messages"], old_to_new_keys)
+
+        raw_reply = op.get("reply")
+        if isinstance(raw_reply, dict):
+            reply = cast("dict[str, Any]", raw_reply).copy()
+            if isinstance(reply.get("channel"), dict):
+                reply["channel"] = _rewrite_channel_ref(reply["channel"], old_to_new_keys)
+            if isinstance(reply.get("messages"), list):
+                reply["messages"] = _rewrite_message_refs(reply["messages"], old_to_new_keys)
+            op["reply"] = reply
 
         new_operations[op_id] = op
 

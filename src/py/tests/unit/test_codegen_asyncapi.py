@@ -15,7 +15,7 @@ from litestar.plugins import InitPluginProtocol
 from litestar.response import ServerSentEvent
 from litestar_asyncapi import AsyncAPIConfig, ChannelDefinition, DocsConfig, MessageDefinition, OperationDefinition
 from litestar_asyncapi import AsyncAPIPlugin as RealAsyncAPIPlugin
-from litestar_asyncapi.spec import Server
+from litestar_asyncapi.spec import Reference, Reply, Server
 
 from litestar_vite.codegen import (
     ExportResult,
@@ -73,7 +73,7 @@ class AsyncAPIPlugin(InitPluginProtocol):
 
 
 def _assert_refs_resolve(doc: dict[str, Any]) -> None:
-    """Verify all operation channel and message refs resolve to existing definitions."""
+    """Verify all operation channel, message, and reply refs resolve to existing definitions."""
     channels = doc.get("channels", {})
     operations = doc.get("operations", {})
 
@@ -93,6 +93,31 @@ def _assert_refs_resolve(doc: dict[str, Any]) -> None:
             assert msg_key in messages, (
                 f"Operation {op_id} references missing message {msg_key} in channel {channel_key}"
             )
+
+        reply = op.get("reply")
+        if isinstance(reply, dict) and "$ref" not in reply:
+            reply_channel_key = channel_key
+            if isinstance(reply.get("channel"), dict) and "$ref" in reply["channel"]:
+                reply_channel_ref = reply["channel"]["$ref"]
+                assert reply_channel_ref.startswith("#/channels/"), (
+                    f"Invalid reply channel $ref {reply_channel_ref} in {op_id}"
+                )
+                reply_channel_key = reply_channel_ref[len("#/channels/") :]
+                assert reply_channel_key in channels, (
+                    f"Operation {op_id} reply references missing channel {reply_channel_key}"
+                )
+
+            reply_messages = channels[reply_channel_key].get("messages", {})
+            for reply_msg in reply.get("messages", []):
+                reply_msg_ref = reply_msg["$ref"]
+                expected_reply_prefix = f"#/channels/{reply_channel_key}/messages/"
+                assert reply_msg_ref.startswith(expected_reply_prefix), (
+                    f"Invalid reply message $ref {reply_msg_ref} in {op_id}"
+                )
+                reply_msg_key = reply_msg_ref[len(expected_reply_prefix) :]
+                assert reply_msg_key in reply_messages, (
+                    f"Operation {op_id} reply references missing message {reply_msg_key} in channel {reply_channel_key}"
+                )
 
 
 def test_find_asyncapi_plugin_returns_none_without_plugin() -> None:
@@ -505,3 +530,166 @@ def test_asyncapi_servers_passthrough_and_route_channel_key_parity(tmp_path: Pat
     }
     assert ws_channel_keys_from_routes == ws_channel_keys_from_asyncapi
     assert ws_channel_keys_from_routes == {"ws__a__b", "ws__a_b", "ws__p_room__b"}
+
+
+@pytest.mark.parametrize(
+    ("channels", "operation", "expected_reply_channel", "expected_reply_msg"),
+    [
+        (
+            {
+                "requests": {"address": "/ws/requests", "bindings": {"ws": {}}, "messages": {"Req": {"payload": {}}}},
+                "results": {"address": "/ws/results", "bindings": {"ws": {}}, "messages": {"Result": {"payload": {}}}},
+            },
+            {
+                "action": "receive",
+                "channel": {"$ref": "#/channels/requests"},
+                "messages": [{"$ref": "#/channels/requests/messages/Req"}],
+                "reply": {
+                    "channel": {"$ref": "#/channels/results"},
+                    "messages": [{"$ref": "#/channels/results/messages/Result"}],
+                },
+            },
+            "ws__results",
+            "#/channels/ws__results/messages/Result",
+        ),
+        (
+            {
+                "/ws/requests": {
+                    "address": "/ws/requests",
+                    "bindings": {"ws": {}},
+                    "messages": {"Req": {"payload": {}}},
+                },
+                "/ws/results": {
+                    "address": "/ws/results",
+                    "bindings": {"ws": {}},
+                    "messages": {"Result": {"payload": {}}},
+                },
+            },
+            {
+                "action": "receive",
+                "channel": {"$ref": "#/channels/~1ws~1requests"},
+                "messages": [{"$ref": "#/channels/~1ws~1requests/messages/Req"}],
+                "reply": {
+                    "channel": {"$ref": "#/channels/~1ws~1results"},
+                    "messages": [{"$ref": "#/channels/~1ws~1results/messages/Result"}],
+                },
+            },
+            "ws__results",
+            "#/channels/ws__results/messages/Result",
+        ),
+        (
+            {
+                "requests": {
+                    "address": "/ws/requests",
+                    "bindings": {"ws": {}},
+                    "messages": {"Req": {"payload": {}}, "Ack": {"payload": {}}},
+                }
+            },
+            {
+                "action": "receive",
+                "channel": {"$ref": "#/channels/requests"},
+                "messages": [{"$ref": "#/channels/requests/messages/Req"}],
+                "reply": {"messages": [{"$ref": "#/channels/requests/messages/Ack"}]},
+            },
+            None,
+            "#/channels/ws__requests/messages/Ack",
+        ),
+    ],
+)
+def test_normalize_asyncapi_document_rewrites_operation_reply_refs(
+    channels: dict[str, Any], operation: dict[str, Any], expected_reply_channel: str | None, expected_reply_msg: str
+) -> None:
+    """Operation reply channel and message references must target re-keyed channels."""
+    raw_doc: dict[str, Any] = {
+        "asyncapi": "3.1.0",
+        "info": {"title": "Reply Test", "version": "1.0.0"},
+        "channels": channels,
+        "operations": {"requestOp": operation},
+    }
+
+    normalized = normalize_asyncapi_document(raw_doc)
+    reply = normalized["operations"]["requestOp"]["reply"]
+    if expected_reply_channel is None:
+        assert "channel" not in reply
+    else:
+        assert reply["channel"]["$ref"] == f"#/channels/{expected_reply_channel}"
+    assert reply["messages"][0]["$ref"] == expected_reply_msg
+    _assert_refs_resolve(normalized)
+
+
+def test_normalize_asyncapi_document_preserves_component_reply_ref() -> None:
+    """Component-level reply $ref entries must remain untouched when channels are re-keyed."""
+    raw_doc: dict[str, Any] = {
+        "asyncapi": "3.1.0",
+        "info": {"title": "Component Reply", "version": "1.0.0"},
+        "channels": {
+            "requests": {"address": "/ws/requests", "bindings": {"ws": {}}, "messages": {"Req": {"payload": {}}}}
+        },
+        "operations": {
+            "requestOp": {
+                "action": "receive",
+                "channel": {"$ref": "#/channels/requests"},
+                "messages": [{"$ref": "#/channels/requests/messages/Req"}],
+                "reply": {"$ref": "#/components/replies/StandardReply"},
+            }
+        },
+    }
+
+    normalized = normalize_asyncapi_document(raw_doc)
+    assert normalized["operations"]["requestOp"]["reply"] == {"$ref": "#/components/replies/StandardReply"}
+    _assert_refs_resolve(normalized)
+
+
+def test_resolve_asyncapi_document_rewrites_real_plugin_operation_reply() -> None:
+    """Real AsyncAPIPlugin OperationDefinition(reply=...) exports valid re-keyed reply refs."""
+
+    @dataclass
+    class RequestMsg:
+        query: str
+
+    @dataclass
+    class ResultMsg:
+        answer: str
+
+    asyncapi_plugin = RealAsyncAPIPlugin(
+        config=AsyncAPIConfig(
+            channels=[
+                ChannelDefinition(
+                    key="requests",
+                    address="/ws/requests",
+                    bindings={"ws": {}},
+                    operations=[
+                        OperationDefinition(
+                            action="receive",
+                            messages=[MessageDefinition(name="Request", payload=RequestMsg)],
+                            reply=Reply(
+                                channel=Reference(ref="#/channels/results"),
+                                messages=[Reference(ref="#/channels/results/messages/Result")],
+                            ),
+                        )
+                    ],
+                ),
+                ChannelDefinition(
+                    key="results",
+                    address="/ws/results",
+                    bindings={"ws": {}},
+                    operations=[
+                        OperationDefinition(
+                            action="send", messages=[MessageDefinition(name="Result", payload=ResultMsg)]
+                        )
+                    ],
+                ),
+            ]
+        )
+    )
+    app = Litestar(plugins=[asyncapi_plugin])
+
+    doc = resolve_asyncapi_document(app)
+    assert doc is not None
+    assert "ws__requests" in doc["channels"]
+    assert "ws__results" in doc["channels"]
+
+    reply = doc["operations"]["requests_receive"]["reply"]
+    assert reply["channel"]["$ref"] == "#/channels/ws__results"
+    assert reply["messages"] == [{"$ref": "#/channels/ws__results/messages/Result"}]
+    _assert_refs_resolve(doc)
