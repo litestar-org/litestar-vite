@@ -1,5 +1,5 @@
-import { route } from "$lib/generated/routes"
 import { error } from "@sveltejs/kit"
+import { route } from "#lib/generated/routes"
 
 import type { PageLoad } from "./$types"
 

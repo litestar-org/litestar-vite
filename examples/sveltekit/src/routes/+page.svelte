@@ -1,5 +1,5 @@
 <script lang="ts">
-import { route, routeDefinitions } from "$lib/generated/routes"
+import { route, routeDefinitions } from "#lib/generated/routes"
 import type { PageProps } from "./$types"
 
 let { data }: PageProps = $props()

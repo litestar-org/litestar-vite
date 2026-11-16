@@ -8,7 +8,7 @@
  * Environment variables:
  *   LITESTAR_API - Base URL of the Litestar API server (default: http://localhost:8000)
  */
-import type { Handle } from "@sveltejs/kit"
+import type { Handle } from "@sveltejs/kit/hooks"
 
 const LITESTAR_API = process.env.LITESTAR_API || "http://localhost:8000"
 const BODYLESS_METHODS = new Set(["GET", "HEAD"])

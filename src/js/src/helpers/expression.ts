@@ -176,7 +176,7 @@ function isIdentifierPart(character: string | undefined): boolean {
 
 function tokenize(source: string): Token[] | null {
   const tokens: Token[] = []
-  for (let index = 0; index < source.length; ) {
+  for (let index = 0; index < source.length;) {
     const character = source[index]
     if (/\s/.test(character)) {
       index += 1
