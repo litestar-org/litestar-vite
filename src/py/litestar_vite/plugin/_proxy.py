@@ -343,11 +343,15 @@ async def _proxy_http_request(
     """
     response_started = False
     async with AsyncExitStack() as stack:
+        active_client: httpx2.AsyncClient
         if client is None:
-            client = await stack.enter_async_context(create_proxy_client(http2=http2))
+            active_client = create_proxy_client(http2=http2)
+            await stack.enter_async_context(active_client)
+        else:
+            active_client = client
 
         try:
-            async with client.stream(
+            async with active_client.stream(
                 method, url, headers=headers, content=request_body, timeout=timeout_duration, follow_redirects=False
             ) as response:
                 await send({

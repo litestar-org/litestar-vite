@@ -807,10 +807,10 @@ async def test_spa_handler_csrf_script_values_escaped(
 
     html = handler.get_html_sync(csrf_token=raw_value)
 
+    assert html.count("<script>") == 1
     assert html.count("</script>") == 1
-    script_match = re.search(r"<script>(.*?)</script>", html, re.DOTALL)
-    assert script_match is not None
-    script_body = script_match.group(1)
+    _, _, remainder = html.partition("<script>")
+    script_body, _, _ = remainder.partition("</script>")
     assert "</script>" not in script_body
     assert "<!--<script>" not in script_body
     assert "<" not in script_body

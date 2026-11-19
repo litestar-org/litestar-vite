@@ -421,7 +421,8 @@ class AppHandler:
     def _post_vite_json_sync(endpoint: str, payload: dict[str, Any]) -> str:
         """Transform HTML through the Vite development server."""
         headers = {"X-Litestar-Proxy-Token": token} if (token := get_bridge_proxy_token()) else None
-        with httpx2.Client(timeout=5.0, trust_env=False) as client:
+        client = httpx2.Client(timeout=5.0, trust_env=False)
+        with client:
             response = client.post(endpoint, json=payload, headers=headers)
             response.raise_for_status()
             return response.text
@@ -429,7 +430,8 @@ class AppHandler:
     @staticmethod
     def _fetch_vite_url_sync(target_url: str) -> str:
         """Fetch HTML from Vite, following its development redirects."""
-        with httpx2.Client(timeout=5.0, trust_env=False) as client:
+        client = httpx2.Client(timeout=5.0, trust_env=False)
+        with client:
             response = client.get(target_url, follow_redirects=True)
             response.raise_for_status()
             return response.text
