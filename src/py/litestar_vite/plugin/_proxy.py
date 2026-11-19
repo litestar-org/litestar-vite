@@ -123,6 +123,8 @@ _WS_REQUEST_SKIP_HEADERS = _REQUEST_SKIP_HEADERS | {
 
 _HOTFILE_REVALIDATE_TTL_SECONDS = 0.3
 
+_BLOCKED_PROXY_SEGMENTS: "frozenset[str]" = frozenset({".litestar.json", ".env", ".git"})
+
 _NO_CONNECTION_TOKENS: "frozenset[str]" = frozenset()
 
 _HOSTNAME_RE = re.compile(
@@ -657,20 +659,19 @@ class ViteProxyMiddleware(AbstractMiddleware):
 
     @staticmethod
     def _has_blocked_proxy_segment(path: str) -> bool:
-        """Return True when ``path`` targets ``.litestar.json`` or an unsafe dot-segment."""
-        segments = [segment for segment in path.split("/") if segment]
-        for index, segment in enumerate(segments):
-            lower_segment = segment.lower()
-            if lower_segment == ".litestar.json":
-                return True
-            if not lower_segment.startswith("."):
-                continue
-            if index == 0 and lower_segment == ".well-known":
-                continue
-            if index > 0 and lower_segment == ".vite" and segments[index - 1] == "node_modules":
-                continue
+        """Return True when ``path`` targets the bridge config, an env or Git file, or a dotfile.
+
+        Dot-prefixed directories such as ``node_modules/.pnpm``, ``node_modules/.vite``,
+        and ``.yarn`` stay proxied because package managers and Vite serve modules from
+        them. Blocked names mirror Vite's default ``server.fs.deny`` entries plus the
+        Litestar bridge file, and a dot-prefixed final segment is always refused.
+        """
+        segments = [segment.lower() for segment in path.split("/") if segment]
+        if not segments:
+            return False
+        if any(segment in _BLOCKED_PROXY_SEGMENTS or segment.startswith(".env.") for segment in segments):
             return True
-        return False
+        return segments[-1].startswith(".")
 
     def _should_proxy(self, path: str, scope: "Scope") -> bool:
         decoded = unquote(path) if "%" in path else path

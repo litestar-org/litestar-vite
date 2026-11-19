@@ -423,14 +423,17 @@ def test_proxy_target_recovers_after_initial_missing_hotfile(tmp_path: Path, mon
         "/.env",
         "/.env.local",
         "/@fs/project/.env",
+        "/@fs/project/.env.production/values.json",
         "/.git/config",
-        "/.vite/manifest.json",
+        "/@fs/project/.git/HEAD",
+        "/@fs/project/.npmrc",
+        "/node_modules/.pnpm/.modules.yaml/.hidden",
         "/.well-known/.litestar.json",
         "/.well-known/.env",
     ],
 )
-def test_should_proxy_rejects_bridge_and_dot_segments(hotfile: Path, blocked_path: str) -> None:
-    """Bridge config and dot-segment paths must never be proxied to Vite."""
+def test_should_proxy_rejects_bridge_env_git_and_dotfiles(hotfile: Path, blocked_path: str) -> None:
+    """Bridge config, env files, Git metadata, and dotfiles must never be proxied to Vite."""
 
     async def noop(scope: Scope, receive: Receive, send: Send) -> None:
         return None
@@ -452,10 +455,14 @@ def test_should_proxy_rejects_bridge_and_dot_segments(hotfile: Path, blocked_pat
         "/@react-refresh",
         "/.well-known/appspecific/com.chrome.devtools.json",
         "/node_modules/.vite/deps/vue.js",
+        "/node_modules/.pnpm/vue@3.5.0/node_modules/vue/dist/vue.runtime.esm-bundler.js",
+        "/@fs/project/node_modules/.pnpm/@fontsource+inter@5.0.0/node_modules/@fontsource/inter/index.css",
+        "/@fs/project/.yarn/__virtual__/pkg-virtual-abc/0/cache/pkg/index.js",
+        "/@fs/home/dev/.worktrees/app/src/main.ts",
     ],
 )
-def test_should_proxy_keeps_vite_and_well_known_paths(hotfile: Path, allowed_path: str) -> None:
-    """Vite dev endpoints, non-dotfile @fs paths, and .well-known remain proxied."""
+def test_should_proxy_keeps_vite_package_manager_and_well_known_paths(hotfile: Path, allowed_path: str) -> None:
+    """Vite endpoints, package-manager dot-directories, and .well-known remain proxied."""
 
     async def noop(scope: Scope, receive: Receive, send: Send) -> None:
         return None

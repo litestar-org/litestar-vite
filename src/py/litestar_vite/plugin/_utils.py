@@ -512,6 +512,11 @@ def write_runtime_config_file(
     The runtime config file is read by the JS plugin. We serialize with Litestar's JSON encoder for
     consistency and format output deterministically for easier debugging.
 
+    A bridge token is generated only in development mode, where the Vite dev
+    server verifies it. Outside development mode the token already stored in
+    the file is carried over, so repeat writes from production workers and
+    CLI commands leave an unchanged file untouched.
+
     Returns:
         The path to the written config file, or a ``(path, changed)`` tuple when
         ``return_status`` is ``True``.
@@ -534,7 +539,12 @@ def write_runtime_config_file(
     if deploy is not None and deploy.asset_url:
         deploy_asset_url = deploy.asset_url
 
-    resolved_token = proxy_token if proxy_token is not None else _get_or_create_bridge_proxy_token()
+    if proxy_token is not None:
+        resolved_token: str | None = proxy_token
+    elif config.is_dev_mode:
+        resolved_token = _get_or_create_bridge_proxy_token()
+    else:
+        resolved_token = get_bridge_proxy_token(path)
 
     payload = {
         "assetUrl": config.asset_url,

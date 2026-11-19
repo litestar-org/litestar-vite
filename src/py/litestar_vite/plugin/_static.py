@@ -70,15 +70,42 @@ def is_hashed_asset_path(file_path: "str | Path", assets_dir: str = HASHED_ASSET
 
 
 def _normalize_static_relative_path(raw_path: str) -> str:
-    """Decode percent-encoding up to two passes and normalize separators and dot-segments."""
-    decoded = unquote(raw_path)
+    """Decode percent-encoding up to two passes and normalize separators and dot-segments.
+
+    Paths without percent-encoding, repeated separators, or dot-prefixed segments
+    are already normalized and skip the ``unquote`` and ``normpath`` passes.
+    """
+    decoded = unquote(raw_path) if "%" in raw_path else raw_path
     if "%" in decoded:
         decoded = unquote(decoded)
     cleaned = decoded.replace("\\", "/").strip("/")
     if not cleaned:
         return ""
+    if "//" not in cleaned and "/." not in cleaned and not cleaned.startswith("."):
+        return cleaned
     normalized = posixpath.normpath(cleaned)
     return "" if normalized == "." else normalized
+
+
+def _normalize_blocked_static_paths(extra_blocked: "Iterable[str]") -> "frozenset[str]":
+    """Return the built-in metadata paths combined with normalized ``extra_blocked`` entries."""
+    extra = {
+        normalized_item for item in extra_blocked if (normalized_item := _normalize_static_relative_path(item).lower())
+    }
+    return BLOCKED_STATIC_METADATA_FILES.union(extra) if extra else BLOCKED_STATIC_METADATA_FILES
+
+
+def _is_blocked_normalized_static_path(relative_path: str, blocked: "frozenset[str]") -> bool:
+    """Return True when ``relative_path`` is blocked by an already normalized blocked set."""
+    normalized = _normalize_static_relative_path(relative_path)
+    if not normalized:
+        return False
+    if normalized == ".." or normalized.startswith("../"):
+        return True
+    normalized_lower = normalized.lower()
+    if normalized_lower.startswith(".") or "/." in normalized_lower:
+        return True
+    return normalized_lower in blocked
 
 
 def is_blocked_static_metadata_path(relative_path: str, extra_blocked: "Iterable[str]" = ()) -> bool:
@@ -92,19 +119,7 @@ def is_blocked_static_metadata_path(relative_path: str, extra_blocked: "Iterable
         ``True`` if the normalized path escapes the root, contains any dot-prefixed
         segment, or matches a blocked build or bridge metadata file.
     """
-    normalized = _normalize_static_relative_path(relative_path)
-    if not normalized:
-        return False
-    if normalized == ".." or normalized.startswith("../"):
-        return True
-    normalized_lower = normalized.lower()
-    parts = normalized_lower.split("/")
-    if any(part.startswith(".") for part in parts):
-        return True
-    blocked = BLOCKED_STATIC_METADATA_FILES.union(
-        normalized_item for item in extra_blocked if (normalized_item := _normalize_static_relative_path(item).lower())
-    )
-    return normalized_lower in blocked
+    return _is_blocked_normalized_static_path(relative_path, _normalize_blocked_static_paths(extra_blocked))
 
 
 def build_blocked_static_paths(*, manifest_name: str = "manifest.json", hot_file: str = "hot") -> frozenset[str]:
@@ -142,14 +157,14 @@ def directory_has_blocked_static_files(
     Returns:
         ``True`` if any entry is blocked, escapes ``base_dir``, or cannot be inspected.
     """
-    blocked = tuple(extra_blocked)
+    blocked = _normalize_blocked_static_paths(extra_blocked)
     prefix = relative_prefix.strip("/")
     try:
         resolved_dir = directory.resolve()
         resolved_base = base_dir.resolve() if base_dir is not None else resolved_dir
         if base_dir is not None:
             resolved_dir_rel = resolved_dir.relative_to(resolved_base).as_posix()
-            if is_blocked_static_metadata_path(resolved_dir_rel, blocked):
+            if _is_blocked_normalized_static_path(resolved_dir_rel, blocked):
                 return True
         for entry in directory.rglob("*"):
             rel = entry.relative_to(directory).as_posix()
@@ -157,9 +172,9 @@ def directory_has_blocked_static_files(
             resolved_rel = resolved_entry.relative_to(resolved_base).as_posix()
             prefixed_rel = f"{prefix}/{rel}" if prefix else ""
             if (
-                is_blocked_static_metadata_path(rel, blocked)
-                or (bool(prefixed_rel) and is_blocked_static_metadata_path(prefixed_rel, blocked))
-                or is_blocked_static_metadata_path(resolved_rel, blocked)
+                _is_blocked_normalized_static_path(rel, blocked)
+                or (bool(prefixed_rel) and _is_blocked_normalized_static_path(prefixed_rel, blocked))
+                or _is_blocked_normalized_static_path(resolved_rel, blocked)
                 or (entry.is_symlink() and resolved_entry.is_dir())
             ):
                 return True
@@ -169,13 +184,17 @@ def directory_has_blocked_static_files(
 
 
 class _StaticBeforeRequestHook:
-    """Callable before_request hook that blocks internal metadata files before delegating to user hook."""
+    """Callable before_request hook that blocks internal metadata files before delegating to user hook.
+
+    The blocked path set is normalized once at construction so each request only
+    normalizes its own path.
+    """
 
     __slots__ = ("_asset_prefix", "_blocked_paths", "_user_hook")
 
     def __init__(self, *, asset_url: str, blocked_paths: frozenset[str], user_hook: Any = None) -> None:
         self._asset_prefix = "/" + asset_url.strip("/") if asset_url.strip("/") else ""
-        self._blocked_paths = blocked_paths
+        self._blocked_paths = _normalize_blocked_static_paths(blocked_paths)
         self._user_hook = user_hook
 
     async def __call__(self, request: "Request[Any, Any, Any]") -> Any:
@@ -189,7 +208,7 @@ class _StaticBeforeRequestHook:
             else:
                 rel_path = req_path
 
-        if is_blocked_static_metadata_path(rel_path, self._blocked_paths):
+        if _is_blocked_normalized_static_path(rel_path, self._blocked_paths):
             raise NotFoundException(detail="Static metadata file not found")
 
         if self._user_hook is not None:

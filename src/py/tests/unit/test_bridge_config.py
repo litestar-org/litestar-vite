@@ -215,6 +215,45 @@ def test_write_runtime_config_file_emits_proxy_token_and_enforces_0600_mode(tmp_
         assert (bridge_path.stat().st_mode & 0o777) == 0o600
 
 
+@pytest.mark.parametrize("stored_token", ["test-token-placeholder", None])
+def test_write_runtime_config_file_outside_dev_mode_is_unchanged_across_processes(
+    tmp_path: Path, stored_token: str | None
+) -> None:
+    """Verify non-dev bridge writes keep the stored token and skip rewriting an unchanged file."""
+    config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=False))
+
+    path_str, first_changed = plugin_utils.write_runtime_config_file(
+        config, proxy_token=stored_token, return_status=True
+    )
+    bridge_path = Path(path_str)
+    first_bytes = bridge_path.read_bytes()
+
+    assert first_changed is True
+    assert decode_json(first_bytes)["proxyToken"] == stored_token
+
+    plugin_utils._get_or_create_bridge_proxy_token.cache_clear()
+    _, second_changed = plugin_utils.write_runtime_config_file(config, return_status=True)
+
+    assert second_changed is False
+    assert bridge_path.read_bytes() == first_bytes
+
+
+def test_write_runtime_config_file_in_dev_mode_issues_new_token_per_process(tmp_path: Path) -> None:
+    """Verify a new development process replaces the stored token with its own."""
+    config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=True))
+
+    path_str = plugin_utils.write_runtime_config_file(config)
+    first_token = decode_json(Path(path_str).read_bytes())["proxyToken"]
+
+    plugin_utils._get_or_create_bridge_proxy_token.cache_clear()
+    _, changed = plugin_utils.write_runtime_config_file(config, return_status=True)
+    second_token = decode_json(Path(path_str).read_bytes())["proxyToken"]
+
+    assert changed is True
+    assert isinstance(second_token, str)
+    assert second_token != first_token
+
+
 def test_write_runtime_config_file_explicit_proxy_token_invalidates_bridge_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
