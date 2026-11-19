@@ -24,9 +24,9 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return dict(pairs)
 
 
-def _render_package_json(framework: FrameworkType, flags: dict[str, bool]) -> str:
+def _render_package_json(framework: FrameworkType, flags: dict[str, bool], project_name: str = "demo") -> str:
     context = TemplateContext(
-        project_name="demo",
+        project_name=project_name,
         framework=FRAMEWORK_TEMPLATES[framework],
         use_tailwind=flags["use_tailwind"],
         enable_ssr=flags["enable_ssr"],
@@ -138,3 +138,32 @@ def test_scaffold_manifest_vite_version_floor_is_v7_plus(framework: FrameworkTyp
     if "vite" in all_deps:
         dep_match = re.search(r"(\d+)", str(all_deps["vite"]))
         assert dep_match is not None and int(dep_match.group(1)) >= 7
+
+
+@pytest.mark.parametrize("framework", list(FrameworkType))
+@pytest.mark.parametrize("project_name", ["demo", 'demo"injected\\name\nline'])
+def test_scaffold_manifest_escapes_project_name(framework: FrameworkType, project_name: str) -> None:
+    """Verify every package.json.j2 serializes project_name safely into valid JSON."""
+    text = _render_package_json(
+        framework,
+        {
+            "use_tailwind": False,
+            "enable_ssr": False,
+            "enable_types": False,
+            "generate_zod": False,
+            "generate_client": False,
+        },
+        project_name=project_name,
+    )
+    parsed = json.loads(text, object_pairs_hook=_reject_duplicate_keys)
+    assert parsed["name"] == project_name
+
+
+@pytest.mark.parametrize("project_name", ["demo", 'ng"app\\1', 'demo"injected\\name\nline'])
+def test_scaffold_angular_json_escapes_project_name(project_name: str) -> None:
+    """Verify angular.json.j2 serializes project_name and buildTarget safely into valid JSON."""
+    context = TemplateContext(project_name=project_name, framework=FRAMEWORK_TEMPLATES[FrameworkType.ANGULAR_CLI])
+    angular_json_path = get_template_dir() / "angular-cli" / "angular.json.j2"
+    rendered = render_template(angular_json_path, context.to_dict())
+    parsed = json.loads(rendered, object_pairs_hook=_reject_duplicate_keys)
+    assert parsed["projects"][project_name]["architect"]["serve"]["options"]["buildTarget"] == f"{project_name}:build"

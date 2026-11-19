@@ -5,7 +5,6 @@
 export function useApi() {
   const config = useRuntimeConfig()
   const apiPrefix = (config.public.apiPrefix as string) || "/api"
-  const apiProxy = (config.public.apiProxy as string) || "http://127.0.0.1:8000"
 
   function resolveUrl(path: string): string {
     const normalizedPath = path.startsWith(apiPrefix) ? path : `${apiPrefix}${path.startsWith("/") ? path : `/${path}`}`
@@ -14,6 +13,7 @@ export function useApi() {
       return normalizedPath
     }
 
+    const apiProxy = (config.litestar as { apiProxy?: string } | undefined)?.apiProxy || "http://127.0.0.1:8000"
     return new URL(normalizedPath, apiProxy).toString()
   }
 

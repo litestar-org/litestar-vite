@@ -1,17 +1,20 @@
 """Unit tests for codegen module."""
 
+import json
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from unittest.mock import patch
 from uuid import UUID
 
-from litestar import Litestar, WebSocket, get, post, websocket
+import pytest
+from litestar import Litestar, Router, WebSocket, get, post, websocket
 from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
+from litestar.config.csrf import CSRFConfig
 from litestar.handlers import websocket_listener
-from litestar.params import FromPath, FromQuery
+from litestar.params import FromPath, FromQuery, QueryParameter
 
-from litestar_vite.codegen import generate_routes_json, generate_routes_ts
+from litestar_vite.codegen import export_integration_assets, generate_routes_json, generate_routes_ts
 from litestar_vite.codegen._routes import (
     collect_semantic_aliases,
     escape_ts_string,
@@ -23,6 +26,7 @@ from litestar_vite.codegen._routes import (
 )
 from litestar_vite.codegen._ts import (
     collect_ref_names,
+    is_valid_ts_identifier,
     join_union,
     python_type_to_typescript,
     ts_literal,
@@ -104,6 +108,7 @@ def testescape_ts_string() -> None:
     assert escape_ts_string("with'quote") == "with\\'quote"
     assert escape_ts_string('with"double') == 'with\\"double'
     assert escape_ts_string("with\\backslash") == "with\\\\backslash"
+    assert escape_ts_string("a\nb\u2028c\u2029d") == r"a\nb\u2028c\u2029d"
 
 
 def test_generate_routes_ts_basic_route() -> None:
@@ -117,11 +122,11 @@ def test_generate_routes_ts_basic_route() -> None:
     ts_content = generate_routes_ts(app)
 
     # Check that the route name is in the output
-    assert "'list_users'" in ts_content
+    assert '"list_users"' in ts_content
     # Check the path
-    assert "path: '/users'" in ts_content
+    assert 'path: "/users"' in ts_content
     # Check method
-    assert "'GET'" in ts_content
+    assert '"GET"' in ts_content
     # Check it's a valid TypeScript file structure
     assert "export type RouteName =" in ts_content
     assert "export function route<" in ts_content
@@ -151,13 +156,13 @@ def test_generate_routes_ts_with_path_params() -> None:
     ts_content = generate_routes_ts(app, openapi_schema=app.openapi_schema.to_schema())
 
     # Check route name
-    assert "'get_user'" in ts_content
+    assert '"get_user"' in ts_content
     # Check path with parameter
     assert "/users/{user_id}" in ts_content
     # Check parameter type mapping (int -> number)
     assert "user_id: number" in ts_content
     # Check pathParams array
-    assert "'user_id'" in ts_content
+    assert '"user_id"' in ts_content
     assert "pathParams:" in ts_content
 
 
@@ -188,7 +193,7 @@ def test_generate_routes_ts_with_query_params() -> None:
     ts_content = generate_routes_ts(app, openapi_schema=app.openapi_schema.to_schema())
 
     # Check route name
-    assert "'search'" in ts_content
+    assert '"search"' in ts_content
     # Check that query params interface has entries
     assert "RouteQueryParams" in ts_content
 
@@ -224,11 +229,11 @@ def test_generate_routes_ts_multiple_methods() -> None:
     ts_content = generate_routes_ts(app)
 
     # Check both routes exist
-    assert "'get_resource'" in ts_content
-    assert "'update_resource'" in ts_content
+    assert '"get_resource"' in ts_content
+    assert '"update_resource"' in ts_content
     # Check both methods appear
-    assert "'GET'" in ts_content
-    assert "'POST'" in ts_content
+    assert '"GET"' in ts_content
+    assert '"POST"' in ts_content
 
 
 def test_generate_routes_ts_with_component() -> None:
@@ -242,7 +247,7 @@ def test_generate_routes_ts_with_component() -> None:
     ts_content = generate_routes_ts(app)
 
     # Check component is included
-    assert "component: 'Dashboard/Index'" in ts_content
+    assert 'component: "Dashboard/Index"' in ts_content
 
 
 def test_generate_routes_ts_has_helper_functions() -> None:
@@ -286,8 +291,8 @@ def test_generate_routes_ts_default_csrf_constants() -> None:
     app = Litestar([test_route])
     ts_content = generate_routes_ts(app)
 
-    assert "export const CSRF_COOKIE_NAME = 'csrftoken';" in ts_content
-    assert "export const CSRF_HEADER_NAME = 'x-csrftoken';" in ts_content
+    assert 'export const CSRF_COOKIE_NAME = "csrftoken";' in ts_content
+    assert 'export const CSRF_HEADER_NAME = "x-csrftoken";' in ts_content
 
 
 def test_generate_routes_ts_custom_csrf_constants() -> None:
@@ -304,8 +309,8 @@ def test_generate_routes_ts_custom_csrf_constants() -> None:
     app = Litestar([test_route], csrf_config=csrf_config)
     ts_content = generate_routes_ts(app)
 
-    assert "export const CSRF_COOKIE_NAME = 'my_custom_csrf_cookie';" in ts_content
-    assert "export const CSRF_HEADER_NAME = 'X-My-CSRF-Header';" in ts_content
+    assert 'export const CSRF_COOKIE_NAME = "my_custom_csrf_cookie";' in ts_content
+    assert 'export const CSRF_HEADER_NAME = "X-My-CSRF-Header";' in ts_content
 
 
 def test_generate_routes_ts_type_overloads() -> None:
@@ -346,19 +351,19 @@ def test_generate_routes_ts_filters() -> None:
 
     # Test with 'only' filter
     ts_content = generate_routes_ts(app, only=["users"])
-    assert "'list_users'" in ts_content
-    assert "'list_posts'" not in ts_content
-    assert "'admin_settings'" not in ts_content
+    assert '"list_users"' in ts_content
+    assert '"list_posts"' not in ts_content
+    assert '"admin_settings"' not in ts_content
 
     # Test with 'exclude' filter
     ts_content = generate_routes_ts(app, exclude=["admin"])
-    assert "'list_users'" in ts_content
-    assert "'list_posts'" in ts_content
-    assert "'admin_settings'" not in ts_content
+    assert '"list_users"' in ts_content
+    assert '"list_posts"' in ts_content
+    assert '"admin_settings"' not in ts_content
 
 
 def test_generate_routes_ts_escapes_special_chars() -> None:
-    """Test that special characters in paths are escaped."""
+    """Test that special characters in paths are safely serialized."""
 
     @get("/api/v1/user's-data", name="user_data", sync_to_thread=False)
     def user_data() -> dict[str, str]:
@@ -367,8 +372,7 @@ def test_generate_routes_ts_escapes_special_chars() -> None:
     app = Litestar([user_data])
     ts_content = generate_routes_ts(app)
 
-    # Check that the apostrophe is escaped
-    assert "\\'" in ts_content
+    assert 'path: "/api/v1/user\'s-data"' in ts_content
 
 
 def test_generate_routes_ts_is_valid_typescript() -> None:
@@ -488,6 +492,7 @@ def testts_literal_helper() -> None:
     assert ts_literal("x") == '"x"'
     assert ts_literal("x\\y") == '"x\\\\y"'
     assert ts_literal("x\ny") == '"x\\ny"'
+    assert ts_literal("a\u2028b\u2029c") == r'"a\u2028b\u2029c"'
     assert ts_literal({"a": 1}) == "any"
 
 
@@ -760,7 +765,7 @@ def test_get_no_body_params_possible() -> None:
 
 
 def test_schema_excluded_endpoint_body_detection() -> None:
-    """Endpoint with include_in_schema=False uses heuristics to exclude body."""
+    """Endpoint with include_in_schema=False is omitted from extracted route metadata."""
     from msgspec import Struct
 
     from litestar_vite.codegen import generate_routes_json
@@ -772,14 +777,37 @@ def test_schema_excluded_endpoint_body_detection() -> None:
     def add_internal_team(data: TeamCreate, notify: FromQuery[bool] = False) -> dict[str, str]:
         return {}
 
-    app = Litestar([add_internal_team])
+    @get("/teams", name="teams.list", sync_to_thread=False)
+    def list_teams() -> list[dict[str, str]]:
+        return []
+
+    app = Litestar([add_internal_team, list_teams])
     routes = generate_routes_json(app, openapi_schema=app.openapi_schema.to_schema())
 
-    route_data = routes["routes"]["internal.teams.add"]
-    assert "queryParameters" in route_data, "Should have queryParameters with notify"
-    assert "data" not in route_data["queryParameters"], "Body param 'data' should be excluded via heuristics"
-    assert "notify" in route_data["queryParameters"], "Query param 'notify' should be included"
-    # Heuristic path should still produce proper types
+    assert "internal.teams.add" not in routes["routes"]
+    assert "teams.list" in routes["routes"]
+
+
+def test_endpoint_body_detection_without_openapi_path_entry() -> None:
+    """Body parameter 'data' is excluded from queryParameters when OpenAPI path lookup is empty."""
+    from msgspec import Struct
+
+    from litestar_vite.codegen import generate_routes_json
+
+    class TeamCreate(Struct):
+        name: str
+
+    @post("/teams", name="teams.add", sync_to_thread=False)
+    def add_team(data: TeamCreate, notify: FromQuery[bool] = False) -> dict[str, str]:
+        return {}
+
+    app = Litestar([add_team])
+    routes = generate_routes_json(app, openapi_schema={})
+
+    route_data = routes["routes"]["teams.add"]
+    assert "queryParameters" in route_data
+    assert "data" not in route_data["queryParameters"]
+    assert "notify" in route_data["queryParameters"]
     assert route_data["queryParameters"]["notify"] == "boolean | undefined"
 
 
@@ -1045,11 +1073,256 @@ def test_websocket_route_metadata_and_codegen() -> None:
         asyncapi_schema={"servers": {"dev": {"host": "localhost:8000", "protocol": "ws"}}},
     )
     assert "export const WS_SERVER_URL =" in ts_content
-    assert "|| 'ws://localhost:8000';" in ts_content
+    assert '|| "ws://localhost:8000";' in ts_content
     assert "export type WebSocketRouteName =" in ts_content
-    assert "'notifications_ws'" in ts_content
-    assert "'chat_room'" in ts_content
+    assert '"notifications_ws"' in ts_content
+    assert '"chat_room"' in ts_content
     assert "export function wsRoute<" in ts_content
     assert "route.ws = wsRoute;" in ts_content
-    assert "protocol: 'websocket' as const," in ts_content
-    assert "channelKey: 'ws__chat__p_room_id'," in ts_content
+    assert 'protocol: "websocket" as const,' in ts_content
+    assert 'channelKey: "ws__chat__p_room_id",' in ts_content
+
+
+@pytest.mark.parametrize(
+    ("route_path", "route_name", "expected_wildcards"),
+    [
+        ("/files/{file_path:path}", "files", ("file_path",)),
+        ("/items/{item_id:str}", "item", ()),
+        ("/archive/{bucket:str}/{rest_path:path}", "archive", ("rest_path",)),
+        ("/users/{user_id:int}", "user_int", ()),
+        ("/static", "static_page", ()),
+    ],
+)
+def test_extract_route_metadata_wildcard_params(
+    route_path: str, route_name: str, expected_wildcards: tuple[str, ...]
+) -> None:
+    """Verify `:path` parameters are captured in RouteMetadata.wildcard_params."""
+
+    @get(route_path, name=route_name, sync_to_thread=False)
+    def handler() -> dict[str, str]:
+        return {"ok": "1"}
+
+    app = Litestar([handler])
+    metadata = extract_route_metadata(app)
+    by_name = {route.name: route for route in metadata}
+
+    assert by_name[route_name].wildcard_params == expected_wildcards
+
+
+def test_generate_routes_ts_wildcard_metadata_and_encoding() -> None:
+    """Verify generated routes.ts emits wildcardParams metadata and path encoding logic."""
+
+    @get("/files/{file_path:path}", name="files", sync_to_thread=False)
+    def serve_file(file_path: FromPath[str]) -> dict[str, str]:
+        return {"path": file_path}
+
+    @get("/items/{item_id:str}", name="item", sync_to_thread=False)
+    def get_item(item_id: FromPath[str]) -> dict[str, str]:
+        return {"id": item_id}
+
+    app = Litestar([serve_file, get_item])
+    ts_content = generate_routes_ts(app, openapi_schema=app.openapi_schema.to_schema())
+
+    assert 'wildcardParams: ["file_path"] as const,' in ts_content
+    assert ts_content.count("wildcardParams:") == 1
+    assert "function encodePathParam(value: unknown, isWildcard: boolean): string" in ts_content
+    assert "encodeURIComponent(" in ts_content
+    assert 'const segments = isWildcard ? str.split("/") : [str];' in ts_content
+    assert 'const invalidSegment = segments.find((segment) => segment === "." || segment === "..");' in ts_content
+    assert 'throw new Error(`Invalid path segment "${invalidSegment}" in route parameter`);' in ts_content
+    assert '"wildcardParams" in def && (def.wildcardParams as readonly string[]).includes(param)' in ts_content
+    assert 'if (url.startsWith("//"))' in ts_content
+    assert 'url = "/" + url.replace(/^\\/+/, "");' in ts_content
+    assert ts_content.count("(") == ts_content.count(")")
+    assert ts_content.count("[") == ts_content.count("]")
+
+
+@pytest.mark.parametrize("exclusion_mode", ["handler", "router", "opt"])
+def test_http_routes_include_in_schema_false_excluded(exclusion_mode: str) -> None:
+    """HTTP routes excluded from schema via handler, router, or opt are omitted from route exports."""
+
+    @get("/public", name="public", sync_to_thread=False)
+    def public_handler() -> dict[str, str]:
+        return {}
+
+    if exclusion_mode == "handler":
+
+        @get("/internal", name="hidden", include_in_schema=False, sync_to_thread=False)
+        def hidden_handler() -> dict[str, str]:
+            return {}
+
+        app = Litestar([public_handler, hidden_handler])
+    elif exclusion_mode == "router":
+
+        @get("/status", name="hidden", sync_to_thread=False)
+        def router_hidden_handler() -> dict[str, str]:
+            return {}
+
+        ops_router = Router(path="/ops", route_handlers=[router_hidden_handler], include_in_schema=False)
+        app = Litestar([public_handler, ops_router])
+    else:
+
+        @get("/hidden", name="hidden", opt={"include_in_schema": False}, sync_to_thread=False)
+        def opt_hidden_handler() -> dict[str, str]:
+            return {}
+
+        app = Litestar([public_handler, opt_hidden_handler])
+
+    metadata = extract_route_metadata(app)
+    routes_json = generate_routes_json(app)
+    routes_ts = generate_routes_ts(app)
+
+    assert [route.name for route in metadata] == ["public"]
+    assert list(routes_json["routes"]) == ["public"]
+    assert '"public"' in routes_ts
+    assert '"hidden"' not in routes_ts
+
+
+@pytest.mark.parametrize(
+    ("only_routes", "exclude_routes", "expected_names"),
+    [
+        (("api",), ("internal",), ["api_public"]),
+        ((), ("internal",), ["api_public", "web_home"]),
+        (("api",), (), ["api_internal", "api_public"]),
+        ((), (), ["api_internal", "api_public", "web_home"]),
+    ],
+)
+def test_export_integration_assets_applies_typegen_route_filters(
+    tmp_path: Path, only_routes: tuple[str, ...], exclude_routes: tuple[str, ...], expected_names: list[str]
+) -> None:
+    """export_integration_assets forwards TypeGenConfig only_routes and exclude_routes to routes.json and routes.ts."""
+
+    @get("/api/public", name="api_public", sync_to_thread=False)
+    def api_public() -> dict[str, str]:
+        return {}
+
+    @get("/api/internal", name="api_internal", sync_to_thread=False)
+    def api_internal() -> dict[str, str]:
+        return {}
+
+    @get("/web/home", name="web_home", sync_to_thread=False)
+    def web_home() -> dict[str, str]:
+        return {}
+
+    app = Litestar([api_public, api_internal, web_home])
+    out_dir = tmp_path / "generated"
+    config = ViteConfig(
+        paths=PathConfig(root=tmp_path),
+        types=TypeGenConfig(
+            output=out_dir,
+            generate_sdk=False,
+            generate_zod=False,
+            generate_schemas=False,
+            generate_page_props=False,
+            generate_channels=False,
+            generate_routes=True,
+            only_routes=only_routes,
+            exclude_routes=exclude_routes,
+        ),
+    )
+
+    export_integration_assets(app, config)
+
+    routes_payload = json.loads((out_dir / "routes.json").read_text(encoding="utf-8"))
+    routes_ts = (out_dir / "routes.ts").read_text(encoding="utf-8")
+
+    assert sorted(routes_payload["routes"].keys()) == sorted(expected_names)
+    for name in ["api_internal", "api_public", "web_home"]:
+        if name in expected_names:
+            assert f'"{name}"' in routes_ts
+        else:
+            assert f'"{name}"' not in routes_ts
+
+
+@pytest.mark.parametrize(
+    ("identifier", "expected"),
+    [
+        ("validName", True),
+        ("_private_1", True),
+        ("$special", True),
+        ("validName\n", False),
+        ("validName\r\n", False),
+        ("\nvalidName", False),
+        ("123bad", False),
+        ("bad-key", False),
+        ("", False),
+    ],
+)
+def test_is_valid_ts_identifier_rejects_trailing_newlines_and_invalid_names(identifier: str, expected: bool) -> None:
+    """Verify is_valid_ts_identifier anchors start and end strictly without accepting trailing newlines."""
+    assert is_valid_ts_identifier(identifier) is expected
+
+
+@pytest.mark.parametrize(
+    ("prop_name", "expected_line"),
+    [
+        ("x-api-key", '"x-api-key"?: string;'),
+        ("content-type", '"content-type"?: string;'),
+        ("123bad", '"123bad"?: string;'),
+        ("bad_key\n", '"bad_key\\n"?: string;'),
+        ("valid_key", "valid_key?: string;"),
+    ],
+)
+def testts_type_from_openapi_quotes_non_identifier_property_keys(prop_name: str, expected_line: str) -> None:
+    """OpenAPI object property keys that are not valid TS identifiers are JSON-quoted."""
+    schema: dict[str, Any] = {"type": "object", "properties": {prop_name: {"type": "string"}}}
+    result = ts_type_from_openapi(schema)
+    assert expected_line in result
+
+
+@pytest.mark.parametrize(
+    "ref_value",
+    [
+        "#/components/schemas/123Bad",
+        "#/components/schemas/Bad;Type",
+        "#/components/schemas/ValidName\n",
+        "#/definitions/Bad;Type",
+        "external.json#/123Bad",
+    ],
+)
+def testts_type_from_openapi_rejects_invalid_ref_identifiers(ref_value: str) -> None:
+    """Invalid TypeScript identifiers extracted from $ref targets raise ValueError."""
+    with pytest.raises(ValueError, match="Invalid TypeScript identifier"):
+        ts_type_from_openapi({"$ref": ref_value})
+
+
+@pytest.mark.parametrize("special_fragment", ["\n", "\r", "\u2028", "\u2029", "'", '"', "\\", "*/"])
+def test_generate_routes_ts_escapes_control_chars_and_line_separators(special_fragment: str) -> None:
+    """Route names, paths, components, and CSRF config values serialize safely without raw line terminators."""
+
+    @get(
+        "/items",
+        name=f"route{special_fragment}name",
+        opt={"component": f"Comp{special_fragment}Name"},
+        sync_to_thread=False,
+    )
+    def item_handler() -> dict[str, str]:
+        return {}
+
+    csrf_config = CSRFConfig(
+        secret="test-secret-key-12345",
+        cookie_name=f"cookie{special_fragment}name",
+        header_name=f"header{special_fragment}name",
+    )
+    app = Litestar([item_handler], csrf_config=csrf_config)
+    ts_content = generate_routes_ts(app)
+
+    assert "\u2028" not in ts_content
+    assert "\u2029" not in ts_content
+    assert "\r" not in ts_content
+    assert f"component: {json.dumps(f'Comp{special_fragment}Name')}" in ts_content
+    assert f"export const CSRF_COOKIE_NAME = {json.dumps(f'cookie{special_fragment}name')};" in ts_content
+    assert f"export const CSRF_HEADER_NAME = {json.dumps(f'header{special_fragment}name')};" in ts_content
+
+
+def test_generate_routes_ts_quotes_non_identifier_query_params() -> None:
+    """Query parameter names that are not valid TS identifiers emit as quoted property keys."""
+
+    @get("/filter", name="filter_items", sync_to_thread=False)
+    def filter_items(filter_by: Annotated[str | None, QueryParameter(name="filter-by")] = None) -> list[str]:
+        return []
+
+    app = Litestar([filter_items])
+    ts_content = generate_routes_ts(app, openapi_schema=app.openapi_schema.to_schema())
+
+    assert '"filter-by"?: string;' in ts_content

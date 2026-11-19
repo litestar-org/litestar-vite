@@ -1,5 +1,6 @@
 """Exception handlers that convert Litestar HTTP and validation exceptions into Inertia responses."""
 
+import logging
 import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
@@ -31,7 +32,7 @@ from litestar.status_codes import (
 )
 
 from litestar_vite.inertia.helpers import error, flash
-from litestar_vite.inertia.request import InertiaRequest
+from litestar_vite.inertia.request import InertiaDetails, InertiaRequest
 from litestar_vite.inertia.response import InertiaBack, InertiaRedirect, InertiaResponse
 from litestar_vite.inertia.state import has_redirect_state_transport
 
@@ -41,6 +42,7 @@ if TYPE_CHECKING:
     from litestar_vite.inertia.plugin import InertiaPlugin
 
 
+logger = logging.getLogger("litestar_vite.inertia")
 FIELD_ERR_RE = re.compile(r"field `(.+)`$")
 ExceptionHandler = Callable[[Request[Any, Any, Any], Exception], Response[Any]]
 
@@ -48,11 +50,15 @@ ExceptionHandler = Callable[[Request[Any, Any, Any], Exception], Response[Any]]
 def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "Exception") -> "Response[Any]":
     """Handler for all exceptions subclassed from HTTPException.
 
-    Inertia detection:
+    Inertia detection follows the Inertia protocol, where the ``X-Inertia`` request
+    header marks an Inertia visit regardless of which handler it reaches:
 
     - For InertiaRequest instances, uses the request's derived flags (route component + headers).
-    - For plain Request instances (e.g., before routing/when middleware didn't run), falls back
-      to checking the ``X-Inertia`` header.
+    - For plain Request instances (such as before routing or when middleware did not run),
+      falls back to checking the ``X-Inertia`` header.
+
+    Server errors (status code 500 or above) are logged server-side and masked to
+    ``"Internal Server Error"`` whenever ``app.debug`` is ``False``.
 
     Args:
         request: The request object.
@@ -68,19 +74,34 @@ def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "E
         inertia_enabled = is_inertia_header
 
     if not inertia_enabled:
+        is_debug = bool(getattr(request.app, "debug", False))
         if isinstance(exc, HTTPException):
+            if exc.status_code >= HTTP_500_INTERNAL_SERVER_ERROR and not is_debug:
+                logger.error("Unhandled server exception (%s)", exc.status_code, exc_info=exc.__cause__ or exc)
+                return cast(
+                    "Response[Any]",
+                    create_exception_response(
+                        request, HTTPException(status_code=exc.status_code, detail="Internal Server Error")
+                    ),
+                )
             return cast("Response[Any]", create_exception_response(request, exc))
-        if request.app.debug:
+        if is_debug:
             return cast("Response[Any]", create_debug_response(request, exc))
+        logger.error("Unhandled server exception", exc_info=exc.__cause__ or exc)
         return cast("Response[Any]", create_exception_response(request, InternalServerException()))
     return create_inertia_exception_response(request, exc)
 
 
 def _exception_detail_for_response(request: "Request[Any, Any, Any]", exc: Exception) -> Any:
+    is_debug = bool(getattr(request.app, "debug", False))
     if isinstance(exc, HTTPException):
+        if exc.status_code >= HTTP_500_INTERNAL_SERVER_ERROR and not is_debug:
+            logger.error("Unhandled server exception (%s)", exc.status_code, exc_info=exc.__cause__ or exc)
+            return "Internal Server Error"
         return exc.detail
-    if request.app.debug:
+    if is_debug:
         return str(exc)
+    logger.error("Unhandled server exception", exc_info=exc.__cause__ or exc)
     return "Internal Server Error"
 
 
@@ -198,13 +219,18 @@ def create_inertia_exception_response(request: "Request[UserT, AuthT, StateT]", 
         The response object, either an InertiaResponse, InertiaRedirect, or InertiaBack.
     """
     is_inertia_header = request.headers.get("x-inertia", "").lower() == "true"
-    is_inertia = request.is_inertia if isinstance(request, InertiaRequest) else is_inertia_header
-    route_component = request.inertia.route_component if isinstance(request, InertiaRequest) else None
+    is_inertia = (request.is_inertia or is_inertia_header) if isinstance(request, InertiaRequest) else is_inertia_header
+    route_component = (
+        request.inertia.route_component
+        if isinstance(request, InertiaRequest)
+        else InertiaDetails(request).route_component
+    )
 
     status_code = exc.status_code if isinstance(exc, HTTPException) else HTTP_500_INTERNAL_SERVER_ERROR
+    is_debug = bool(getattr(request.app, "debug", False))
     preferred_type = MediaType.HTML if not is_inertia else MediaType.JSON
     detail = _exception_detail_for_response(request, exc)
-    extras = _exception_extra(exc)
+    extras = None if status_code >= HTTP_500_INTERNAL_SERVER_ERROR and not is_debug else _exception_extra(exc)
     content: dict[str, Any] = {"status_code": status_code, "message": detail}
     inertia_plugin = _get_inertia_plugin(request)
 
@@ -315,7 +341,9 @@ def _make_exception_handler(
         elif isinstance(exc, conflict_exceptions):
             http_exc = HTTPException(detail=detail, status_code=HTTP_409_CONFLICT)
         else:
-            http_exc = InternalServerException(detail=detail)
+            is_debug = bool(getattr(request.app, "debug", False))
+            http_exc = InternalServerException(detail=detail if is_debug else "Internal Server Error")
+            http_exc.__cause__ = exc
         return default_handler(request, http_exc)
 
     return exception_handler

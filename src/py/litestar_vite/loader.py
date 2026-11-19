@@ -30,6 +30,7 @@ from litestar.serialization import decode_json, encode_json, get_serializer
 
 from litestar_vite.codegen import generate_routes_json
 from litestar_vite.exceptions import AssetNotFoundError, HTMLEntryResolutionError, ManifestNotFoundError
+from litestar_vite.html_transform import escape_json_for_html
 from litestar_vite.utils import read_bridge_config
 
 if TYPE_CHECKING:
@@ -225,7 +226,7 @@ def render_routes(
     routes_data = generate_routes_json(app, only=only, exclude=exclude, include_components=include_components)
 
     serializer = get_serializer(app.type_encoders)
-    routes_json = encode_json(routes_data, serializer=serializer).decode("utf-8")
+    routes_json = escape_json_for_html(encode_json(routes_data, serializer=serializer).decode("utf-8"))
 
     script = dedent(f"""\
         <script type="text/javascript"{nonce_attr}>
@@ -397,10 +398,18 @@ class ViteAssetLoader:
 
     @staticmethod
     def _post_transform_index_sync(endpoint: str, payload: dict[str, Any], entry: str, hot_target: str) -> str:
-        """Resolve an HTML entry through the Vite transform endpoint."""
+        """Resolve an HTML entry through the Vite transform endpoint.
+
+        Imports ``get_bridge_proxy_token`` lazily inside the method to avoid a
+        ``plugin._core -> loader -> plugin._utils`` import cycle.
+        """
+        from litestar_vite.plugin._utils import get_bridge_proxy_token
+
+        headers = {"X-Litestar-Proxy-Token": token} if (token := get_bridge_proxy_token()) else None
         try:
-            with httpx2.Client(timeout=5.0, trust_env=False) as client:
-                response = client.post(endpoint, json=payload)
+            client = httpx2.Client(timeout=5.0, trust_env=False)
+            with client:
+                response = client.post(endpoint, json=payload, headers=headers)
                 response.raise_for_status()
                 return response.text
         except httpx2.HTTPError as exc:

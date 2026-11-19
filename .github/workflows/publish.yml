@@ -5,18 +5,20 @@ on:
     types: [published]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  publish-python-release:
+  build-python:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
-    environment: release
+      contents: read
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
 
       - name: Set up Python
         run: uv python install 3.12
@@ -37,37 +39,115 @@ jobs:
           fi
           echo "Build artifacts verified successfully"
 
-      - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Upload Python distributions
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          packages-dir: dist/py/
-        # Pre-release versions (alpha, beta, rc) are automatically detected by PyPI
-        # based on PEP 440 version format (e.g., 0.15.0a1, 0.15.0b1, 0.15.0rc1)
+          name: python-dist
+          path: dist/py/
 
-  publish-js-release:
+  publish-pypi:
+    needs: [build-python]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v7
-      # Setup .npmrc file to publish to npm
-      - uses: actions/setup-node@v7
+      - name: Download Python distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: python-dist
+          path: dist/py/
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
+        with:
+          packages-dir: dist/py/
+
+  build-js:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      npm_tag: ${{ steps.npm-tag.outputs.tag }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
-          registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
-      - run: npm ci
-      - run: npm run build
-      # For pre-releases (alpha, beta, rc), publish with appropriate npm tag
-      # This prevents pre-releases from becoming the "latest" tag
+
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Build JS package
+        run: npm run build
+
+      - name: Pack npm tarball
+        run: |
+          mkdir -p dist/npm
+          npm pack --pack-destination dist/npm
+          shopt -s nullglob
+          tarballs=(dist/npm/*.tgz)
+          if [[ ${#tarballs[@]} -ne 1 ]]; then
+            echo "ERROR: Expected exactly one tarball in dist/npm/, found ${#tarballs[@]}" >&2
+            exit 1
+          fi
+
       - name: Determine npm tag
         id: npm-tag
         run: |
           VERSION=$(node -p "require('./package.json').version")
           if [[ "$VERSION" == *"-alpha"* ]] || [[ "$VERSION" == *"-beta"* ]] || [[ "$VERSION" == *"-rc"* ]]; then
-            echo "tag=next" >> $GITHUB_OUTPUT
+            echo "tag=next" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=latest" >> $GITHUB_OUTPUT
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
-      - run: npm publish --provenance --access public --tag ${{ steps.npm-tag.outputs.tag }}
+
+      - name: Upload npm tarball
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: npm-dist
+          path: dist/npm/*.tgz
+
+  publish-npm:
+    needs: [build-js]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Download npm tarball
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: npm-dist
+          path: dist/npm
+
+      - name: Publish npm package
+        env:
+          NPM_TAG: ${{ needs.build-js.outputs.npm_tag }}
+        run: |
+          if [[ "$NPM_TAG" != "latest" && "$NPM_TAG" != "next" ]]; then
+            echo "Invalid npm tag: $NPM_TAG" >&2
+            exit 1
+          fi
+          shopt -s nullglob
+          tarballs=(dist/npm/*.tgz)
+          if [[ ${#tarballs[@]} -ne 1 ]]; then
+            echo "ERROR: Expected exactly one tarball in dist/npm/, found ${#tarballs[@]}" >&2
+            exit 1
+          fi
+          npm publish dist/npm/*.tgz --provenance --access public --tag "$NPM_TAG"

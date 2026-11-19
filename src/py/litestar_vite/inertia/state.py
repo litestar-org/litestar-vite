@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger("litestar_vite")
 
 _TRANSIENT_STATE_SCOPE_KEY = "_litestar_vite_inertia_shared"
+_PROP_CACHE_SCOPE_KEY = "_litestar_vite_inertia_prop_cache"
+MAX_SESSION_FLASH_MESSAGES = 20
 
 
 def _empty_shared() -> "dict[str, Any]":
@@ -59,6 +61,16 @@ def _scope(connection: "ASGIConnection[Any, Any, Any, Any]") -> "dict[str, Any]"
         msg = "Inertia transient state requires a mutable ASGI scope."
         raise ImproperlyConfiguredException(msg)
     return cast("dict[str, Any]", scope)
+
+
+def get_prop_eval_cache(connection: "ASGIConnection[Any, Any, Any, Any]") -> "dict[int, tuple[Any, Any]]":
+    """Return the per-request prop evaluation cache attached to the ASGI scope."""
+    scope = _scope(connection)
+    cache = scope.get(_PROP_CACHE_SCOPE_KEY)
+    if not isinstance(cache, dict):
+        cache = {}
+        scope[_PROP_CACHE_SCOPE_KEY] = cache
+    return cast("dict[int, tuple[Any, Any]]", cache)
 
 
 def get_transient_state(connection: "ASGIConnection[Any, Any, Any, Any]") -> InertiaTransientState:
@@ -202,24 +214,36 @@ def persist_transient_state_for_redirect(connection: "ASGIConnection[Any, Any, A
 
     dropped_keys: list[str] = []
     if state.shared:
+        eval_cache = get_prop_eval_cache(connection)
         raw_session_shared: Any = session.setdefault("_shared", {})
         session_shared = cast("dict[str, Any]", raw_session_shared) if isinstance(raw_session_shared, dict) else {}
         if session_shared is not raw_session_shared:
             session["_shared"] = session_shared
         for key, value in state.shared.items():
-            materialized = _materialize_shared_value(value)
+            materialized = _materialize_shared_value(value, cache=eval_cache)
             if materialized is _UNMATERIALIZABLE_SHARED:
                 dropped_keys.append(key)
                 continue
             session_shared[key] = materialized
 
     if state.flash:
-        raw_messages: Any = session.setdefault("_messages", [])
-        session_messages = cast("list[dict[str, str]]", raw_messages) if isinstance(raw_messages, list) else []
-        if session_messages is not raw_messages:
-            session["_messages"] = session_messages
+        raw_messages: Any = session.get("_messages")
+        session_messages: list[dict[str, str]] = (
+            list(cast("list[dict[str, str]]", raw_messages)) if isinstance(raw_messages, list) else []
+        )
         for category, messages in state.flash.items():
-            session_messages.extend({"category": category, "message": message} for message in messages)
+            for message in messages:
+                if category == "error":
+                    session_messages = [
+                        item
+                        for item in session_messages
+                        if not (item.get("category") == "error" and item.get("message") == message)
+                    ]
+                session_messages.append({"category": category, "message": message})
+        if len(session_messages) > MAX_SESSION_FLASH_MESSAGES:
+            session["_messages"] = session_messages[-MAX_SESSION_FLASH_MESSAGES:]
+        else:
+            session["_messages"] = session_messages
 
     if state.errors:
         raw_errors: Any = session.setdefault("_errors", {})

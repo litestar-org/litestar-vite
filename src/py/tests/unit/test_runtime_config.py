@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import pytest
 from litestar.serialization import decode_json
@@ -491,3 +492,131 @@ def test_resolve_proxy_mode_unset_returns_none(monkeypatch: pytest.MonkeyPatch) 
     _cached_resolve_proxy_mode.cache_clear()
 
     assert resolve_proxy_mode() is None
+
+
+@pytest.mark.parametrize(
+    ("dev_mode_arg", "env_value", "expected_dev_mode", "expected_explicit"),
+    [
+        (None, None, False, False),
+        (False, None, False, True),
+        (True, None, True, True),
+        (None, "false", False, True),
+        (None, "true", True, True),
+        (False, "true", False, True),
+        (True, "false", True, True),
+    ],
+)
+def test_runtime_config_dev_mode_explicit_tracking(
+    monkeypatch: pytest.MonkeyPatch,
+    dev_mode_arg: bool | None,
+    env_value: str | None,
+    expected_dev_mode: bool,
+    expected_explicit: bool,
+) -> None:
+    """RuntimeConfig distinguishes omitted dev_mode from explicit arguments or VITE_DEV_MODE."""
+    if env_value is None:
+        monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    else:
+        monkeypatch.setenv("VITE_DEV_MODE", env_value)
+
+    config = RuntimeConfig() if dev_mode_arg is None else RuntimeConfig(dev_mode=dev_mode_arg)
+
+    assert isinstance(config.dev_mode, bool)
+    assert config.dev_mode is expected_dev_mode
+    assert config.has_explicit_dev_mode is expected_explicit
+
+
+def test_vite_config_auto_dev_mode_defaults_false(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """ViteConfig keeps dev_mode disabled when VITE_AUTO_DEV_MODE is unset even without built assets."""
+    monkeypatch.delenv("VITE_AUTO_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    resource_dir = tmp_path / "src"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<div></div>")
+
+    config = ViteConfig(paths=PathConfig(root=tmp_path, resource_dir=resource_dir, bundle_dir=tmp_path / "public"))
+
+    assert isinstance(config.dev_mode, bool)
+    assert isinstance(config.runtime.dev_mode, bool)
+    assert config.runtime.dev_mode is False
+    assert config.proxy_mode is None
+    assert config.has_explicit_dev_mode is False
+
+
+@pytest.mark.parametrize(
+    ("pass_root_dev_mode", "pass_runtime_dev_mode", "env_dev_mode"),
+    [(False, None, None), (False, None, "true"), (None, False, None), (None, None, "false")],
+)
+def test_vite_config_explicit_dev_mode_false_blocks_auto_enable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pass_root_dev_mode: bool | None,
+    pass_runtime_dev_mode: bool | None,
+    env_dev_mode: str | None,
+) -> None:
+    """Explicit dev_mode=False on ViteConfig, RuntimeConfig, or env blocks VITE_AUTO_DEV_MODE."""
+    monkeypatch.setenv("VITE_AUTO_DEV_MODE", "true")
+    if env_dev_mode is None:
+        monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    else:
+        monkeypatch.setenv("VITE_DEV_MODE", env_dev_mode)
+
+    resource_dir = tmp_path / "src"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<div></div>")
+    paths = PathConfig(root=tmp_path, resource_dir=resource_dir, bundle_dir=tmp_path / "public")
+
+    if pass_root_dev_mode is not None:
+        config = ViteConfig(dev_mode=pass_root_dev_mode, paths=paths)
+    elif pass_runtime_dev_mode is not None:
+        config = ViteConfig(paths=paths, runtime=RuntimeConfig(dev_mode=pass_runtime_dev_mode))
+    else:
+        config = ViteConfig(paths=paths)
+
+    assert isinstance(config.dev_mode, bool)
+    assert isinstance(config.runtime.dev_mode, bool)
+    assert config.runtime.dev_mode is False
+    assert config.has_explicit_dev_mode is True
+
+
+def test_vite_config_runtime_dev_mode_true_preserves_bool_root_shortcut(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Omitting root dev_mode preserves RuntimeConfig(dev_mode=True) while keeping root dev_mode a bool."""
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    config = ViteConfig(runtime=RuntimeConfig(dev_mode=True))
+
+    assert isinstance(config.dev_mode, bool)
+    assert config.dev_mode is False
+    assert config.runtime.dev_mode is True
+    assert config.has_explicit_dev_mode is True
+
+
+def test_runtime_config_wasm_resource_limit_defaults_and_overrides() -> None:
+    """RuntimeConfig exposes default QuickJS WASM resource limits and accepts positive overrides."""
+    default_config = RuntimeConfig()
+    assert default_config.wasm_memory_limit == 128 * 1024 * 1024
+    assert default_config.wasm_max_stack_size == 1024 * 1024
+    assert default_config.wasm_time_limit is None
+
+    custom_config = RuntimeConfig(
+        wasm_memory_limit=64 * 1024 * 1024, wasm_max_stack_size=512 * 1024, wasm_time_limit=2.5
+    )
+    assert custom_config.wasm_memory_limit == 64 * 1024 * 1024
+    assert custom_config.wasm_max_stack_size == 512 * 1024
+    assert custom_config.wasm_time_limit == 2.5
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected_message"),
+    [
+        ({"wasm_memory_limit": 0}, "wasm_memory_limit must be positive."),
+        ({"wasm_memory_limit": -1}, "wasm_memory_limit must be positive."),
+        ({"wasm_max_stack_size": 0}, "wasm_max_stack_size must be positive."),
+        ({"wasm_max_stack_size": -1024}, "wasm_max_stack_size must be positive."),
+        ({"wasm_time_limit": 0.0}, "wasm_time_limit must be positive."),
+        ({"wasm_time_limit": -0.5}, "wasm_time_limit must be positive."),
+    ],
+)
+def test_runtime_config_wasm_resource_limits_reject_non_positive(kwargs: dict[str, Any], expected_message: str) -> None:
+    """RuntimeConfig raises ValueError when any WASM resource limit is zero or negative."""
+    with pytest.raises(ValueError, match=expected_message):
+        RuntimeConfig(**kwargs)

@@ -46,11 +46,11 @@ litestar assets doctor --check --runtime-checks
 
 ### Missing Manifest on Startup
 
-**Cause**: `dev_mode=False` (the default when running `litestar run` without `--reload` or `--debug`), and `litestar assets build` has not been run yet.
+**Cause**: `dev_mode=False` (the default unless Litestar debug mode or `VITE_DEV_MODE=true` is active), and `litestar assets build` has not been run yet.
 
 **Solution**:
 
-- For local development: run `litestar run --reload` (which auto-enables `dev_mode=True`) or set `VITE_DEV_MODE=true`.
+- For local development: run `litestar run --debug` (or set `LITESTAR_DEBUG=1`) or set `VITE_DEV_MODE=true` to enable `dev_mode=True`.
 - For production: run `litestar assets build` before starting the server.
 
 ### Blank Initial Inertia Page
@@ -63,4 +63,4 @@ litestar assets doctor --check --runtime-checks
 
 **Cause**: Container port mappings or reverse proxies stripping WebSocket `Upgrade` headers or forwarding untrusted `X-Forwarded-Proto` headers.
 
-**Solution**: Set `LITESTAR_TRUSTED_PROXIES="*"` (or your proxy CIDR) in your container environment and ensure your reverse proxy forwards `Upgrade` and `Connection` headers on `/vite-hmr`.
+**Solution**: Set `LITESTAR_TRUSTED_PROXIES="127.0.0.1,10.0.0.0/8"` (matching your actual loopback address or reverse proxy subnet CIDR) in your container environment and ensure your reverse proxy forwards `Upgrade` and `Connection` headers on `/vite-hmr`.

@@ -123,5 +123,10 @@ vite = VitePlugin(
 )
 templates = TemplateConfig(directory=here / "templates", engine=JinjaTemplateEngine)
 
-app = Litestar(route_handlers=[LibraryController], plugins=[vite, HTMXPlugin()], template_config=templates, debug=True)
+app = Litestar(
+    route_handlers=[LibraryController],
+    plugins=[vite, HTMXPlugin()],
+    template_config=templates,
+    debug=os.getenv("LITESTAR_DEBUG", "0") == "1",
+)
 # [docs-end:htmx-vite-config]

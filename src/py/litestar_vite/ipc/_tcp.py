@@ -6,6 +6,7 @@ import anyio
 import httpx2
 
 from litestar_vite.ipc._base import BaseIPCTransport, IPCError, IPCTimeoutError
+from litestar_vite.plugin._utils import get_bridge_proxy_token
 
 __all__ = ("TCPStreamIPCTransport",)
 
@@ -13,10 +14,16 @@ __all__ = ("TCPStreamIPCTransport",)
 class TCPStreamIPCTransport(BaseIPCTransport):
     """Send development SSR RPC requests through a pooled HTTP client."""
 
-    __slots__ = ("_client", "_host", "_path", "_port", "_scheme", "_url")
+    __slots__ = ("_client", "_host", "_path", "_port", "_proxy_token", "_scheme", "_url")
 
     def __init__(
-        self, host: str = "127.0.0.1", port: int = 5173, path: str = "/__litestar_ssr__", *, scheme: str = "http"
+        self,
+        host: str = "127.0.0.1",
+        port: int = 5173,
+        path: str = "/__litestar_ssr__",
+        *,
+        scheme: str = "http",
+        proxy_token: str | None = None,
     ) -> None:
         """Configure the Vite SSR endpoint, including HTTPS when enabled."""
         if scheme not in {"http", "https"}:
@@ -26,6 +33,7 @@ class TCPStreamIPCTransport(BaseIPCTransport):
         self._port = port
         self._path = path if path.startswith("/") else f"/{path}"
         self._scheme = scheme
+        self._proxy_token = proxy_token
         self._url = httpx2.URL(scheme=scheme, host=host.strip("[]"), port=port, path=self._path)
         self._client: httpx2.AsyncClient | None = None
 
@@ -72,11 +80,13 @@ class TCPStreamIPCTransport(BaseIPCTransport):
             IPCTimeoutError: The request exceeded its total deadline.
             IPCError: The connection failed or the server returned an invalid response.
         """
+        token = self._proxy_token if self._proxy_token is not None else get_bridge_proxy_token()
+        headers = {"X-Litestar-Proxy-Token": token} if token else None
         try:
             with anyio.fail_after(timeout):
                 await self.start()
                 client = cast("httpx2.AsyncClient", self._client)
-                response = await client.post(self._url, json=payload, timeout=timeout)
+                response = await client.post(self._url, json=payload, headers=headers, timeout=timeout)
                 if response.status_code != 200:
                     msg = f"Upstream SSR server returned HTTP {response.status_code}: {response.text}"
                     raise IPCError(msg)

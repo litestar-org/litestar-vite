@@ -61,13 +61,15 @@ def _build_production_plugin(
     tmp_path: Path, *, static_files_config: StaticFilesConfig | None = None
 ) -> tuple[VitePlugin, Path]:
     bundle_dir = tmp_path / "dist"
-    bundle_dir.mkdir()
-    (bundle_dir / "manifest.json").write_text('{"src/main.ts":{"file":"main.js"}}', encoding="utf-8")
-    (bundle_dir / "main.js").write_text("console.log('native-or-asgi');", encoding="utf-8")
+    assets_dir = bundle_dir / "assets"
+    assets_dir.mkdir(parents=True)
+    (bundle_dir / "manifest.json").write_text('{"src/main.ts":{"file":"assets/main.js"}}', encoding="utf-8")
+    (assets_dir / "main.js").write_text("console.log('native-or-asgi');", encoding="utf-8")
+    (bundle_dir / "favicon.ico").write_text("favicon-bytes", encoding="utf-8")
     plugin = VitePlugin(
         config=ViteConfig(
             mode="template",
-            paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir, asset_url="/assets/"),
+            paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir, asset_url="/static/"),
             runtime=RuntimeConfig(dev_mode=False, set_environment=False),
         ),
         static_files_config=static_files_config,
@@ -81,11 +83,16 @@ def test_litestar_fallback_serves_eligible_assets_and_misses(tmp_path: Path) -> 
     app = Litestar(plugins=[plugin])
 
     with TestClient(app) as client:
-        response = client.get("/assets/main.js")
-        missing = client.get("/assets/missing.js")
+        response = client.get("/static/assets/main.js")
+        favicon = client.get("/static/favicon.ico")
+        manifest = client.get("/static/manifest.json")
+        missing = client.get("/static/missing.js")
 
     assert response.status_code == 200
     assert response.text == "console.log('native-or-asgi');"
+    assert favicon.status_code == 200
+    assert favicon.text == "favicon-bytes"
+    assert manifest.status_code == 404
     assert missing.status_code == 404
 
 
@@ -101,9 +108,9 @@ def test_litestar_fallback_preserves_static_guard_middleware_and_errors(tmp_path
 
     assert plugin.get_static_server_config().mounts == ()
     with TestClient(app) as client:
-        denied = client.get("/assets/main.js")
-        allowed = client.get("/assets/main.js", headers={"x-static-access": "allowed"})
-        missing = client.get("/assets/missing.js", headers={"x-static-access": "allowed"})
+        denied = client.get("/static/assets/main.js")
+        allowed = client.get("/static/assets/main.js", headers={"x-static-access": "allowed"})
+        missing = client.get("/static/missing.js", headers={"x-static-access": "allowed"})
 
     assert denied.status_code == 401
     assert allowed.status_code == 200
@@ -114,7 +121,11 @@ def test_litestar_fallback_preserves_static_guard_middleware_and_errors(tmp_path
 
 
 def test_vite_provider_matches_granian_structural_contract(tmp_path: Path) -> None:
-    """The public result has the attributes Granian consumes, without a Granian import."""
+    """The public result has the attributes Granian consumes, without a Granian import.
+
+    Verifies the no-import consumer contract where ``StaticPlacement`` compares
+    structurally against the literal ``"native"`` and mounts ``bundle_dir/assets``.
+    """
     plugin, bundle_dir = _build_production_plugin(tmp_path)
 
     provider_method = getattr(plugin, "get_static_server_config", None)
@@ -122,13 +133,11 @@ def test_vite_provider_matches_granian_structural_contract(tmp_path: Path) -> No
     config = provider_method()
 
     assert isinstance(config, _GranianStaticConfigShape)
-    # Pin the no-import consumer contract: a str-enum compares structurally against
-    # the literal "native" without importing litestar_vite's StaticPlacement.
     assert config.placement == "native"
     assert len(config.mounts) == 1
     mount = config.mounts[0]
-    assert getattr(mount, "route") == "/assets"
-    assert Path(getattr(mount, "directory")).resolve() == bundle_dir.resolve()
+    assert getattr(mount, "route") == "/static/assets"
+    assert Path(getattr(mount, "directory")).resolve() == (bundle_dir / "assets").resolve()
     assert getattr(mount, "directory_index") is None
 
 
@@ -138,9 +147,9 @@ def test_production_static_websocket_miss_closes_cleanly(tmp_path: Path) -> None
     app = Litestar(plugins=[plugin])
 
     with TestClient(app) as client:
-        assert client.get("/assets/vite-hmr").status_code == 404
+        assert client.get("/static/vite-hmr").status_code == 404
         with pytest.raises(WebSocketDisconnect) as exc_info:
-            with client.websocket_connect("/assets/vite-hmr") as websocket:
+            with client.websocket_connect("/static/vite-hmr") as websocket:
                 websocket.receive_text()
 
     assert exc_info.value.code == 1001
@@ -148,11 +157,14 @@ def test_production_static_websocket_miss_closes_cleanly(tmp_path: Path) -> None
 
 @pytest.mark.parametrize("server", ["uvicorn", "granian"])
 def test_real_litestar_run_serves_same_static_asset(tmp_path: Path, server: str) -> None:
-    """Granian auto mode serves eligible assets natively while Uvicorn uses Litestar."""
+    """Granian auto mode serves assets/ natively while keeping root files and metadata on Litestar."""
     bundle_dir = tmp_path / "dist"
-    bundle_dir.mkdir()
-    (bundle_dir / "manifest.json").write_text('{"src/main.ts":{"file":"main.js"}}', encoding="utf-8")
-    (bundle_dir / "main.js").write_text("console.log('litestar-run-asgi');", encoding="utf-8")
+    assets_dir = bundle_dir / "assets"
+    assets_dir.mkdir(parents=True)
+    (bundle_dir / "manifest.json").write_text('{"src/main.ts":{"file":"assets/main.js"}}', encoding="utf-8")
+    (bundle_dir / ".env").write_text("SECRET=1", encoding="utf-8")
+    (assets_dir / "main.js").write_text("console.log('litestar-run-asgi');", encoding="utf-8")
+    (bundle_dir / "favicon.ico").write_text("favicon-bytes", encoding="utf-8")
     granian_import = "from litestar_granian import GranianPlugin" if server == "granian" else ""
     plugin_list = "[vite, GranianPlugin(static='auto')]" if server == "granian" else "[vite]"
     module_name = f"{server}_static_app"
@@ -180,7 +192,7 @@ def test_real_litestar_run_serves_same_static_asset(tmp_path: Path, server: str)
             "    mode='template',",
             (
                 f"    paths=PathConfig(root=Path({str(tmp_path)!r}), "
-                f"bundle_dir=Path({str(bundle_dir)!r}), asset_url='/assets/'),"
+                f"bundle_dir=Path({str(bundle_dir)!r}), asset_url='/static/'),"
             ),
             "    runtime=RuntimeConfig(dev_mode=False),",
             "))",
@@ -217,7 +229,7 @@ def test_real_litestar_run_serves_same_static_asset(tmp_path: Path, server: str)
         response: httpx.Response | None = None
         while time.monotonic() < deadline and process.poll() is None:
             try:
-                response = httpx.get(f"http://127.0.0.1:{port}/assets/main.js", timeout=0.5, trust_env=False)
+                response = httpx.get(f"http://127.0.0.1:{port}/static/assets/main.js", timeout=0.5, trust_env=False)
                 if response.status_code == 200:
                     break
             except httpx.HTTPError:
@@ -229,6 +241,17 @@ def test_real_litestar_run_serves_same_static_asset(tmp_path: Path, server: str)
         assert response.status_code == 200
         assert response.text == "console.log('litestar-run-asgi');"
         assert response.headers.get("x-litestar-static") == ("active" if server == "uvicorn" else None)
+
+        favicon_resp = httpx.get(f"http://127.0.0.1:{port}/static/favicon.ico", timeout=2.0, trust_env=False)
+        assert favicon_resp.status_code == 200
+        assert favicon_resp.text == "favicon-bytes"
+        assert favicon_resp.headers.get("x-litestar-static") == "active"
+
+        manifest_resp = httpx.get(f"http://127.0.0.1:{port}/static/manifest.json", timeout=2.0, trust_env=False)
+        assert manifest_resp.status_code == 404
+
+        dotenv_resp = httpx.get(f"http://127.0.0.1:{port}/static/.env", timeout=2.0, trust_env=False)
+        assert dotenv_resp.status_code == 404
     finally:
         if process.poll() is None:
             process.terminate()

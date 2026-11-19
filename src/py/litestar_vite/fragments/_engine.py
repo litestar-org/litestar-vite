@@ -1,5 +1,6 @@
 """Component fragment rendering engine for Litestar Vite."""
 
+import html
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import urljoin
@@ -146,7 +147,7 @@ class FragmentEngine:
         css_urls = self.get_component_css_urls(component)
         if not css_urls:
             return ""
-        return newline.join(f'<link rel="stylesheet" href="{url}" />' for url in css_urls)
+        return newline.join(f'<link rel="stylesheet" href="{html.escape(url, quote=True)}" />' for url in css_urls)
 
     async def render_fragment(
         self, component: str, props: dict[str, Any] | None = None, mode: Literal["static", "island"] = "static"

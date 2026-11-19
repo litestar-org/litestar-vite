@@ -2,7 +2,7 @@
 
 import contextlib
 import re
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
@@ -14,7 +14,13 @@ from litestar.routes import HTTPRoute, WebSocketRoute
 
 from litestar_vite.codegen._asyncapi import ChannelKeyAllocator, extract_ws_server_url, resolve_asyncapi_document
 from litestar_vite.codegen._refs import extract_schema_ref_name, resolve_component_schema_name
-from litestar_vite.codegen._ts import normalize_path, ts_type_from_openapi
+from litestar_vite.codegen._ts import (
+    format_ts_property_key,
+    is_valid_ts_identifier,
+    normalize_path,
+    ts_string_literal,
+    ts_type_from_openapi,
+)
 from litestar_vite.typing import ASYNCAPI_INSTALLED
 
 _PATH_PARAM_EXTRACT_PATTERN = re.compile(r"\{([^:}]+)(?::([^}]+))?\}")
@@ -134,6 +140,8 @@ class RouteMetadata:
     """Route transport protocol (`'http'` or `'websocket'`)."""
     channel_key: "str | None" = None
     """Associated AsyncAPI WebSocket channel key when `protocol='websocket'`."""
+    wildcard_params: tuple[str, ...] = ()
+    """Sorted unique `:path` wildcard parameter names for the route."""
 
 
 def extract_path_params(path: str) -> dict[str, str]:
@@ -202,17 +210,23 @@ def iter_route_handlers(
     handlers: list[tuple[HTTPRoute | WebSocketRoute, HTTPRouteHandler | WebsocketRouteHandler]] = []
     for route in app.routes:
         if isinstance(route, HTTPRoute):
-            handlers.extend((route, route_handler) for route_handler in route.route_handlers)
+            for http_handler in route.route_handlers:
+                if http_handler.resolve_include_in_schema() is False:
+                    continue
+                opt = getattr(http_handler, "opt", None)
+                if isinstance(opt, dict) and cast("dict[str, Any]", opt).get("include_in_schema") is False:
+                    continue
+                handlers.append((route, http_handler))
         elif isinstance(route, WebSocketRoute):
-            route_handler = route.route_handler
-            if _is_channels_plugin_ws_handler(route_handler, app):
+            ws_handler = route.route_handler
+            if _is_channels_plugin_ws_handler(ws_handler, app):
                 continue
-            if _resolve_handler_name(route_handler) in _INTERNAL_WS_HANDLER_NAMES:
+            if _resolve_handler_name(ws_handler) in _INTERNAL_WS_HANDLER_NAMES:
                 continue
-            opt = getattr(route_handler, "opt", None)
+            opt = getattr(ws_handler, "opt", None)
             if isinstance(opt, dict) and cast("dict[str, Any]", opt).get("include_in_schema") is False:
                 continue
-            handlers.append((route, route_handler))
+            handlers.append((route, ws_handler))
     handlers.sort(key=lambda x: (str(x[0].path), _resolve_handler_name(x[1])))
     yield from handlers
 
@@ -376,8 +390,8 @@ def _resolve_schema_route_name(full_path: str, base_name: str, used_names: set[s
 def extract_route_metadata(
     app: Litestar,
     *,
-    only: "list[str] | None" = None,
-    exclude: "list[str] | None" = None,
+    only: "Sequence[str] | None" = None,
+    exclude: "Sequence[str] | None" = None,
     openapi_schema: dict[str, Any] | None = None,
     asyncapi_schema: dict[str, Any] | None = None,
 ) -> list[RouteMetadata]:
@@ -444,6 +458,11 @@ def extract_route_metadata(
         if not params:
             params = extract_path_params(full_path)
 
+        wildcard_params = tuple(
+            sorted({
+                match.group(1) for match in _PATH_PARAM_EXTRACT_PATTERN.finditer(full_path) if match.group(2) == "path"
+            })
+        )
         normalized_path = normalize_path(full_path)
 
         if openapi_schema and not is_websocket:
@@ -468,6 +487,7 @@ def extract_route_metadata(
                 component=cast("str | None", component),
                 protocol="websocket" if is_websocket else "http",
                 channel_key=channel_key,
+                wildcard_params=wildcard_params,
             )
         )
 
@@ -477,8 +497,8 @@ def extract_route_metadata(
 def generate_routes_json(
     app: Litestar,
     *,
-    only: "list[str] | None" = None,
-    exclude: "list[str] | None" = None,
+    only: "Sequence[str] | None" = None,
+    exclude: "Sequence[str] | None" = None,
     include_components: bool = False,
     openapi_schema: dict[str, Any] | None = None,
     asyncapi_schema: dict[str, Any] | None = None,
@@ -589,11 +609,11 @@ def escape_ts_string(s: str) -> str:
     Returns:
         The escaped string.
     """
-    return s.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
+    return ts_string_literal(s)[1:-1].replace("'", "\\'")
 
 
 def _extract_csrf_names(app: Litestar) -> tuple[str, str]:
-    """Extract and escape CSRF cookie and header names from application configuration.
+    """Extract CSRF cookie and header names from application configuration.
 
     Args:
         app: The Litestar application.
@@ -602,8 +622,8 @@ def _extract_csrf_names(app: Litestar) -> tuple[str, str]:
         A tuple of (cookie_name, header_name).
     """
     csrf_config = getattr(app, "csrf_config", None)
-    cookie_name = escape_ts_string(csrf_config.cookie_name) if csrf_config is not None else "csrftoken"
-    header_name = escape_ts_string(csrf_config.header_name) if csrf_config is not None else "x-csrftoken"
+    cookie_name = csrf_config.cookie_name if csrf_config is not None else "csrftoken"
+    header_name = csrf_config.header_name if csrf_config is not None else "x-csrftoken"
     return cookie_name, header_name
 
 
@@ -620,33 +640,67 @@ def _format_route_entry(
     Returns:
         The formatted route definition string.
     """
-    methods_str = ", ".join(f"'{m}'" for m in sorted(route.methods))
+    methods_str = ", ".join(ts_string_literal(m) for m in sorted(route.methods))
     route_entry_lines = [
-        f"  '{route.name}': {{",
-        f"    path: '{escape_ts_string(route.path)}',",
+        f"  {ts_string_literal(route.name)}: {{",
+        f"    path: {ts_string_literal(route.path)},",
         f"    methods: [{methods_str}] as const,",
-        f"    method: '{route.method}',",
+        f"    method: {ts_string_literal(route.method)},",
     ]
     if route.protocol == "websocket":
-        route_entry_lines.append("    protocol: 'websocket' as const,")
+        route_entry_lines.append('    protocol: "websocket" as const,')
         if route.channel_key:
-            route_entry_lines.append(f"    channelKey: '{escape_ts_string(route.channel_key)}',")
-    param_names_str = ", ".join(f"'{p}'" for p in sorted_params) if sorted_params else ""
+            route_entry_lines.append(f"    channelKey: {ts_string_literal(route.channel_key)},")
+    param_names_str = ", ".join(ts_string_literal(p) for p in sorted_params) if sorted_params else ""
     route_entry_lines.append(f"    pathParams: [{param_names_str}] as const,")
 
-    query_names_str = ", ".join(f"'{p}'" for p in sorted_query_params) if sorted_query_params else ""
+    query_names_str = ", ".join(ts_string_literal(p) for p in sorted_query_params) if sorted_query_params else ""
     route_entry_lines.append(f"    queryParams: [{query_names_str}] as const,")
+    if route.wildcard_params:
+        wildcard_names_str = ", ".join(ts_string_literal(p) for p in sorted(set(route.wildcard_params)))
+        route_entry_lines.append(f"    wildcardParams: [{wildcard_names_str}] as const,")
     if route.component:
-        route_entry_lines.append(f"    component: '{escape_ts_string(route.component)}',")
+        route_entry_lines.append(f"    component: {ts_string_literal(route.component)},")
     route_entry_lines.append("  },")
     return "\n".join(route_entry_lines)
+
+
+def _format_route_param_interfaces(
+    route_key: str, sorted_params: dict[str, str], sorted_query_params: dict[str, str], used_aliases: set[str]
+) -> tuple[str, str]:
+    """Format TypeScript path and query parameter interface entries for one route."""
+    if sorted_params:
+        param_fields: list[str] = []
+        for param_name, param_type in sorted_params.items():
+            ts_type_clean = ts_type_for_param(param_type).replace(" | undefined", "")
+            used_aliases.update(collect_semantic_aliases(ts_type_clean))
+            param_fields.append(f"    {format_ts_property_key(param_name)}: {ts_type_clean};")
+        path_entry = f"  {route_key}: {{\n" + "\n".join(param_fields) + "\n  };"
+    else:
+        path_entry = f"  {route_key}: Record<string, never>;"
+
+    if sorted_query_params:
+        query_param_fields: list[str] = []
+        for param_name, param_type in sorted_query_params.items():
+            ts_type = ts_type_for_param(param_type)
+            is_required = is_type_required(param_type)
+            ts_type_clean = ts_type.replace(" | undefined", "")
+            used_aliases.update(collect_semantic_aliases(ts_type_clean))
+            prop_key = format_ts_property_key(param_name)
+            opt_marker = "" if is_required else "?"
+            query_param_fields.append(f"    {prop_key}{opt_marker}: {ts_type_clean};")
+        query_entry = f"  {route_key}: {{\n" + "\n".join(query_param_fields) + "\n  };"
+    else:
+        query_entry = f"  {route_key}: Record<string, never>;"
+
+    return path_entry, query_entry
 
 
 def generate_routes_ts(
     app: Litestar,
     *,
-    only: "list[str] | None" = None,
-    exclude: "list[str] | None" = None,
+    only: "Sequence[str] | None" = None,
+    exclude: "Sequence[str] | None" = None,
     openapi_schema: dict[str, Any] | None = None,
     asyncapi_schema: dict[str, Any] | None = None,
     global_route: bool = False,
@@ -690,42 +744,27 @@ def generate_routes_ts(
         sorted_params = dict(sorted(route.params.items())) if route.params else {}
         sorted_query_params = dict(sorted(route.query_params.items())) if route.query_params else {}
 
-        if sorted_params:
-            param_fields: list[str] = []
-            for param_name, param_type in sorted_params.items():
-                ts_type = ts_type_for_param(param_type)
-                ts_type_clean = ts_type.replace(" | undefined", "")
-                used_aliases.update(collect_semantic_aliases(ts_type_clean))
-                param_fields.append(f"    {param_name}: {ts_type_clean};")
-            path_params_entries.append(f"  '{route_name}': {{\n" + "\n".join(param_fields) + "\n  };")
-        else:
-            path_params_entries.append(f"  '{route_name}': Record<string, never>;")
-
-        if sorted_query_params:
-            query_param_fields: list[str] = []
-            for param_name, param_type in sorted_query_params.items():
-                ts_type = ts_type_for_param(param_type)
-                is_required = is_type_required(param_type)
-                ts_type_clean = ts_type.replace(" | undefined", "")
-                used_aliases.update(collect_semantic_aliases(ts_type_clean))
-                if is_required:
-                    query_param_fields.append(f"    {param_name}: {ts_type_clean};")
-                else:
-                    query_param_fields.append(f"    {param_name}?: {ts_type_clean};")
-            query_params_entries.append(f"  '{route_name}': {{\n" + "\n".join(query_param_fields) + "\n  };")
-        else:
-            query_params_entries.append(f"  '{route_name}': Record<string, never>;")
+        route_key = ts_string_literal(route_name)
+        path_entry, query_entry = _format_route_param_interfaces(
+            route_key, sorted_params, sorted_query_params, used_aliases
+        )
+        path_params_entries.append(path_entry)
+        query_params_entries.append(query_entry)
 
         routes_entries.append(_format_route_entry(route, sorted_params, sorted_query_params))
 
-    route_names_union = "\n  | ".join(f"'{name}'" for name in route_names) if route_names else "never"
-    ws_route_names_union = "\n  | ".join(f"'{name}'" for name in ws_route_names) if ws_route_names else "never"
+    route_names_union = "\n  | ".join(ts_string_literal(name) for name in route_names) if route_names else "never"
+    ws_route_names_union = (
+        "\n  | ".join(ts_string_literal(name) for name in ws_route_names) if ws_route_names else "never"
+    )
 
     alias_block = render_semantic_aliases(used_aliases)
     alias_preamble = f"{alias_block}\n\n" if alias_block else ""
 
     csrf_cookie_name, csrf_header_name = _extract_csrf_names(app)
-    ws_server_url = escape_ts_string(extract_ws_server_url(asyncapi_schema))
+    ws_server_url_literal = ts_string_literal(extract_ws_server_url(asyncapi_schema))
+    csrf_cookie_literal = ts_string_literal(csrf_cookie_name)
+    csrf_header_literal = ts_string_literal(csrf_header_name)
 
     global_route_snippet = ""
     if global_route:
@@ -742,13 +781,13 @@ def generate_routes_ts(
 // API base URL - only needed for separate dev servers
 // Set VITE_API_URL=http://localhost:8000 when running Vite separately
 const API_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) ?? '';
-export const WS_SERVER_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_URL) || API_URL || '{ws_server_url}';
+export const WS_SERVER_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_URL) || API_URL || {ws_server_url_literal};
 
 /** Configured CSRF cookie name (static fallback) */
-export const CSRF_COOKIE_NAME = '{csrf_cookie_name}';
+export const CSRF_COOKIE_NAME = {csrf_cookie_literal};
 
 /** Configured CSRF header name (static fallback) */
-export const CSRF_HEADER_NAME = '{csrf_header_name}';
+export const CSRF_HEADER_NAME = {csrf_header_literal};
 
 {alias_preamble}
 /** All available route names */
@@ -811,17 +850,41 @@ type WebSocketRoutesWithRequiredParams = Extract<WebSocketRouteName, RoutesWithR
 /** WebSocket routes without any required parameters */
 type WebSocketRoutesWithoutRequiredParams = Exclude<WebSocketRouteName, WebSocketRoutesWithRequiredParams>;
 
+function encodePathParam(value: unknown, isWildcard: boolean): string {{
+  const str = String(value);
+  const segments = isWildcard ? str.split("/") : [str];
+  const invalidSegment = segments.find((segment) => segment === "." || segment === "..");
+  if (invalidSegment !== undefined) {{
+    throw new Error(`Invalid path segment "${{invalidSegment}}" in route parameter`);
+  }}
+  return isWildcard ? segments.map((segment) => encodeURIComponent(segment)).join("/") : encodeURIComponent(str);
+}}
+
 function formatRoutePath<T extends RouteName>(name: T, params?: RouteParams<T>): string {{
   const def = routeDefinitions[name];
-  let url: string = def.path;
+  const rawPath: string = def.path;
+  const pathWildcards = new Set<string>();
+  for (const match of rawPath.matchAll(/\\{{([^:}}]+):path\\}}/g)) {{
+    if (match[1]) {{
+      pathWildcards.add(match[1]);
+    }}
+  }}
+  let url: string = rawPath.replace(/\\{{([^:}}]+):[^}}]+\\}}/g, "{{$1}}");
 
   if (params) {{
     for (const param of def.pathParams) {{
       const value = (params as Record<string, unknown>)[param];
       if (value !== undefined) {{
-        url = url.replaceAll("{{" + param + "}}", String(value));
+        const isWildcard =
+          pathWildcards.has(param) ||
+          ("wildcardParams" in def && (def.wildcardParams as readonly string[]).includes(param));
+        url = url.replaceAll("{{" + param + "}}", encodePathParam(value, isWildcard));
       }}
     }}
+  }}
+
+  if (url.startsWith("//")) {{
+    url = "/" + url.replace(/^\\/+/, "");
   }}
 
   if (params) {{
@@ -1065,6 +1128,9 @@ def render_semantic_aliases(aliases: set[str]) -> str:
 
     lines: list[str] = ["/** Semantic string aliases derived from OpenAPI `format`. */"]
     for alias in sorted(aliases):
+        if not is_valid_ts_identifier(alias):
+            msg = f"Invalid TypeScript semantic alias identifier: {alias!r}"
+            raise ValueError(msg)
         doc, base = _TS_SEMANTIC_ALIASES[alias]
         lines.extend((f"/** {doc} */", f"export type {alias} = {base};", ""))
     return "\n".join(lines).rstrip()

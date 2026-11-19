@@ -1,5 +1,4 @@
 import inspect
-import json
 import os
 import subprocess
 from collections.abc import Callable
@@ -18,12 +17,13 @@ from litestar_vite.cli import (
     _coerce_option_value,
     _find_scaffold_collisions,
     _format_command,
+    _format_local_install_hint,
     _generate_schema_and_routes,
-    _get_package_executor_cmd,
     _invoke_typegen_cli,
     _parse_storage_options,
     _print_recommended_config,
     _prompt_for_options,
+    _redact_storage_url,
     _resolve_js_cli,
     _run_extra_commands,
     _run_vite_build,
@@ -278,7 +278,9 @@ def test_cli_build_deploy_config_errors() -> None:
 
 
 def test_cli_build_deploy_config_merges_overrides() -> None:
-    deploy = DeployConfig(enabled=True, storage_backend="gcs://bucket", storage_options={"region": "us"})
+    deploy = DeployConfig(
+        enabled=True, storage_backend="gcs://bucket", storage_options={"region": "us"}, delete_orphaned=True
+    )
     config = ViteConfig(deploy=deploy)
     resolved = _build_deploy_config(config, "s3://bucket", {"region": "eu", "token": "abc"}, no_delete=True)
 
@@ -286,6 +288,44 @@ def test_cli_build_deploy_config_merges_overrides() -> None:
     assert resolved.storage_options["region"] == "eu"
     assert resolved.storage_options["token"] == "abc"
     assert resolved.delete_orphaned is False
+
+
+@pytest.mark.parametrize(
+    ("raw_url", "expected"),
+    [
+        ("s3://bucket/assets", "s3://bucket/assets"),
+        ("gcs://bucket/prefix", "gcs://bucket/prefix"),
+        ("dist/assets", "dist/assets"),
+        ("sftp://deploy:test-token-placeholder@host.example.com:22/pub", "sftp://***:***@host.example.com:22/pub"),
+        ("https://test-token-placeholder@cdn.example.com/static?a=1", "https://***@cdn.example.com/static?a=1"),
+        ("sftp://u:p@[::1]:2222/static", "sftp://***:***@[::1]:2222/static"),
+        ("sftp://u:p@[::1]/static", "sftp://***:***@[::1]/static"),
+        (
+            "sftp://deploy:test-token-placeholder@host.example.com:notaport/pub",
+            "sftp://***:***@host.example.com:notaport/pub",
+        ),
+        ("sftp://deploy:test-token-placeholder@[::1/pub", "sftp://***:***@[::1/pub"),
+        (None, ""),
+        ("", ""),
+    ],
+)
+def test_cli_redact_storage_url(raw_url: str | None, expected: str) -> None:
+    result = _redact_storage_url(raw_url)
+    assert result == expected
+    assert "test-token-placeholder" not in result
+    assert "deploy:" not in result
+
+
+@pytest.mark.parametrize(
+    ("configured", "cli_flag", "expected"),
+    [(False, False, False), (False, True, True), (True, False, True), (True, True, True)],
+)
+def test_cli_build_deploy_config_include_sourcemaps(configured: bool, cli_flag: bool, expected: bool) -> None:
+    deploy = DeployConfig(enabled=True, storage_backend="s3://bucket", include_sourcemaps=configured)
+    config = ViteConfig(deploy=deploy)
+    resolved = _build_deploy_config(config, None, {}, no_delete=False, include_sourcemaps=cli_flag)
+
+    assert resolved.include_sourcemaps is expected
 
 
 def test_cli_run_vite_build_skips(tmp_path: Path) -> None:
@@ -683,59 +723,58 @@ def test_cli_export_routes_json_and_ts(tmp_path: Path) -> None:
         )
 
 
-def test_cli_get_package_executor_cmd_variants() -> None:
-    assert _get_package_executor_cmd("bun", "tool") == ["bunx", "tool"]
-    assert _get_package_executor_cmd("deno", "tool") == ["deno", "run", "-A", "npm:tool"]
-    assert _get_package_executor_cmd("yarn", "tool") == ["yarn", "dlx", "tool"]
-    assert _get_package_executor_cmd("pnpm", "tool") == ["pnpm", "dlx", "tool"]
-    assert _get_package_executor_cmd(None, "tool") == ["npx", "tool"]
+def test_cli_export_routes_uses_typegen_config_defaults_and_allows_cli_override(tmp_path: Path) -> None:
+    app = _make_app(tmp_path)
+    config = app.plugins.get(VitePlugin).config
+    config.types = TypeGenConfig(output=Path("src/generated"), only_routes=("api",), exclude_routes=("internal",))
+    output_json = tmp_path / "routes.json"
+    output_ts = tmp_path / "routes.ts"
+
+    with (
+        patch("litestar_vite.cli.generate_routes_json", return_value={"routes": {}}) as gen_json,
+        patch("litestar_vite.cli.generate_routes_ts", return_value="export const route = () => ''") as gen_ts,
+        patch("litestar_vite.cli.write_if_changed", return_value=True),
+    ):
+        _unwrap_command(export_routes)(
+            app, output=output_json, only=None, exclude=None, include_components=True, typescript=False, verbose=False
+        )
+        _unwrap_command(export_routes)(
+            app, output=output_ts, only=None, exclude=None, include_components=True, typescript=True, verbose=False
+        )
+        assert gen_json.call_args.kwargs["only"] == ["api"]
+        assert gen_json.call_args.kwargs["exclude"] == ["internal"]
+        assert gen_ts.call_args.kwargs["only"] == ["api"]
+        assert gen_ts.call_args.kwargs["exclude"] == ["internal"]
+
+        _unwrap_command(export_routes)(
+            app,
+            output=output_json,
+            only="public",
+            exclude="admin",
+            include_components=True,
+            typescript=False,
+            verbose=False,
+        )
+        assert gen_json.call_args.kwargs["only"] == ["public"]
+        assert gen_json.call_args.kwargs["exclude"] == ["admin"]
 
 
-def test_cli_get_package_executor_cmd_uses_package_flag_for_typegen() -> None:
-    assert _get_package_executor_cmd("deno", "litestar-vite-typegen", package_name="litestar-vite-plugin") == [
-        "deno",
-        "run",
-        "-A",
-        "npm:litestar-vite-plugin/litestar-vite-typegen",
-    ]
-    assert _get_package_executor_cmd("pnpm", "litestar-vite-typegen", package_name="litestar-vite-plugin") == [
-        "pnpm",
-        "--package",
-        "litestar-vite-plugin",
-        "dlx",
-        "litestar-vite-typegen",
-    ]
-    assert _get_package_executor_cmd(None, "litestar-vite-typegen", package_name="litestar-vite-plugin") == [
-        "npx",
-        "--package",
-        "litestar-vite-plugin",
-        "litestar-vite-typegen",
-    ]
-    assert _get_package_executor_cmd(None, "tsr") == ["npx", "tsr"]
-
-
-def test_cli_get_package_executor_cmd_deno_skips_suffix_when_package_default_bin_matches() -> None:
-    assert _get_package_executor_cmd("deno", "openapi-ts", package_name="@hey-api/openapi-ts@0.99.0") == [
-        "deno",
-        "run",
-        "-A",
-        "npm:@hey-api/openapi-ts@0.99.0",
-    ]
-    assert _get_package_executor_cmd("deno", "litestar-vite-typegen", package_name="litestar-vite-plugin") == [
-        "deno",
-        "run",
-        "-A",
-        "npm:litestar-vite-plugin/litestar-vite-typegen",
-    ]
-
-
-def test_executor_argv_parity_fixture() -> None:
-    fixture_path = Path(__file__).resolve().parents[4] / "src/js/tests/__fixtures__/executor-argv-parity.json"
-    cases = json.loads(fixture_path.read_text())["cases"]
-    for case in cases:
-        executor = None if case["executor"] == "node" else case["executor"]
-        result = _get_package_executor_cmd(executor, case["binary"], package_name=case["package_name"])
-        assert result == case["python"], case["label"]
+@pytest.mark.parametrize(
+    ("executor", "binary", "package_name", "expected"),
+    [
+        ("node", "tsr", None, "npm install -D @tanstack/router-cli"),
+        ("pnpm", "tsr", None, "pnpm add -D @tanstack/router-cli"),
+        ("yarn", "tsr", None, "yarn add -D @tanstack/router-cli"),
+        ("bun", "tsr", None, "bun add -d @tanstack/router-cli"),
+        ("deno", "tsr", None, "deno add -d npm:@tanstack/router-cli"),
+        (None, "litestar-vite-typegen", "litestar-vite-plugin", "npm install -D litestar-vite-plugin"),
+        ("bun", "custom-tool", None, "bun add -d custom-tool"),
+    ],
+)
+def test_cli_format_local_install_hint(
+    executor: str | None, binary: str, package_name: str | None, expected: str
+) -> None:
+    assert _format_local_install_hint(executor, binary, package_name=package_name) == expected
 
 
 def _make_local_bin(root_dir: Path, name: str) -> Path:
@@ -745,26 +784,10 @@ def _make_local_bin(root_dir: Path, name: str) -> Path:
     return local_bin
 
 
-def test_cli_resolve_js_cli_no_local_bin_falls_back_to_executor(tmp_path: Path) -> None:
-    assert _resolve_js_cli(tmp_path, "bun", "litestar-vite-typegen") == ["bunx", "litestar-vite-typegen"]
-    assert _resolve_js_cli(tmp_path, "deno", "litestar-vite-typegen") == [
-        "deno",
-        "run",
-        "-A",
-        "npm:litestar-vite-typegen",
-    ]
-    assert _resolve_js_cli(tmp_path, "pnpm", "litestar-vite-typegen") == ["pnpm", "dlx", "litestar-vite-typegen"]
-    assert _resolve_js_cli(tmp_path, None, "litestar-vite-typegen") == ["npx", "litestar-vite-typegen"]
-
-
-def test_cli_resolve_js_cli_fallback_names_plugin_package(tmp_path: Path) -> None:
-    command = _resolve_js_cli(tmp_path, None, "litestar-vite-typegen", package_name="litestar-vite-plugin")
-
-    assert command == ["npx", "--package", "litestar-vite-plugin", "litestar-vite-typegen"]
-    assert command != ["npx", "litestar-vite-typegen"]
-
-    deno_command = _resolve_js_cli(tmp_path, "deno", "litestar-vite-typegen", package_name="litestar-vite-plugin")
-    assert deno_command == ["deno", "run", "-A", "npm:litestar-vite-plugin/litestar-vite-typegen"]
+@pytest.mark.parametrize("executor", ["node", "pnpm", "yarn", "bun", "deno", None])
+def test_cli_resolve_js_cli_no_local_bin_returns_none(tmp_path: Path, executor: str | None) -> None:
+    assert _resolve_js_cli(tmp_path, executor, "litestar-vite-typegen") is None
+    assert _resolve_js_cli(tmp_path, executor, "litestar-vite-typegen", package_name="litestar-vite-plugin") is None
 
 
 def test_cli_resolve_js_cli_bun_wraps_local_bin(tmp_path: Path) -> None:
@@ -799,17 +822,17 @@ def test_cli_resolve_js_cli_bun_ignores_posix_shell_shim(tmp_path: Path) -> None
     local_bin.parent.mkdir(parents=True, exist_ok=True)
     local_bin.write_text('#!/bin/sh\nexec node ../tool/bin.js "$@"\n')
 
-    assert _resolve_js_cli(tmp_path, "bun", "tool") == ["bunx", "tool"]
+    assert _resolve_js_cli(tmp_path, "bun", "tool") is None
 
 
 def test_cli_resolve_js_cli_bun_ignores_windows_cmd_shim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Windows .cmd shims still route through node, so Bun should use bunx instead."""
+    """Windows .cmd shims are not executable by Bun directly."""
     monkeypatch.setattr("litestar_vite.cli.os.name", "nt")
     local_bin = tmp_path / "node_modules" / ".bin" / "tool.cmd"
     local_bin.parent.mkdir(parents=True, exist_ok=True)
     local_bin.write_text("@ECHO off\r\nnode ..\\tool\\bin.js %*\r\n")
 
-    assert _resolve_js_cli(tmp_path, "bun", "tool") == ["bunx", "tool"]
+    assert _resolve_js_cli(tmp_path, "bun", "tool") is None
 
 
 def test_cli_resolve_js_cli_deno_ignores_windows_cmd_shim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -819,7 +842,7 @@ def test_cli_resolve_js_cli_deno_ignores_windows_cmd_shim(tmp_path: Path, monkey
     local_bin.parent.mkdir(parents=True, exist_ok=True)
     local_bin.write_text("@ECHO off\r\nnode ..\\tool\\bin.js %*\r\n")
 
-    assert _resolve_js_cli(tmp_path, "deno", "tool") == ["deno", "run", "-A", "npm:tool"]
+    assert _resolve_js_cli(tmp_path, "deno", "tool") is None
 
 
 def test_cli_resolve_js_cli_node_executors_keep_windows_cmd_shim(
@@ -835,6 +858,7 @@ def test_cli_resolve_js_cli_node_executors_keep_windows_cmd_shim(
 
 
 def test_cli_invoke_typegen_cli_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _make_local_bin(tmp_path, "litestar-vite-typegen")
     config = ViteConfig(paths=PathConfig(root=tmp_path))
     monkeypatch.setattr("litestar_vite.cli.subprocess.run", Mock(return_value=Mock(returncode=1)))
     with pytest.raises(LitestarCLIException):
@@ -842,6 +866,7 @@ def test_cli_invoke_typegen_cli_failure(tmp_path: Path, monkeypatch: pytest.Monk
 
 
 def test_cli_invoke_typegen_cli_missing_executor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _make_local_bin(tmp_path, "litestar-vite-typegen")
     config = ViteConfig(paths=PathConfig(root=tmp_path))
 
     def _raise(*_args: object, **_kwargs: object) -> None:
@@ -850,6 +875,37 @@ def test_cli_invoke_typegen_cli_missing_executor(tmp_path: Path, monkeypatch: py
     monkeypatch.setattr("litestar_vite.cli.subprocess.run", _raise)
     with pytest.raises(LitestarCLIException):
         _invoke_typegen_cli(config, verbose=False)
+
+
+@pytest.mark.parametrize(
+    ("executor", "expected_install"),
+    [
+        ("node", "npm install -D litestar-vite-plugin"),
+        ("pnpm", "pnpm add -D litestar-vite-plugin"),
+        ("bun", "bun add -d litestar-vite-plugin"),
+        ("deno", "deno add -d npm:litestar-vite-plugin"),
+    ],
+)
+def test_cli_invoke_typegen_cli_missing_local_bin_raises_without_subprocess(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    executor: str,
+    expected_install: str,
+) -> None:
+    config = ViteConfig(paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(executor=cast("Any", executor)))
+    run = Mock()
+    monkeypatch.setattr("litestar_vite.cli.subprocess.run", run)
+
+    with pytest.raises(LitestarCLIException) as exc_info:
+        _invoke_typegen_cli(config, verbose=False)
+
+    run.assert_not_called()
+    assert "litestar-vite-typegen" in str(exc_info.value)
+    assert expected_install in str(exc_info.value)
+    output = " ".join(capsys.readouterr().out.split())
+    assert expected_install in output
+    assert "litestar assets install" in output
 
 
 def test_cli_invoke_typegen_cli_prefers_local_bin_for_pnpm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -912,6 +968,8 @@ def test_cli_invoke_typegen_cli_wraps_local_bin_with_deno_runtime(
 
 
 def test_cli_run_extra_commands_executes_all(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tsr_bin = _make_local_bin(tmp_path, "tsr")
+    biome_bin = _make_local_bin(tmp_path, "biome")
     config = ViteConfig(
         paths=PathConfig(root=tmp_path), types=TypeGenConfig(extra_commands=[["tsr", "generate"], ["biome", "check"]])
     )
@@ -921,9 +979,8 @@ def test_cli_run_extra_commands_executes_all(tmp_path: Path, monkeypatch: pytest
     _run_extra_commands(config, verbose=False)
 
     assert run.call_count == 2
-    # Binary resolved through executor (default npm → npx)
-    assert run.call_args_list[0].args[0] == ["npx", "tsr", "generate"]
-    assert run.call_args_list[1].args[0] == ["npx", "biome", "check"]
+    assert run.call_args_list[0].args[0] == [str(tsr_bin), "generate"]
+    assert run.call_args_list[1].args[0] == [str(biome_bin), "check"]
     assert run.call_args_list[0].kwargs["cwd"] == tmp_path
 
 
@@ -942,6 +999,7 @@ def test_cli_run_extra_commands_prefers_local_bin(tmp_path: Path, monkeypatch: p
 
 
 def test_cli_run_extra_commands_respects_executor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    local_bin = _make_local_bin(tmp_path, "tsr")
     config = ViteConfig(
         paths=PathConfig(root=tmp_path),
         runtime=RuntimeConfig(executor="pnpm"),
@@ -952,7 +1010,36 @@ def test_cli_run_extra_commands_respects_executor(tmp_path: Path, monkeypatch: p
 
     _run_extra_commands(config, verbose=False)
 
-    assert run.call_args.args[0] == ["pnpm", "dlx", "tsr", "generate"]
+    assert run.call_args.args[0] == [str(local_bin), "generate"]
+
+
+def test_cli_run_extra_commands_missing_local_bin_warns_without_subprocess(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = ViteConfig(paths=PathConfig(root=tmp_path), types=TypeGenConfig(extra_commands=[["tsr", "generate"]]))
+    run = Mock()
+    monkeypatch.setattr("litestar_vite.cli.subprocess.run", run)
+
+    result = _run_extra_commands(config, verbose=False)
+
+    assert result is False
+    run.assert_not_called()
+    output = " ".join(capsys.readouterr().out.split())
+    assert "@tanstack/router-cli" in output
+    assert "litestar assets install" in output
+
+
+def test_cli_run_extra_commands_skips_empty_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    local_bin = _make_local_bin(tmp_path, "tsr")
+    config = ViteConfig(paths=PathConfig(root=tmp_path), types=TypeGenConfig(extra_commands=[[], ["tsr", "generate"]]))
+    run = Mock(return_value=Mock(returncode=0))
+    monkeypatch.setattr("litestar_vite.cli.subprocess.run", run)
+
+    result = _run_extra_commands(config, verbose=False)
+
+    assert result is True
+    assert run.call_count == 1
+    assert run.call_args.args[0] == [str(local_bin), "generate"]
 
 
 def test_cli_run_extra_commands_wraps_local_bin_with_bun_runtime(
@@ -987,21 +1074,23 @@ def test_cli_run_extra_commands_noop_when_empty(tmp_path: Path, monkeypatch: pyt
 
 
 def test_cli_run_extra_commands_failure_warns_and_continues(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _make_local_bin(tmp_path, "tsr")
+    _make_local_bin(tmp_path, "biome")
     config = ViteConfig(
         paths=PathConfig(root=tmp_path), types=TypeGenConfig(extra_commands=[["tsr", "generate"], ["biome", "check"]])
     )
-    # First command fails, second succeeds
     run = Mock(side_effect=[Mock(returncode=1), Mock(returncode=0)])
     monkeypatch.setattr("litestar_vite.cli.subprocess.run", run)
 
     result = _run_extra_commands(config, verbose=False)
 
     assert result is False
-    # Both commands were still attempted
     assert run.call_count == 2
 
 
 def test_cli_run_extra_commands_not_found_warns_and_continues(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _make_local_bin(tmp_path, "nonexistent-tool")
+    _make_local_bin(tmp_path, "tsr")
     config = ViteConfig(
         paths=PathConfig(root=tmp_path),
         types=TypeGenConfig(extra_commands=[["nonexistent-tool", "generate"], ["tsr", "generate"]]),
@@ -1009,7 +1098,7 @@ def test_cli_run_extra_commands_not_found_warns_and_continues(tmp_path: Path, mo
     ok_result = Mock(returncode=0)
 
     def _side_effect(cmd: list[str], **_kwargs: object) -> Mock:
-        if "nonexistent-tool" in cmd[0] or cmd == ["npx", "nonexistent-tool", "generate"]:
+        if "nonexistent-tool" in cmd[0]:
             raise FileNotFoundError
         return ok_result
 
@@ -1021,6 +1110,7 @@ def test_cli_run_extra_commands_not_found_warns_and_continues(tmp_path: Path, mo
 
 
 def test_cli_run_extra_commands_all_succeed_returns_true(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _make_local_bin(tmp_path, "tsr")
     config = ViteConfig(paths=PathConfig(root=tmp_path), types=TypeGenConfig(extra_commands=[["tsr", "generate"]]))
     monkeypatch.setattr("litestar_vite.cli.subprocess.run", Mock(return_value=Mock(returncode=0)))
 
@@ -1162,6 +1252,51 @@ def test_cli_vite_deploy_skips_typegen_when_types_disabled(tmp_path: Path) -> No
     invoke.assert_not_called()
 
 
+def test_cli_vite_deploy_redacts_urls_and_forwards_include_sourcemaps(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    registered_opts = [opt for param in vite_deploy.params for opt in param.opts]
+    assert "--include-sourcemaps" in registered_opts
+
+    deploy_config = DeployConfig(enabled=True, storage_backend="s3://bucket")
+    app = _make_app(tmp_path)
+    config = app.plugins.get(VitePlugin).config
+    config.deploy = deploy_config
+    config._executor_instance = FakeExecutor()
+
+    captured_configs: list[DeployConfig] = []
+
+    class CapturingDeployer(FakeDeployer):
+        def __init__(self, bundle_dir: Path, manifest_name: str, deploy_config: DeployConfig) -> None:
+            super().__init__(bundle_dir, manifest_name, deploy_config)
+            captured_configs.append(deploy_config)
+            self.remote_path = f"{deploy_config.storage_backend}/remote"
+
+    with (
+        patch("litestar_vite.cli._run_vite_build"),
+        patch("litestar_vite.cli.ViteDeployer", CapturingDeployer),
+        patch("litestar_vite.cli.format_bytes", lambda *_: "0B"),
+    ):
+        _unwrap_command(vite_deploy)(
+            app,
+            storage="sftp://deploy:test-token-placeholder@assets.example.com/pub",
+            storage_option=(),
+            no_build=True,
+            dry_run=True,
+            no_delete=False,
+            verbose=False,
+            include_sourcemaps=True,
+        )
+
+    output = capsys.readouterr().out
+    assert len(captured_configs) == 1
+    assert captured_configs[0].include_sourcemaps is True
+    assert "Storage: sftp://***:***@assets.example.com/pub" in output
+    assert "Remote:   sftp://***:***@assets.example.com/pub/remote" in output
+    assert "test-token-placeholder" not in output
+    assert "deploy:" not in output
+
+
 def test_cli_vite_init_runs_install_with_frontend_dir(tmp_path: Path) -> None:
     app = _make_app(tmp_path)
     env = LitestarEnv(app_path="app:app", app=app, cwd=tmp_path)
@@ -1207,3 +1342,4 @@ def test_cli_print_recommended_config_tanstack_includes_extra_commands(capsys: p
     assert "TypeGenConfig" in output
     assert "extra_commands" in output
     assert "tsr" in output
+    assert "@tanstack/router-cli" in output

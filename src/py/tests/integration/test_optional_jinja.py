@@ -518,3 +518,23 @@ def test_production_serverless_environment_scenario() -> None:
     config = package.ViteConfig()
     plugin = package.VitePlugin(config=config)
     assert plugin is not None
+
+
+@pytest.mark.parametrize(("version", "expected"), [("3.1.5", False), ("3.1.6", True)])
+def test_pyproject_jinja_extra_minimum_version(version: str, expected: bool) -> None:
+    """Verify the optional jinja extra enforces jinja2>=3.1.6."""
+    from packaging.requirements import Requirement
+    from packaging.version import Version
+
+    if sys.version_info >= (3, 11):
+        import tomllib
+    else:
+        import tomli as tomllib
+
+    pyproject_path = Path(__file__).resolve().parents[4] / "pyproject.toml"
+    with pyproject_path.open("rb") as file_obj:
+        data = tomllib.load(file_obj)
+
+    jinja_deps: list[str] = data["project"]["optional-dependencies"]["jinja"]
+    jinja_req = next(Requirement(dep) for dep in jinja_deps if Requirement(dep).name.lower() == "jinja2")
+    assert (Version(version) in jinja_req.specifier) is expected

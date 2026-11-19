@@ -1,17 +1,21 @@
 """Tests for SPA mode handler."""
 
+import json
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock, patch
 
+import httpx2
 import pytest
 from litestar import Litestar, get
+from litestar.config.csrf import CSRFConfig
 from litestar.connection import Request
 from litestar.exceptions import ImproperlyConfiguredException
 from litestar.params import FromPath, FromQuery
 from litestar.testing import AsyncTestClient
 
-from litestar_vite.config import ViteConfig
+from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig, ViteConfig
 from litestar_vite.handler import AppHandler
 from litestar_vite.handler import _app as app_module
 from litestar_vite.plugin import is_litestar_route
@@ -204,11 +208,10 @@ async def test_spa_handler_production_mode(spa_config: ViteConfig) -> None:
     async with AsyncTestClient(app=app) as client:
         # Create a mock request by making an actual request
         await client.get("/")
-        # Get the request from the app's request scope
         mock_request = Mock(spec=Request)
         mock_request.app = app
+        mock_request.scope = {}
 
-        # Get the HTML
         html = await handler.get_html(mock_request)
 
         assert html is not None
@@ -277,7 +280,7 @@ async def test_spa_handler_dev_mode_proxy(spa_config_dev: ViteConfig, mocker: "M
     with patch.object(AppHandler, "_fetch_vite_url_sync", fetch_mock):
         await handler.initialize_async(vite_url=expected_url)
 
-        mock_request = Mock()
+        mock_request = Mock(scope={})
         html = await handler.get_html(mock_request)
 
         assert "Dev Server HTML" in html
@@ -289,7 +292,7 @@ async def test_hybrid_dev_mode_uses_local_index_and_injects_vite(hybrid_config_d
     handler = AppHandler(hybrid_config_dev)
     await handler.initialize_async(vite_url="http://127.0.0.1:5173")
 
-    mock_request = Mock()
+    mock_request = Mock(scope={})
     proxy_mock = AsyncMock()
     transform_mock = AsyncMock(
         return_value='<html><script src="/static/@vite/client"></script>'
@@ -314,7 +317,7 @@ async def test_spa_handler_dev_mode_proxy_error(spa_config_dev: ViteConfig) -> N
     with patch.object(AppHandler, "_fetch_vite_url_sync", Mock(side_effect=OSError("Connection refused"))):
         await handler.initialize_async(vite_url="http://127.0.0.1:5173")
 
-        mock_request = Mock()
+        mock_request = Mock(scope={})
         result = await handler.get_html(mock_request)
         assert "server" in result.lower() and "starting" in result.lower()
         assert 'meta http-equiv="refresh"' in result
@@ -370,8 +373,7 @@ async def test_spa_handler_caches_html(spa_config: ViteConfig, temp_resource_dir
     handler = AppHandler(spa_config)
     await handler.initialize_async()
 
-    # Get HTML first time
-    mock_request = Mock()
+    mock_request = Mock(scope={})
     html1 = await handler.get_html(mock_request)
 
     # Modify the file on disk
@@ -408,10 +410,9 @@ async def test_spa_handler_fallback_load(spa_config: ViteConfig) -> None:
     handler._initialized = True  # Fake initialization to bypass check
     handler._cached_html = None  # But no cached HTML
 
-    mock_request = Mock()
+    mock_request = Mock(scope={})
     html = await handler.get_html(mock_request)
 
-    # Should fallback to loading now
     assert html is not None
     assert "Test SPA" in html
 
@@ -476,10 +477,9 @@ async def test_spa_handler_transform_html_with_page_data(spa_config_with_script_
 
     page_data = {"component": "Home", "props": {"user": "test"}}
 
-    mock_request = Mock()
+    mock_request = Mock(scope={})
     html = await handler.get_html(mock_request, page_data=page_data)
 
-    # use_script_element=True - page data injected as script element
     assert '<script type="application/json" id="app_page" data-page="app">' in html
     assert "Home" in html
     assert "test" in html
@@ -575,10 +575,9 @@ async def test_spa_handler_legacy_data_page_attribute(spa_config_with_data_page_
 
     page_data = {"component": "Home", "props": {"user": "test"}}
 
-    mock_request = Mock()
+    mock_request = Mock(scope={})
     html = await handler.get_html(mock_request, page_data=page_data)
 
-    # Legacy mode: page data injected as data-page attribute
     assert 'data-page="' in html
     assert '<script type="application/json" id="app_page">' not in html
     assert "Home" in html
@@ -776,6 +775,60 @@ async def test_spa_handler_csrf_names_absent_without_csrf_config(
 
     assert "__LITESTAR_CSRF_HEADER_NAME__" not in html
     assert "__LITESTAR_CSRF_COOKIE_NAME__" not in html
+
+
+@pytest.mark.parametrize(
+    "raw_value",
+    [
+        'test-token-placeholder"quoted',
+        r"test-token-placeholder\backslash",
+        "test-token-placeholder</script><script>alert(1)</script>",
+        "test-token-placeholder<!--<script>alert(1)</script>",
+        "test-token-placeholder'single&amp",
+        "test-token-placeholder\u2028line-sep\u2029para-sep",
+    ],
+)
+async def test_spa_handler_csrf_script_values_escaped(
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch, raw_value: str
+) -> None:
+    """Injected CSRF token, header name, and cookie name serialize as HTML-safe JSON literals."""
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(inject_csrf=True, csrf_var_name="__LITESTAR_CSRF__"),
+    )
+    csrf_config = CSRFConfig(secret="test-token-placeholder", cookie_name=raw_value, header_name=raw_value)
+    handler = AppHandler(config, csrf_config=csrf_config)
+    await handler.initialize_async()
+
+    html = handler.get_html_sync(csrf_token=raw_value)
+
+    assert html.count("<script>") == 1
+    assert html.count("</script>") == 1
+    _, _, remainder = html.partition("<script>")
+    script_body, _, _ = remainder.partition("</script>")
+    assert "</script>" not in script_body
+    assert "<!--<script>" not in script_body
+    assert "<" not in script_body
+    assert ">" not in script_body
+    assert "'" not in script_body
+    assert "&" not in script_body
+    assert "\u2028" not in script_body
+    assert "\u2029" not in script_body
+
+    token_match = re.search(r"^window\.__LITESTAR_CSRF__ = (.+);$", script_body, re.MULTILINE)
+    header_match = re.search(r"^window\.__LITESTAR_CSRF_HEADER_NAME__ = (.+);$", script_body, re.MULTILINE)
+    cookie_match = re.search(r"^window\.__LITESTAR_CSRF_COOKIE_NAME__ = (.+);$", script_body, re.MULTILINE)
+    assert token_match is not None
+    assert header_match is not None
+    assert cookie_match is not None
+    assert json.loads(token_match.group(1)) == raw_value
+    assert json.loads(header_match.group(1)) == raw_value
+    assert json.loads(cookie_match.group(1)) == raw_value
 
 
 # ============================================================================
@@ -1426,27 +1479,205 @@ async def test_spa_handler_cache_duration_default_is_zero(
 async def test_spa_handler_cache_duration_configurable(
     temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Test that cache_duration can be configured to enable HTTP caching."""
-    from litestar_vite.config import PathConfig, RuntimeConfig, SPAConfig
-
+    """Test that cache_duration enables route-level HTTP caching when inject_csrf is disabled."""
     monkeypatch.delenv("VITE_DEV_MODE", raising=False)
     monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
 
-    # Set cache_duration to 1 hour
     config = ViteConfig(
         mode="spa",
         paths=PathConfig(resource_dir=temp_resource_dir),
         runtime=RuntimeConfig(dev_mode=False),
-        spa=SPAConfig(cache_duration=3600),
+        spa=SPAConfig(inject_csrf=False, cache_duration=3600),
     )
     handler = AppHandler(config)
     await handler.initialize_async()
 
     route = handler.create_route_handler()
 
-    # With cache_duration=3600, the route should have cache enabled
-    # The route handler should have the cache config set
     assert route.cache == 3600
+
+
+async def test_spa_handler_cache_duration_with_inject_csrf_isolates_visitors(
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Production SPA with inject_csrf=True and cache_duration>0 omits route cache and isolates visitors."""
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    csrf_config = CSRFConfig(secret="test-token-placeholder")
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(inject_csrf=True, cache_duration=3600),
+    )
+    handler = AppHandler(config, csrf_config=csrf_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+    assert not route.cache
+
+    app = Litestar(route_handlers=[route], csrf_config=csrf_config)
+
+    async with AsyncTestClient(app=app) as client_one, AsyncTestClient(app=app) as client_two:
+        response_one = await client_one.get("/")
+        response_two = await client_two.get("/")
+
+    assert response_one.status_code == 200
+    assert response_two.status_code == 200
+    assert "set-cookie" in response_one.headers
+    assert "set-cookie" in response_two.headers
+
+    cookie_one = response_one.cookies.get("csrftoken")
+    cookie_two = response_two.cookies.get("csrftoken")
+    assert cookie_one is not None
+    assert cookie_two is not None
+    assert cookie_one != cookie_two
+
+    token_match_one = re.search(r"window\.__LITESTAR_CSRF__ = ([^;]+);", response_one.text)
+    token_match_two = re.search(r"window\.__LITESTAR_CSRF__ = ([^;]+);", response_two.text)
+    assert token_match_one is not None
+    assert token_match_two is not None
+    token_one = json.loads(token_match_one.group(1))
+    token_two = json.loads(token_match_two.group(1))
+
+    assert token_one == cookie_one
+    assert token_two == cookie_two
+    assert token_one != token_two
+    assert token_one not in response_two.text
+
+
+async def test_spa_handler_pre_csrf_shell_cache_ttl_refresh(
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pre-CSRF HTML shell stays cached until monotonic expiry, then reloads with fresh CSRF."""
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    current_time = [1000.0]
+    monkeypatch.setattr(app_module.time, "monotonic", lambda: current_time[0])
+
+    csrf_config = CSRFConfig(secret="test-token-placeholder")
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(inject_csrf=True, cache_duration=60),
+    )
+    handler = AppHandler(config, csrf_config=csrf_config)
+    await handler.initialize_async()
+
+    route = handler.create_route_handler()
+    app = Litestar(route_handlers=[route], csrf_config=csrf_config)
+    index_path = temp_resource_dir / "index.html"
+
+    async with (
+        AsyncTestClient(app=app) as client_one,
+        AsyncTestClient(app=app) as client_two,
+        AsyncTestClient(app=app) as client_three,
+        AsyncTestClient(app=app) as client_four,
+    ):
+        response_one = await client_one.get("/")
+        assert response_one.status_code == 200
+        assert "Test SPA" in response_one.text
+
+        index_path.write_text(
+            "<!DOCTYPE html><html><head><title>Updated SPA Shell</title></head><body><div id='app'></div></body></html>"
+        )
+        current_time[0] = 1059.0
+        response_two = await client_two.get("/")
+        assert response_two.status_code == 200
+        assert "Test SPA" in response_two.text
+        assert "Updated SPA Shell" not in response_two.text
+
+        current_time[0] = 1060.0
+        response_three = await client_three.get("/")
+        assert response_three.status_code == 200
+        assert "Updated SPA Shell" in response_three.text
+        assert "Test SPA" not in response_three.text
+
+        index_path.write_text(
+            "<!DOCTYPE html><html><head><title>Third SPA Shell</title></head><body><div id='app'></div></body></html>"
+        )
+        current_time[0] = 1119.0
+        response_four = await client_four.get("/")
+        assert response_four.status_code == 200
+        assert "Updated SPA Shell" in response_four.text
+        assert "Third SPA Shell" not in response_four.text
+
+    def _extract_embedded_csrf(html: str) -> str:
+        match = re.search(r"window\.__LITESTAR_CSRF__ = ([^;]+);", html)
+        assert match is not None
+        return str(json.loads(match.group(1)))
+
+    token_one = _extract_embedded_csrf(response_one.text)
+    token_two = _extract_embedded_csrf(response_two.text)
+    token_three = _extract_embedded_csrf(response_three.text)
+    token_four = _extract_embedded_csrf(response_four.text)
+
+    assert token_one == response_one.cookies.get("csrftoken")
+    assert token_two == response_two.cookies.get("csrftoken")
+    assert token_three == response_three.cookies.get("csrftoken")
+    assert token_four == response_four.cookies.get("csrftoken")
+    assert len({token_one, token_two, token_three, token_four}) == 4
+
+
+async def test_spa_handler_shell_cache_ttl_sync_and_bytes_and_transformed(
+    temp_resource_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Shell TTL expiry refreshes cached HTML across get_html_sync, get_bytes, and cached transformed HTML."""
+    monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    monkeypatch.delenv("VITE_HOT_RELOAD", raising=False)
+
+    current_time = [500.0]
+    monkeypatch.setattr(app_module.time, "monotonic", lambda: current_time[0])
+
+    config = ViteConfig(
+        mode="spa",
+        paths=PathConfig(resource_dir=temp_resource_dir),
+        runtime=RuntimeConfig(dev_mode=False),
+        spa=SPAConfig(inject_csrf=False, cache_transformed_html=True, cache_duration=30),
+    )
+    handler = AppHandler(config)
+    await handler.initialize_async()
+
+    mock_request = Mock(scope={})
+    assert "Test SPA" in await handler.get_html(mock_request)
+    assert "Test SPA" in handler.get_html_sync()
+    assert b"Test SPA" in await handler.get_bytes()
+
+    index_path = temp_resource_dir / "index.html"
+    index_path.write_text(
+        "<!DOCTYPE html><html><head><title>Reloaded Shell</title></head><body><div id='app'></div></body></html>"
+    )
+
+    current_time[0] = 529.0
+    assert "Test SPA" in await handler.get_html(mock_request)
+    assert "Test SPA" in handler.get_html_sync()
+    assert b"Test SPA" in await handler.get_bytes()
+
+    current_time[0] = 530.0
+    assert "Reloaded Shell" in await handler.get_html(mock_request)
+
+    index_path.write_text(
+        "<!DOCTYPE html><html><head><title>Sync Reloaded Shell</title></head><body><div id='app'></div></body></html>"
+    )
+    current_time[0] = 560.0
+    assert "Sync Reloaded Shell" in handler.get_html_sync()
+
+    index_path.write_text(
+        "<!DOCTYPE html><html><head><title>Bytes Reloaded Shell</title></head><body><div id='app'></div></body></html>"
+    )
+    current_time[0] = 590.0
+    assert b"Bytes Reloaded Shell" in await handler.get_bytes()
+
+    config_no_spa = ViteConfig(
+        mode="spa", paths=PathConfig(resource_dir=temp_resource_dir), runtime=RuntimeConfig(dev_mode=False), spa=False
+    )
+    handler_no_spa = AppHandler(config_no_spa)
+    handler_no_spa.initialize_sync()
+    handler_no_spa._cached_html = None
+    assert "Bytes Reloaded Shell" in handler_no_spa.get_html_sync()
 
 
 async def test_spa_handler_no_cache_when_spa_config_disabled(
@@ -1531,3 +1762,41 @@ async def test_spa_handler_prod_skips_csrf_when_inject_csrf_disabled(
         response = await client.get("/")
         assert response.status_code == 200
         assert "window.__LITESTAR_CSRF__" not in response.text
+
+
+@pytest.mark.parametrize("proxy_token", ["tok-app", None, ""])
+def test_app_handler_post_vite_json_sync_proxy_token_header(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, proxy_token: str | None
+) -> None:
+    """_post_vite_json_sync attaches X-Litestar-Proxy-Token when configured in the bridge file."""
+    from litestar_vite.utils import read_bridge_config
+
+    read_bridge_config.cache_clear()
+    if proxy_token is not None:
+        bridge = tmp_path / ".litestar.json"
+        bridge.write_text(json.dumps({"proxyToken": proxy_token}))
+        monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge))
+    else:
+        monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(tmp_path / "missing.json"))
+    read_bridge_config.cache_clear()
+
+    captured: list[httpx2.Request] = []
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        captured.append(request)
+        return httpx2.Response(200, text="<html>transformed</html>")
+
+    client = httpx2.Client(transport=httpx2.MockTransport(handle))
+    monkeypatch.setattr(httpx2, "Client", lambda **_kwargs: client)
+
+    result = AppHandler._post_vite_json_sync(
+        "http://127.0.0.1:5173/__litestar__/transform-index", {"url": "/", "html": "<html></html>"}
+    )
+
+    assert result == "<html>transformed</html>"
+    assert len(captured) == 1
+    assert captured[0].headers.get("content-type") == "application/json"
+    if proxy_token:
+        assert captured[0].headers.get("x-litestar-proxy-token") == proxy_token
+    else:
+        assert "x-litestar-proxy-token" not in captured[0].headers

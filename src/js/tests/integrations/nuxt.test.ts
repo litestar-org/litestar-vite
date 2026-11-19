@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import type { Plugin } from "vite"
 import { describe, expect, it, vi } from "vitest"
 import litestarNuxtModule from "../../src/nuxt"
 import { getHmrNetworkConfig } from "../__fixtures__/mock-vite-config"
@@ -114,7 +115,13 @@ describe("litestar-nuxt integration", () => {
   })
 
   it("merges module options into vite, runtime config, and nitro devProxy", () => {
-    const nuxt = {
+    const nuxt: {
+      options: {
+        vite: { plugins?: Plugin[] }
+        runtimeConfig: { litestar?: Record<string, unknown>; public?: Record<string, unknown> }
+        nitro: { devProxy?: Record<string, unknown> }
+      }
+    } = {
       options: {
         vite: {},
         runtimeConfig: {},
@@ -136,11 +143,15 @@ describe("litestar-nuxt integration", () => {
     expect(nuxt.options.vite.plugins?.some((plugin: { name?: string }) => plugin.name === "litestar-nuxt-proxy")).toBe(true)
 
     expect(nuxt.options.runtimeConfig).toMatchObject({
-      public: {
+      litestar: {
         apiProxy: "http://127.0.0.1:8000",
+      },
+      public: {
         apiPrefix: "/api",
       },
     })
+    expect(nuxt.options.runtimeConfig.public?.apiProxy).toBeUndefined()
+    expect("apiProxy" in (nuxt.options.runtimeConfig.public ?? {})).toBe(false)
 
     expect(nuxt.options.nitro).toMatchObject({
       devProxy: {
@@ -151,6 +162,61 @@ describe("litestar-nuxt integration", () => {
         },
       },
     })
+  })
+
+  it("removes pre-populated public apiProxy keys while preserving unrelated runtime config", () => {
+    const nuxt: {
+      options: {
+        vite: { plugins?: Plugin[] }
+        runtimeConfig: {
+          litestar?: Record<string, unknown>
+          public?: Record<string, unknown>
+        }
+        nitro: { devProxy?: Record<string, unknown> }
+      }
+    } = {
+      options: {
+        vite: {},
+        runtimeConfig: {
+          litestar: {
+            custom: true,
+            apiProxy: "http://stale.internal:9000",
+          },
+          public: {
+            appName: "demo",
+            apiProxy: "stale",
+            litestar: {
+              apiProxy: "stale",
+              label: "keep",
+            },
+          },
+        },
+        nitro: {},
+      },
+    }
+
+    litestarNuxtModule(
+      {
+        apiProxy: "http://127.0.0.1:8000",
+        apiPrefix: "/api",
+        verbose: false,
+      },
+      nuxt,
+    )
+
+    expect(nuxt.options.runtimeConfig.litestar).toEqual({
+      custom: true,
+      apiProxy: "http://127.0.0.1:8000",
+    })
+    expect(nuxt.options.runtimeConfig.public).toEqual({
+      appName: "demo",
+      apiPrefix: "/api",
+      litestar: {
+        label: "keep",
+      },
+    })
+    expect("apiProxy" in (nuxt.options.runtimeConfig.public ?? {})).toBe(false)
+    expect("apiProxy" in ((nuxt.options.runtimeConfig.public?.litestar as Record<string, unknown>) ?? {})).toBe(false)
   })
 
   it("creates parent directories before writing hmrHotFile", async () => {

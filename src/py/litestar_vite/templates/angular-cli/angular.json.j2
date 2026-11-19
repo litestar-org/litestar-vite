@@ -2,7 +2,7 @@
   "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
   "version": 1,
   "projects": {
-    "{{ project_name }}": {
+    {{ project_name | tojson }}: {
       "projectType": "application",
       "root": "",
       "sourceRoot": "src",
@@ -25,7 +25,7 @@
         "serve": {
           "builder": "@angular/build:dev-server",
           "options": {
-            "buildTarget": "{{ project_name }}:build",
+            "buildTarget": {{ (project_name ~ ":build") | tojson }},
             "proxyConfig": "proxy.conf.json"
           }
         }

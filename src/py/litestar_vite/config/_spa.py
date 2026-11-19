@@ -1,10 +1,13 @@
 """SPA and logging configuration."""
 
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Literal
 
 __all__ = ("LoggingConfig", "SPAConfig")
+
+_VALID_JS_IDENTIFIER_RE = re.compile(r"\A[A-Za-z_$][A-Za-z0-9_$]*\Z")
 
 
 @dataclass
@@ -21,6 +24,19 @@ class SPAConfig:
     """Cache transformed HTML in production when per-request `inject_csrf` is disabled."""
     cache_duration: int = 0
     """HTTP `Cache-Control: max-age` duration in seconds for SPA HTML responses."""
+
+    def __post_init__(self) -> None:
+        """Validate SPA configuration fields after initialization.
+
+        Raises:
+            ValueError: If ``csrf_var_name`` is not a valid JavaScript identifier.
+        """
+        if not _VALID_JS_IDENTIFIER_RE.fullmatch(self.csrf_var_name):
+            msg = (
+                f"Invalid csrf_var_name {self.csrf_var_name!r}: "
+                "must be a valid JavaScript identifier matching [A-Za-z_$][A-Za-z0-9_$]*."
+            )
+            raise ValueError(msg)
 
 
 def get_default_log_level() -> "Literal['quiet', 'normal', 'verbose']":

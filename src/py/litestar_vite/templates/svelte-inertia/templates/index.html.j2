@@ -8,6 +8,7 @@
     {{ "{{ vite_asset('" + resource_dir + "/main.ts') }}" }}
   </head>
   <body>
-    {{ "{{ inertia|safe }}" }}
+    <div id="app"></div>
+    {{ "{{ inertia_page }}" }}
   </body>
 </html>

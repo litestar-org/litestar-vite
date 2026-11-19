@@ -508,3 +508,54 @@ def test_scaffolding_inertia_ssr_templates_use_stdio_worker(
     assert "--ssr" in scripts["build:ssr"]
     assert "serve:ssr" in scripts
     assert "--stdio" in scripts["serve:ssr"]
+
+
+_VITE_CONFIG_FRAMEWORKS = (
+    FrameworkType.ANGULAR,
+    FrameworkType.HTMX,
+    FrameworkType.REACT,
+    FrameworkType.REACT_INERTIA,
+    FrameworkType.REACT_ROUTER,
+    FrameworkType.REACT_TANSTACK,
+    FrameworkType.SVELTE,
+    FrameworkType.SVELTE_INERTIA,
+    FrameworkType.SVELTEKIT,
+    FrameworkType.VUE,
+    FrameworkType.VUE_INERTIA,
+)
+_EXAMPLE_VITE_CONFIGS = sorted((Path(__file__).resolve().parents[4] / "examples").glob("*/vite.config.ts"))
+
+
+@pytest.mark.parametrize("framework_type", _VITE_CONFIG_FRAMEWORKS)
+def test_scaffolding_vite_config_uses_loopback_defaults(tmp_path: Path, framework_type: FrameworkType) -> None:
+    """Verify rendered vite.config.ts omits hardcoded 0.0.0.0 host and cors true."""
+    framework = get_template(framework_type)
+    assert framework is not None
+    target = tmp_path / framework_type.value
+    generate_project(
+        target,
+        TemplateContext(
+            project_name="loopback-app",
+            framework=framework,
+            resource_dir=framework.resource_dir,
+            enable_ssr=framework.has_ssr,
+            enable_inertia=framework.inertia_compatible,
+        ),
+    )
+
+    vite_config = (target / "vite.config.ts").read_text(encoding="utf-8")
+    assert 'host: "0.0.0.0"' not in vite_config
+    assert "host: '0.0.0.0'" not in vite_config
+    assert "cors: true" not in vite_config
+    if framework_type is not FrameworkType.SVELTEKIT:
+        assert "VITE_PORT" in vite_config
+        assert "ws:" in vite_config
+
+
+@pytest.mark.parametrize("vite_config_path", _EXAMPLE_VITE_CONFIGS, ids=lambda path: path.parent.name)
+def test_example_vite_configs_omit_wildcard_host_and_cors(vite_config_path: Path) -> None:
+    """Verify example vite.config.ts files omit hardcoded 0.0.0.0 host and cors true."""
+    content = vite_config_path.read_text(encoding="utf-8")
+    assert 'host: "0.0.0.0"' not in content
+    assert "host: '0.0.0.0'" not in content
+    assert "cors: true" not in content

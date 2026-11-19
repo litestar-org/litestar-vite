@@ -9,6 +9,7 @@ from html.parser import HTMLParser
 from typing import Any, cast
 
 __all__ = (
+    "escape_json_for_html",
     "inject_head_html",
     "inject_head_script",
     "inject_inertia_ssr_tags",
@@ -112,6 +113,31 @@ def _escape_attr(value: str) -> str:
     )
 
 
+def escape_json_for_html(json_str: str) -> str:
+    r"""Escape serialized JSON for HTML5 script tokenization compliance.
+
+    Replaces ``<``, ``>``, ``&``, ``'``, ``U+2028``, and ``U+2029`` with equivalent
+    JSON ``\uXXXX`` escape sequences so embedded JSON stays valid under JSON parsing
+    round-trips without closing ``</script>`` tags, entering HTML5 double-escaped
+    script states on ``<!--<script>``, or breaking script-tag JavaScript syntax.
+
+    Args:
+        json_str: Pre-serialized JSON string.
+
+    Returns:
+        Escaped JSON string safe for embedding inside HTML ``<script>`` elements.
+    """
+    return (
+        json_str
+        .replace("<", r"\u003c")
+        .replace(">", r"\u003e")
+        .replace("&", r"\u0026")
+        .replace("'", r"\u0027")
+        .replace("\u2028", r"\u2028")
+        .replace("\u2029", r"\u2029")
+    )
+
+
 def _set_attribute_replacer(
     match: re.Match[str], *, attr_pattern: re.Pattern[str], attr_name: str, escaped_val: str
 ) -> str:
@@ -129,7 +155,8 @@ def _set_attribute_replacer(
     opening = match.group(1)
     closing = match.group(2)
     if attr_pattern.search(opening):
-        opening = attr_pattern.sub(f'{attr_name}="{escaped_val}"', opening)
+        replacement = f'{attr_name}="{escaped_val}"'
+        opening = attr_pattern.sub(lambda _: replacement, opening)
     else:
         opening = opening.rstrip() + f' {attr_name}="{escaped_val}"'
     return opening + closing
@@ -371,9 +398,10 @@ def inject_page_script(
         Falls back to appending at the end if no ``</body>`` tag is found.
 
     Note:
-        The JSON content is escaped to prevent XSS via ``</script>`` injection.
-        Sequences like ``</`` are replaced with ``<\\/`` (escaped forward slash)
-        which is valid JSON and prevents HTML parser issues.
+        The JSON content is escaped via ``escape_json_for_html``, encoding
+        ``<``, ``>``, ``&``, ``'``, ``U+2028``, and ``U+2029`` as JSON ``\uXXXX``
+        unicode escape sequences for HTML5 script tokenization compliance while
+        preserving exact JSON round-trip parsing.
 
     Example:
         html = inject_page_script(html, '{"component":"Home","props":{}}')
@@ -381,11 +409,11 @@ def inject_page_script(
     if not json_data:
         return html
 
-    escaped_json = json_data.replace("</", r"<\/")
+    escaped_json = escape_json_for_html(json_data)
 
     nonce_attr = f' nonce="{_escape_attr(nonce)}"' if nonce else ""
     script_tag = (
-        f'<script type="application/json" id="{script_id}" data-page="{_escape_attr(app_id)}"{nonce_attr}>'
+        f'<script type="application/json" id="{_escape_attr(script_id)}" data-page="{_escape_attr(app_id)}"{nonce_attr}>'
         f"{escaped_json}</script>\n"
     )
 

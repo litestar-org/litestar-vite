@@ -12,10 +12,12 @@ from litestar.utils.empty import value_or_default
 from litestar.utils.scope.state import ScopeState
 
 from litestar_vite.inertia._utils import InertiaHeaders
+from litestar_vite.inertia.request import build_partial_ancestors
 from litestar_vite.inertia.state import (
     consume_errors,
     consume_flash,
     consume_shared,
+    get_prop_eval_cache,
     peek_transient_state,
     persist_transient_state_for_redirect,
     stage_clear_history,
@@ -664,8 +666,25 @@ class DeferredProp(Generic[PropKeyT, T]):
         """
         return DeferredProp[PropKeyT, T](key=self._key, value=self._value, group=self._group, is_once=True)
 
-    def render(self) -> "T | None":
-        """Evaluate and cache the deferred prop value synchronously."""
+    def render(self, *, cache: "dict[int, tuple[Any, Any]] | None" = None) -> "T | None":
+        """Evaluate and cache the deferred prop value synchronously.
+
+        When ``cache`` is provided, stores ``(self, result)`` under ``id(self)`` without
+        mutating instance attributes so shared prop objects remain isolated across requests.
+        """
+        if cache is not None:
+            prop_id = id(self)
+            cached = cache.get(prop_id)
+            if cached is not None and cached[0] is self:
+                return cast("T | None", cached[1])
+            if self._value is None or not callable(self._value):
+                result = cast("T | None", self._value)
+            elif inspect.iscoroutinefunction(self._value):
+                raise RuntimeError(_ASYNC_RENDER_DIRECT_CALL_MSG)
+            else:
+                result = cast("T", self._value())
+            cache[prop_id] = (self, result)
+            return result
         if self._evaluated:
             return self._result
         if self._value is None or not callable(self._value):
@@ -678,13 +697,24 @@ class DeferredProp(Generic[PropKeyT, T]):
         self._evaluated = True
         return self._result
 
-    async def resolve_async(self) -> None:
+    async def resolve_async(self, *, cache: "dict[int, tuple[Any, Any]] | None" = None) -> None:
         """Pre-evaluate an async callback on the current event loop.
 
         No-op if already evaluated or if the callback is sync (``render()``
-        handles those inline). Mutates ``_result``/``_evaluated`` in place so
-        the subsequent sync `render` short-circuits at the cache.
+        handles those inline). When ``cache`` is provided, stores ``(self, result)``
+        under ``id(self)`` without mutating ``_result``/``_evaluated``; otherwise
+        mutates instance state so a subsequent standalone ``render()`` short-circuits.
         """
+        if cache is not None:
+            prop_id = id(self)
+            cached = cache.get(prop_id)
+            if cached is not None and cached[0] is self:
+                return
+            if self._value is None or not inspect.iscoroutinefunction(self._value):
+                return
+            result = cast("T", await self._value())
+            cache[prop_id] = (self, result)
+            return
         if self._evaluated:
             return
         if self._value is None or not inspect.iscoroutinefunction(self._value):
@@ -725,12 +755,28 @@ class OnceProp(Generic[PropKeyT, T]):
         """Return the prop key."""
         return self._key
 
-    def render(self) -> "T | None":
+    def render(self, *, cache: "dict[int, tuple[Any, Any]] | None" = None) -> "T | None":
         """Render the prop value, caching the result.
+
+        When ``cache`` is provided, stores ``(self, result)`` under ``id(self)`` without
+        mutating instance attributes so shared prop objects remain isolated across requests.
 
         Returns:
             The rendered value.
         """
+        if cache is not None:
+            prop_id = id(self)
+            cached = cache.get(prop_id)
+            if cached is not None and cached[0] is self:
+                return cast("T | None", cached[1])
+            if not callable(self._value):
+                result: "T | None" = cast("T", self._value)
+            elif inspect.iscoroutinefunction(self._value):
+                raise RuntimeError(_ASYNC_RENDER_DIRECT_CALL_MSG)
+            else:
+                result = cast("T", self._value())
+            cache[prop_id] = (self, result)
+            return result
         if self._evaluated:
             return self._result
         if not callable(self._value):
@@ -743,11 +789,21 @@ class OnceProp(Generic[PropKeyT, T]):
         self._evaluated = True
         return self._result
 
-    async def resolve_async(self) -> None:
+    async def resolve_async(self, *, cache: "dict[int, tuple[Any, Any]] | None" = None) -> None:
         """Pre-evaluate an async callback on the current event loop.
 
         No-op if already evaluated or if the value is not an async callback.
         """
+        if cache is not None:
+            prop_id = id(self)
+            cached = cache.get(prop_id)
+            if cached is not None and cached[0] is self:
+                return
+            if not callable(self._value) or not inspect.iscoroutinefunction(self._value):
+                return
+            result = cast("T", await self._value())
+            cache[prop_id] = (self, result)
+            return
         if self._evaluated:
             return
         if not callable(self._value) or not inspect.iscoroutinefunction(self._value):
@@ -787,12 +843,25 @@ class OptionalProp(Generic[PropKeyT, T]):
         """Return the prop key."""
         return self._key
 
-    def render(self) -> "T | None":
+    def render(self, *, cache: "dict[int, tuple[Any, Any]] | None" = None) -> "T | None":
         """Render the prop value, caching the result.
+
+        When ``cache`` is provided, stores ``(self, result)`` under ``id(self)`` without
+        mutating instance attributes so shared prop objects remain isolated across requests.
 
         Returns:
             The rendered value.
         """
+        if cache is not None:
+            prop_id = id(self)
+            cached = cache.get(prop_id)
+            if cached is not None and cached[0] is self:
+                return cast("T | None", cached[1])
+            if inspect.iscoroutinefunction(self._callback):
+                raise RuntimeError(_ASYNC_RENDER_DIRECT_CALL_MSG)
+            result = cast("T", self._callback())
+            cache[prop_id] = (self, result)
+            return result
         if self._evaluated:
             return self._result
         if inspect.iscoroutinefunction(self._callback):
@@ -801,11 +870,21 @@ class OptionalProp(Generic[PropKeyT, T]):
         self._evaluated = True
         return self._result
 
-    async def resolve_async(self) -> None:
+    async def resolve_async(self, *, cache: "dict[int, tuple[Any, Any]] | None" = None) -> None:
         """Pre-evaluate an async callback on the current event loop.
 
         No-op if already evaluated or if the callback is sync.
         """
+        if cache is not None:
+            prop_id = id(self)
+            cached = cache.get(prop_id)
+            if cached is not None and cached[0] is self:
+                return
+            if not inspect.iscoroutinefunction(self._callback):
+                return
+            result = cast("T", await self._callback())
+            cache[prop_id] = (self, result)
+            return
         if self._evaluated:
             return
         if not inspect.iscoroutinefunction(self._callback):
@@ -1028,6 +1107,7 @@ def should_render(  # noqa: PLR0911
     partial_except: "set[str] | None" = None,
     except_once_props: "set[str] | None" = None,
     key: "str | None" = None,
+    _partial_data_ancestors: "frozenset[str] | None" = None,
 ) -> "bool":
     """Check if value should be rendered based on partial reload filtering.
 
@@ -1047,6 +1127,7 @@ def should_render(  # noqa: PLR0911
         partial_except: Optional set of keys to exclude (X-Inertia-Partial-Except, v2)
         except_once_props: Optional set of once-prop keys already cached client-side.
         key: Optional key name for this prop (enables key-based filtering for all props)
+        _partial_data_ancestors: Optional precomputed ancestor prefixes for ``partial_data``.
 
     Returns:
         bool: True if value should be rendered
@@ -1055,14 +1136,14 @@ def should_render(  # noqa: PLR0911
         return True
 
     if is_optional_prop(value):
-        if partial_data and not _matches_partial_data(value, partial_data, key):
+        if partial_data and not _matches_partial_data(value, partial_data, key, _partial_data_ancestors):
             return False
         if partial_except and _matches_partial_except(value, partial_except, key):
             return False
         return not (not partial_data and not partial_except)
 
     if is_once_prop(value):
-        if partial_data and not _matches_partial_data(value, partial_data, key):
+        if partial_data and not _matches_partial_data(value, partial_data, key, _partial_data_ancestors):
             return False
         if partial_except and _matches_partial_except(value, partial_except, key):
             return False
@@ -1071,14 +1152,14 @@ def should_render(  # noqa: PLR0911
         return True
 
     if is_lazy_prop(value):
-        if partial_data and not _matches_partial_data(value, partial_data, key):
+        if partial_data and not _matches_partial_data(value, partial_data, key, _partial_data_ancestors):
             return False
         if partial_except and _matches_partial_except(value, partial_except, key):
             return False
         return not (not partial_data and not partial_except)
 
     if key is not None:
-        if partial_data and not _matches_partial_data(value, partial_data, key):
+        if partial_data and not _matches_partial_data(value, partial_data, key, _partial_data_ancestors):
             return False
         if partial_except and _matches_partial_except(value, partial_except, key):
             return False
@@ -1128,12 +1209,376 @@ def is_or_contains_special_prop(value: "Any") -> "bool":
     return False
 
 
-def lazy_render(  # noqa: PLR0911
+def _is_async_special_prop(value: "DeferredProp[Any, Any] | OnceProp[Any, Any] | OptionalProp[Any, Any]") -> bool:
+    if isinstance(value, OptionalProp):
+        return inspect.iscoroutinefunction(value._callback)  # pyright: ignore[reportPrivateUsage]
+    cb = value._value  # pyright: ignore[reportPrivateUsage]
+    return callable(cb) and inspect.iscoroutinefunction(cb)
+
+
+def _is_prop_evaluated(
+    value: "DeferredProp[Any, Any] | OnceProp[Any, Any] | OptionalProp[Any, Any]",
+    eval_cache: "dict[int, tuple[Any, Any]] | None",
+) -> bool:
+    if eval_cache is not None:
+        cached = eval_cache.get(id(value))
+        return cached is not None and cached[0] is value
+    return value._evaluated  # pyright: ignore[reportPrivateUsage]
+
+
+def _render_special_prop(
+    value: "Any", eval_cache: "dict[int, tuple[Any, Any]] | None" = None, *, allow_instance_async_result: bool = False
+) -> "Any":
+    if is_deferred_prop(value) or is_once_prop(value) or is_optional_prop(value):
+        if (
+            allow_instance_async_result
+            and eval_cache is not None
+            and _is_async_special_prop(value)
+            and value._evaluated  # pyright: ignore[reportPrivateUsage]
+        ):
+            cached = eval_cache.get(id(value))
+            if cached is None or cached[0] is not value:
+                return value.render()
+        return value.render(cache=eval_cache)
+    if is_lazy_prop(value) or is_always_prop(value):
+        return value.render()
+    return value
+
+
+def _lazy_render_sequence_mapping(
+    mapping: "Mapping[str, Any]",
+    partial_data: "set[str] | None",
+    partial_except: "set[str] | None",
+    except_once_props: "set[str] | None",
+    ancestors: "frozenset[str] | None",
+    eval_cache: "dict[int, tuple[Any, Any]]",
+    allow_instance_async_result: bool = False,
+) -> "dict[str, Any]":
+    rendered: "dict[str, Any]" = {}
+    for k, v in mapping.items():
+        if is_special_prop(v):
+            if should_render(v, partial_data, partial_except, except_once_props, _partial_data_ancestors=ancestors):
+                rendered[k] = _render_special_prop(
+                    v, eval_cache, allow_instance_async_result=allow_instance_async_result
+                )
+        elif isinstance(v, Mapping):
+            rendered[k] = (
+                _lazy_render_sequence_mapping(
+                    cast("Mapping[str, Any]", v),
+                    partial_data,
+                    partial_except,
+                    except_once_props,
+                    ancestors,
+                    eval_cache,
+                    allow_instance_async_result,
+                )
+                if is_or_contains_special_prop(v)
+                else v
+            )
+        elif isinstance(v, list):
+            rendered[k] = _lazy_render_sequence(
+                cast("Iterable[Any]", v),
+                partial_data,
+                partial_except,
+                except_once_props,
+                ancestors,
+                eval_cache,
+                allow_instance_async_result,
+            )
+        elif isinstance(v, tuple):
+            rendered[k] = tuple(
+                _lazy_render_sequence(
+                    cast("Iterable[Any]", v),
+                    partial_data,
+                    partial_except,
+                    except_once_props,
+                    ancestors,
+                    eval_cache,
+                    allow_instance_async_result,
+                )
+            )
+        else:
+            rendered[k] = v
+    return rendered
+
+
+def _lazy_render_sequence(
+    sequence: "Iterable[Any]",
+    partial_data: "set[str] | None",
+    partial_except: "set[str] | None",
+    except_once_props: "set[str] | None",
+    ancestors: "frozenset[str] | None",
+    eval_cache: "dict[int, tuple[Any, Any]]",
+    allow_instance_async_result: bool = False,
+) -> "list[Any]":
+    rendered: "list[Any]" = []
+    for v in sequence:
+        if is_special_prop(v):
+            if should_render(v, partial_data, partial_except, except_once_props, _partial_data_ancestors=ancestors):
+                rendered.append(
+                    _render_special_prop(v, eval_cache, allow_instance_async_result=allow_instance_async_result)
+                )
+        elif isinstance(v, Mapping):
+            rendered.append(
+                _lazy_render_sequence_mapping(
+                    cast("Mapping[str, Any]", v),
+                    partial_data,
+                    partial_except,
+                    except_once_props,
+                    ancestors,
+                    eval_cache,
+                    allow_instance_async_result,
+                )
+                if is_or_contains_special_prop(v)
+                else v
+            )
+        elif isinstance(v, list):
+            rendered.append(
+                _lazy_render_sequence(
+                    cast("Iterable[Any]", v),
+                    partial_data,
+                    partial_except,
+                    except_once_props,
+                    ancestors,
+                    eval_cache,
+                    allow_instance_async_result,
+                )
+            )
+        elif isinstance(v, tuple):
+            rendered.append(
+                tuple(
+                    _lazy_render_sequence(
+                        cast("Iterable[Any]", v),
+                        partial_data,
+                        partial_except,
+                        except_once_props,
+                        ancestors,
+                        eval_cache,
+                        allow_instance_async_result,
+                    )
+                )
+            )
+        else:
+            rendered.append(v)
+    return rendered
+
+
+def _has_unresolved_in_sequence(
+    items: "Iterable[Any]",
+    partial_data: "set[str] | None",
+    partial_except: "set[str] | None",
+    except_once_props: "set[str] | None",
+    ancestors: "frozenset[str] | None",
+    eval_cache: "dict[int, tuple[Any, Any]] | None",
+) -> bool:
+    for v in items:
+        if is_special_prop(v):
+            if has_unresolved_async_props(
+                v,
+                partial_data=partial_data,
+                partial_except=partial_except,
+                except_once_props=except_once_props,
+                _partial_data_ancestors=ancestors,
+                _in_sequence=True,
+                _eval_cache=eval_cache,
+            ):
+                return True
+        elif isinstance(v, Mapping):
+            if is_or_contains_special_prop(v) and has_unresolved_async_props(
+                v,
+                partial_data=partial_data,
+                partial_except=partial_except,
+                except_once_props=except_once_props,
+                _partial_data_ancestors=ancestors,
+                _in_sequence=True,
+                _eval_cache=eval_cache,
+            ):
+                return True
+        elif isinstance(v, (list, tuple)) and has_unresolved_async_props(
+            v,
+            partial_data=partial_data,
+            partial_except=partial_except,
+            except_once_props=except_once_props,
+            _partial_data_ancestors=ancestors,
+            _in_sequence=True,
+            _eval_cache=eval_cache,
+        ):
+            return True
+    return False
+
+
+async def _resolve_async_in_sequence(
+    items: "Iterable[Any]",
+    partial_data: "set[str] | None",
+    partial_except: "set[str] | None",
+    except_once_props: "set[str] | None",
+    ancestors: "frozenset[str] | None",
+    eval_cache: "dict[int, tuple[Any, Any]] | None",
+) -> None:
+    for v in items:
+        if is_special_prop(v):
+            if should_render(v, partial_data, partial_except, except_once_props, _partial_data_ancestors=ancestors):
+                await _resolve_one(v, partial_data, partial_except, except_once_props, None, ancestors, eval_cache)
+        elif isinstance(v, Mapping):
+            if is_or_contains_special_prop(v):
+                await resolve_async_props(
+                    v,
+                    partial_data=partial_data,
+                    partial_except=partial_except,
+                    except_once_props=except_once_props,
+                    _partial_data_ancestors=ancestors,
+                    _in_sequence=True,
+                    _eval_cache=eval_cache,
+                )
+        elif isinstance(v, (list, tuple)):
+            await resolve_async_props(
+                v,
+                partial_data=partial_data,
+                partial_except=partial_except,
+                except_once_props=except_once_props,
+                _partial_data_ancestors=ancestors,
+                _in_sequence=True,
+                _eval_cache=eval_cache,
+            )
+
+
+def _lazy_render(  # noqa: PLR0911
+    value: "T",
+    partial_data: "set[str] | None",
+    partial_except: "set[str] | None",
+    except_once_props: "set[str] | None",
+    key: "str | None",
+    ancestors: "frozenset[str] | None",
+    in_sequence: bool,
+    eval_cache: "dict[int, tuple[Any, Any]]",
+    allow_instance_async_result: bool,
+) -> "T":
+    if isinstance(value, str):
+        return cast("T", value)
+    if isinstance(value, Mapping):
+        if in_sequence:
+            return cast(
+                "T",
+                _lazy_render_sequence_mapping(
+                    cast("Mapping[str, Any]", value),
+                    partial_data,
+                    partial_except,
+                    except_once_props,
+                    ancestors,
+                    eval_cache,
+                    allow_instance_async_result,
+                ),
+            )
+        rendered: "dict[str, Any]" = {}
+        for k, v in cast("Mapping[str, Any]", value).items():
+            child_key = _join_prop_path((str(k),)) if key is None else f"{key}.{k}"
+            if isinstance(v, Mapping):
+                child: Any = _lazy_render(
+                    cast("Mapping[str, Any]", v),
+                    partial_data,
+                    partial_except,
+                    except_once_props,
+                    child_key,
+                    ancestors,
+                    False,
+                    eval_cache,
+                    allow_instance_async_result,
+                )
+                if (
+                    should_render(
+                        v,
+                        partial_data,
+                        partial_except,
+                        except_once_props,
+                        key=child_key,
+                        _partial_data_ancestors=ancestors,
+                    )
+                    or child
+                ):
+                    rendered[k] = child
+                continue
+            if should_render(
+                v, partial_data, partial_except, except_once_props, key=child_key, _partial_data_ancestors=ancestors
+            ):
+                rendered[k] = _lazy_render(
+                    v,
+                    partial_data,
+                    partial_except,
+                    except_once_props,
+                    child_key,
+                    ancestors,
+                    False,
+                    eval_cache,
+                    allow_instance_async_result,
+                )
+        return cast("T", rendered)
+
+    if isinstance(value, list):
+        return cast(
+            "T",
+            _lazy_render_sequence(
+                cast("Iterable[Any]", value),
+                partial_data,
+                partial_except,
+                except_once_props,
+                ancestors,
+                eval_cache,
+                allow_instance_async_result,
+            ),
+        )
+
+    if isinstance(value, tuple):
+        return cast(
+            "T",
+            tuple(
+                _lazy_render_sequence(
+                    cast("Iterable[Any]", value),
+                    partial_data,
+                    partial_except,
+                    except_once_props,
+                    ancestors,
+                    eval_cache,
+                    allow_instance_async_result,
+                )
+            ),
+        )
+
+    if is_lazy_prop(value) and should_render(
+        value, partial_data, partial_except, except_once_props, key=key, _partial_data_ancestors=ancestors
+    ):
+        return cast(
+            "T", _render_special_prop(value, eval_cache, allow_instance_async_result=allow_instance_async_result)
+        )
+
+    if is_once_prop(value) and should_render(
+        value, partial_data, partial_except, except_once_props, key=key, _partial_data_ancestors=ancestors
+    ):
+        return cast(
+            "T", _render_special_prop(value, eval_cache, allow_instance_async_result=allow_instance_async_result)
+        )
+
+    if is_optional_prop(value) and should_render(
+        value, partial_data, partial_except, except_once_props, key=key, _partial_data_ancestors=ancestors
+    ):
+        return cast(
+            "T", _render_special_prop(value, eval_cache, allow_instance_async_result=allow_instance_async_result)
+        )
+
+    if is_always_prop(value):
+        return cast("T", value.render())
+
+    return cast("T", value)
+
+
+def lazy_render(
     value: "T",
     partial_data: "set[str] | None" = None,
     partial_except: "set[str] | None" = None,
     except_once_props: "set[str] | None" = None,
     _key: "str | None" = None,
+    _partial_data_ancestors: "frozenset[str] | None" = None,
+    _in_sequence: bool = False,
+    _eval_cache: "dict[int, tuple[Any, Any]] | None" = None,
 ) -> "T":
     """Filter deferred properties from the value based on partial data.
 
@@ -1147,60 +1592,32 @@ def lazy_render(  # noqa: PLR0911
         partial_data: Keys to include (X-Inertia-Partial-Data)
         partial_except: Keys to exclude (X-Inertia-Partial-Except, v2)
         except_once_props: Cached once-prop keys to omit when possible.
+        _key: Internal dot-path prefix for recursive mapping traversal.
+        _partial_data_ancestors: Optional precomputed ancestor prefixes for ``partial_data``.
+        _in_sequence: Internal flag preserving plain dict keys inside sequences.
+        _eval_cache: Optional per-request evaluation cache keyed by ``id(prop)``.
 
     Returns:
         The filtered value
     """
-    if isinstance(value, str):
-        return cast("T", value)
-    if isinstance(value, Mapping):
-        rendered: "dict[str, Any]" = {}
-        for k, v in cast("Mapping[str, Any]", value).items():
-            child_key = _join_prop_path((str(k),)) if _key is None else f"{_key}.{k}"
-            if isinstance(v, Mapping):
-                child: Any = lazy_render(
-                    cast("Mapping[str, Any]", v), partial_data, partial_except, except_once_props, _key=child_key
-                )
-                if should_render(v, partial_data, partial_except, except_once_props, key=child_key) or child:
-                    rendered[k] = child
-                continue
-            if should_render(v, partial_data, partial_except, except_once_props, key=child_key):
-                rendered[k] = lazy_render(v, partial_data, partial_except, except_once_props, _key=child_key)
-        return cast("T", rendered)
-
-    if isinstance(value, list):
-        return cast(
-            "T",
-            [
-                lazy_render(v, partial_data, partial_except, except_once_props)
-                for v in cast("Iterable[Any]", value)
-                if should_render(v, partial_data, partial_except, except_once_props)
-            ],
-        )
-
-    if isinstance(value, tuple):
-        return cast(
-            "T",
-            tuple(
-                lazy_render(v, partial_data, partial_except, except_once_props)
-                for v in cast("Iterable[Any]", value)
-                if should_render(v, partial_data, partial_except, except_once_props)
-            ),
-        )
-
-    if is_lazy_prop(value) and should_render(value, partial_data, partial_except, except_once_props, key=_key):
-        return cast("T", value.render())
-
-    if is_once_prop(value) and should_render(value, partial_data, partial_except, except_once_props, key=_key):
-        return cast("T", value.render())
-
-    if is_optional_prop(value) and should_render(value, partial_data, partial_except, except_once_props, key=_key):
-        return cast("T", value.render())
-
-    if is_always_prop(value):
-        return cast("T", value.render())
-
-    return cast("T", value)
+    ancestors = (
+        build_partial_ancestors(partial_data)
+        if partial_data and _partial_data_ancestors is None
+        else _partial_data_ancestors
+    )
+    allow_instance_async_result = _eval_cache is None
+    eval_cache: "dict[int, tuple[Any, Any]]" = {} if _eval_cache is None else _eval_cache
+    return _lazy_render(
+        value,
+        partial_data,
+        partial_except,
+        except_once_props,
+        _key,
+        ancestors,
+        _in_sequence,
+        eval_cache,
+        allow_instance_async_result,
+    )
 
 
 def has_unresolved_async_props(  # noqa: PLR0911
@@ -1210,6 +1627,9 @@ def has_unresolved_async_props(  # noqa: PLR0911
     partial_except: "set[str] | None" = None,
     except_once_props: "set[str] | None" = None,
     _key: "str | None" = None,
+    _partial_data_ancestors: "frozenset[str] | None" = None,
+    _in_sequence: bool = False,
+    _eval_cache: "dict[int, tuple[Any, Any]] | None" = None,
 ) -> bool:
     """Return ``True`` if ``value`` (recursively) contains a prop that will be
     rendered for this request AND whose async callback hasn't been evaluated yet.
@@ -1218,38 +1638,66 @@ def has_unresolved_async_props(  # noqa: PLR0911
     ``optional()`` on a full page load, a ``defer()`` not in ``partial_data``)
     don't count — preserving the laziness contract and preventing infinite
     re-deferral when ``InertiaResponse.to_asgi_response`` re-enters after
-    async resolution mutates the prop in place.
+    async resolution populates the evaluation cache.
     """
+    ancestors = (
+        build_partial_ancestors(partial_data)
+        if partial_data and _partial_data_ancestors is None
+        else _partial_data_ancestors
+    )
     if isinstance(value, Mapping):
         mapping = cast("Mapping[str, Any]", value)
-        return any(
-            has_unresolved_async_props(
+        if _in_sequence:
+            return _has_unresolved_in_sequence(
+                mapping.values(), partial_data, partial_except, except_once_props, ancestors, _eval_cache
+            )
+        for k, v in mapping.items():
+            child_key = _join_prop_path((str(k),)) if _key is None else f"{_key}.{k}"
+            if isinstance(v, Mapping):
+                if has_unresolved_async_props(
+                    v,
+                    partial_data=partial_data,
+                    partial_except=partial_except,
+                    except_once_props=except_once_props,
+                    _key=child_key,
+                    _partial_data_ancestors=ancestors,
+                    _eval_cache=_eval_cache,
+                ):
+                    return True
+                continue
+            if not should_render(
+                v, partial_data, partial_except, except_once_props, key=child_key, _partial_data_ancestors=ancestors
+            ):
+                continue
+            if has_unresolved_async_props(
                 v,
                 partial_data=partial_data,
                 partial_except=partial_except,
                 except_once_props=except_once_props,
-                _key=_join_prop_path((str(k),)) if _key is None else f"{_key}.{k}",
-            )
-            for k, v in mapping.items()
-        )
+                _key=child_key,
+                _partial_data_ancestors=ancestors,
+                _eval_cache=_eval_cache,
+            ):
+                return True
+        return False
     if isinstance(value, (list, tuple)):
-        sequence = cast("Iterable[Any]", value)
-        return any(
-            has_unresolved_async_props(
-                v, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
-            )
-            for v in sequence
+        return _has_unresolved_in_sequence(
+            cast("Iterable[Any]", value), partial_data, partial_except, except_once_props, ancestors, _eval_cache
         )
-    if not should_render(value, partial_data, partial_except, except_once_props, key=_key):
+    if not should_render(
+        value, partial_data, partial_except, except_once_props, key=_key, _partial_data_ancestors=ancestors
+    ):
         return False
     if is_optional_prop(value):
-        return not value._evaluated and inspect.iscoroutinefunction(value._callback)  # pyright: ignore[reportPrivateUsage]
+        return not _is_prop_evaluated(value, _eval_cache) and inspect.iscoroutinefunction(
+            value._callback  # pyright: ignore[reportPrivateUsage]
+        )
     if is_deferred_prop(value):
         cb = value._value  # pyright: ignore[reportPrivateUsage]
-        return not value._evaluated and cb is not None and inspect.iscoroutinefunction(cb)  # pyright: ignore[reportPrivateUsage]
+        return not _is_prop_evaluated(value, _eval_cache) and cb is not None and inspect.iscoroutinefunction(cb)
     if is_once_prop(value):
         cb = value._value  # pyright: ignore[reportPrivateUsage]
-        return not value._evaluated and callable(cb) and inspect.iscoroutinefunction(cb)  # pyright: ignore[reportPrivateUsage]
+        return not _is_prop_evaluated(value, _eval_cache) and callable(cb) and inspect.iscoroutinefunction(cb)
     return False
 
 
@@ -1260,6 +1708,9 @@ async def resolve_async_props(
     partial_except: "set[str] | None" = None,
     except_once_props: "set[str] | None" = None,
     _key: "str | None" = None,
+    _partial_data_ancestors: "frozenset[str] | None" = None,
+    _in_sequence: bool = False,
+    _eval_cache: "dict[int, tuple[Any, Any]] | None" = None,
 ) -> None:
     """Walk ``value`` and ``await`` async prop callbacks on the current loop.
 
@@ -1267,18 +1718,32 @@ async def resolve_async_props(
     that will actually be rendered for this request — preserving the laziness
     contract of ``defer()``/``optional()`` on full page loads.
 
-    Mutates `DeferredProp`, `OnceProp`, and `OptionalProp`
-    instances in place (see each class's `resolve_async`). Sync callbacks
-    and already-evaluated props are left untouched.
+    When ``_eval_cache`` is provided, stores resolved values in the per-request
+    cache without mutating `DeferredProp`, `OnceProp`, or `OptionalProp`
+    instances. Sync callbacks and already-evaluated props are left untouched.
 
     Args:
         value: The response content (typically a ``dict``).
         partial_data: ``X-Inertia-Partial-Data`` keys, when present.
         partial_except: ``X-Inertia-Partial-Except`` keys (v2 protocol).
         except_once_props: Once-prop keys cached client-side.
+        _key: Internal dot-path prefix for recursive mapping traversal.
+        _partial_data_ancestors: Optional precomputed ancestor prefixes for ``partial_data``.
+        _in_sequence: Internal flag preserving plain dict keys inside sequences.
+        _eval_cache: Optional per-request evaluation cache keyed by ``id(prop)``.
     """
+    ancestors = (
+        build_partial_ancestors(partial_data)
+        if partial_data and _partial_data_ancestors is None
+        else _partial_data_ancestors
+    )
     if isinstance(value, Mapping):
         mapping = cast("Mapping[str, Any]", value)
+        if _in_sequence:
+            await _resolve_async_in_sequence(
+                mapping.values(), partial_data, partial_except, except_once_props, ancestors, _eval_cache
+            )
+            return
         for k, v in mapping.items():
             child_key = _join_prop_path((str(k),)) if _key is None else f"{_key}.{k}"
             if isinstance(v, Mapping):
@@ -1288,22 +1753,24 @@ async def resolve_async_props(
                     partial_except=partial_except,
                     except_once_props=except_once_props,
                     _key=child_key,
+                    _partial_data_ancestors=ancestors,
+                    _eval_cache=_eval_cache,
                 )
                 continue
-            if not should_render(v, partial_data, partial_except, except_once_props, key=child_key):
+            if not should_render(
+                v, partial_data, partial_except, except_once_props, key=child_key, _partial_data_ancestors=ancestors
+            ):
                 continue
-            await _resolve_one(v, partial_data, partial_except, except_once_props, child_key)
+            await _resolve_one(v, partial_data, partial_except, except_once_props, child_key, ancestors, _eval_cache)
         return
 
     if isinstance(value, (list, tuple)):
-        sequence = cast("Iterable[Any]", value)
-        for v in sequence:
-            if not should_render(v, partial_data, partial_except, except_once_props):
-                continue
-            await _resolve_one(v, partial_data, partial_except, except_once_props, None)
+        await _resolve_async_in_sequence(
+            cast("Iterable[Any]", value), partial_data, partial_except, except_once_props, ancestors, _eval_cache
+        )
         return
 
-    await _resolve_one(value, partial_data, partial_except, except_once_props, _key)
+    await _resolve_one(value, partial_data, partial_except, except_once_props, _key, ancestors, _eval_cache)
 
 
 def get_raw_shared_props(request: "ASGIConnection[Any, Any, Any, Any]") -> "Mapping[str, Any]":
@@ -1341,11 +1808,65 @@ def _consume_session_handoff_state(
     return session, shared, errors, messages
 
 
+def _merge_filtered_props(
+    target: "dict[str, Any]",
+    source: "Mapping[str, Any]",
+    partial_data: "set[str] | None",
+    partial_except: "set[str] | None",
+    except_once_props: "set[str] | None",
+    ancestors: "frozenset[str] | None",
+    eval_cache: "dict[int, tuple[Any, Any]]",
+    *,
+    render_plain_mappings: bool,
+) -> None:
+    for key, value in source.items():
+        if isinstance(value, Mapping):
+            if render_plain_mappings or is_or_contains_special_prop(value):
+                rendered: Any = lazy_render(
+                    cast("Mapping[str, Any]", value),
+                    partial_data,
+                    partial_except,
+                    except_once_props,
+                    _key=key,
+                    _partial_data_ancestors=ancestors,
+                    _eval_cache=eval_cache,
+                )
+                if rendered or should_render(
+                    value, partial_data, partial_except, except_once_props, key=key, _partial_data_ancestors=ancestors
+                ):
+                    target[key] = rendered
+            elif should_render(
+                value, partial_data, partial_except, except_once_props, key=key, _partial_data_ancestors=ancestors
+            ):
+                target[key] = value
+            continue
+        if not should_render(
+            value, partial_data, partial_except, except_once_props, key=key, _partial_data_ancestors=ancestors
+        ):
+            continue
+        if is_special_prop(value):
+            target[key] = _render_special_prop(value, eval_cache)
+        elif is_or_contains_special_prop(value):
+            target[key] = lazy_render(
+                value,
+                partial_data,
+                partial_except,
+                except_once_props,
+                _key=key,
+                _partial_data_ancestors=ancestors,
+                _eval_cache=eval_cache,
+            )
+        else:
+            target[key] = value
+
+
 def get_shared_props(
     request: "ASGIConnection[Any, Any, Any, Any]",
     partial_data: "set[str] | None" = None,
     partial_except: "set[str] | None" = None,
     except_once_props: "set[str] | None" = None,
+    _partial_data_ancestors: "frozenset[str] | None" = None,
+    _eval_cache: "dict[int, tuple[Any, Any]] | None" = None,
 ) -> "dict[str, Any]":
     """Return shared session props for a request.
 
@@ -1356,6 +1877,8 @@ def get_shared_props(
         partial_data: Optional set of keys to include (X-Inertia-Partial-Data).
         partial_except: Optional set of keys to exclude (X-Inertia-Partial-Except, v2).
         except_once_props: Optional cached once-prop keys sent by the client.
+        _partial_data_ancestors: Optional precomputed ancestor prefixes for ``partial_data``.
+        _eval_cache: Optional per-request evaluation cache keyed by ``id(prop)``.
 
     Returns:
         The shared props. Includes a special ``_once_props`` key (list of prop keys
@@ -1364,6 +1887,12 @@ def get_shared_props(
     Note:
         Be sure to call this before `self.create_template_context` if you would like to include the `flash` message details.
     """
+    ancestors = (
+        build_partial_ancestors(partial_data)
+        if partial_data and _partial_data_ancestors is None
+        else _partial_data_ancestors
+    )
+    eval_cache = get_prop_eval_cache(request) if _eval_cache is None else _eval_cache
     props: "dict[str, Any]" = {}
     flash: "dict[str, list[str]]" = defaultdict(list)
     once_props_entries: "list[_OncePropEntry]" = []
@@ -1380,38 +1909,46 @@ def get_shared_props(
         inertia_plugin = cast("InertiaPlugin", request.app.plugins.get("InertiaPlugin"))
 
         once_props_entries = _extract_once_prop_entries(shared_props, partial_data, partial_except)
+        if inertia_plugin.config.extra_static_page_props:
+            once_props_entries.extend(
+                _extract_once_prop_entries(inertia_plugin.config.extra_static_page_props, partial_data, partial_except)
+            )
 
-        for key, value in shared_props.items():
-            if not should_render(value, partial_data, partial_except, except_once_props, key=key) and not isinstance(
-                value, Mapping
-            ):
-                continue
-            if isinstance(value, Mapping):
-                rendered: Any = lazy_render(
-                    cast("Mapping[str, Any]", value), partial_data, partial_except, except_once_props, _key=key
-                )
-                if rendered or should_render(value, partial_data, partial_except, except_once_props, key=key):
-                    props[key] = rendered
-            elif is_special_prop(value):
-                props[key] = value.render()
-            else:
-                props[key] = value
+        _merge_filtered_props(
+            props,
+            shared_props,
+            partial_data,
+            partial_except,
+            except_once_props,
+            ancestors,
+            eval_cache,
+            render_plain_mappings=True,
+        )
 
         for message in session_messages:
             flash[message["category"]].append(message["message"])
         for category, messages in local_flash.items():
             flash[category].extend(messages)
 
-        for key, value in inertia_plugin.config.extra_static_page_props.items():
-            if should_render(value, partial_data, partial_except, key=key):
-                props[key] = value
+        _merge_filtered_props(
+            props,
+            inertia_plugin.config.extra_static_page_props,
+            partial_data,
+            partial_except,
+            except_once_props,
+            ancestors,
+            eval_cache,
+            render_plain_mappings=False,
+        )
 
         if session is not None:
             for session_prop in inertia_plugin.config.extra_session_page_props:
                 if (
                     session_prop not in props
                     and session_prop in session
-                    and should_render(None, partial_data, partial_except, key=session_prop)
+                    and should_render(
+                        None, partial_data, partial_except, key=session_prop, _partial_data_ancestors=ancestors
+                    )
                 ):
                     props[session_prop] = session.get(session_prop)
 
@@ -1428,7 +1965,9 @@ def get_shared_props(
 _UNMATERIALIZABLE_SHARED = object()
 
 
-def _materialize_shared_value(value: "Any") -> "Any":  # pyright: ignore[reportUnusedFunction]
+def _materialize_shared_value(  # pyright: ignore[reportUnusedFunction]
+    value: "Any", *, cache: "dict[int, tuple[Any, Any]] | None" = None
+) -> "Any":
     """Convert top-level special props into session-serializable values for share().
 
     Called by ``inertia.state.persist_transient_state_for_redirect`` via a function-local
@@ -1436,6 +1975,7 @@ def _materialize_shared_value(value: "Any") -> "Any":  # pyright: ignore[reportU
 
     Args:
         value: A staged shared prop value.
+        cache: Optional per-request evaluation cache keyed by ``id(prop)``.
 
     Returns:
         A session-serializable value, or ``_UNMATERIALIZABLE_SHARED`` when the value cannot
@@ -1445,7 +1985,7 @@ def _materialize_shared_value(value: "Any") -> "Any":  # pyright: ignore[reportU
         return unwrap_merge_props(value)
     if is_special_prop(value):
         try:
-            return value.render()
+            return _render_special_prop(value, cache)
         except RuntimeError:
             return _UNMATERIALIZABLE_SHARED
     return value
@@ -1728,21 +2268,29 @@ def _prop_key_candidates(value: "Any", key: "str | None") -> "tuple[str, ...]":
     return tuple(dict.fromkeys(candidates))
 
 
-def _matches_partial_data(value: "Any", partial_data: "set[str]", key: "str | None") -> bool:
+def _has_excluded_ancestor(candidate: str, partial_except: "set[str]") -> bool:
+    idx = candidate.find(".")
+    while idx != -1:
+        if candidate[:idx] in partial_except:
+            return True
+        idx = candidate.find(".", idx + 1)
+    return False
+
+
+def _matches_partial_data(
+    value: "Any", partial_data: "set[str]", key: "str | None", ancestors: "frozenset[str] | None" = None
+) -> bool:
     candidates = _prop_key_candidates(value, key)
     if is_special_prop(value):
         return any(candidate in partial_data for candidate in candidates)
-    return any(
-        candidate in partial_data or any(requested.startswith(f"{candidate}.") for requested in partial_data)
-        for candidate in candidates
-    )
+    effective_ancestors = build_partial_ancestors(partial_data) if ancestors is None else ancestors
+    return any(candidate in partial_data or candidate in effective_ancestors for candidate in candidates)
 
 
 def _matches_partial_except(value: "Any", partial_except: "set[str]", key: "str | None") -> bool:
     candidates = _prop_key_candidates(value, key)
     return any(
-        candidate in partial_except or any(candidate.startswith(f"{excluded}.") for excluded in partial_except)
-        for candidate in candidates
+        candidate in partial_except or _has_excluded_ancestor(candidate, partial_except) for candidate in candidates
     )
 
 
@@ -1781,9 +2329,11 @@ async def _resolve_one(
     partial_except: "set[str] | None",
     except_once_props: "set[str] | None",
     key: "str | None",
+    ancestors: "frozenset[str] | None" = None,
+    eval_cache: "dict[int, tuple[Any, Any]] | None" = None,
 ) -> None:
     if is_optional_prop(value) or is_deferred_prop(value) or is_once_prop(value):
-        await value.resolve_async()
+        await value.resolve_async(cache=eval_cache)
         return
     if isinstance(value, (Mapping, list, tuple)):
         await resolve_async_props(
@@ -1792,6 +2342,8 @@ async def _resolve_one(
             partial_except=partial_except,
             except_once_props=except_once_props,
             _key=key,
+            _partial_data_ancestors=ancestors,
+            _eval_cache=eval_cache,
         )
 
 

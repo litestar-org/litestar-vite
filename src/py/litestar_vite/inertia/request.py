@@ -10,13 +10,67 @@ from litestar.connection.base import AuthT, StateT, UserT, empty_receive, empty_
 from litestar_vite.inertia._utils import InertiaHeaders
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from litestar.types import Receive, Scope, Send
 
     from litestar_vite.inertia.plugin import InertiaPlugin
 
-__all__ = ("InertiaDetails", "InertiaHeaders", "InertiaRequest")
+__all__ = (
+    "MAX_PARTIAL_KEYS",
+    "MAX_PARTIAL_KEY_LENGTH",
+    "InertiaDetails",
+    "InertiaHeaders",
+    "InertiaRequest",
+    "build_partial_ancestors",
+)
 
 _DEFAULT_COMPONENT_OPT_KEYS: "tuple[str, ...]" = ("component", "page")
+
+MAX_PARTIAL_KEYS = 128
+MAX_PARTIAL_KEY_LENGTH = 256
+
+
+def _parse_bounded_header_keys(raw: "str | None") -> list[str]:
+    """Parse a comma-separated Inertia header with key-count and length bounds.
+
+    Splits at most ``MAX_PARTIAL_KEYS`` segments so oversized comma runs
+    allocate at most ``MAX_PARTIAL_KEYS + 1`` substrings, trims surrounding
+    whitespace, and drops empty or overly long tokens without truncating.
+
+    Args:
+        raw: Raw comma-separated header value, or None when absent.
+
+    Returns:
+        Bounded list of normalized non-empty prop keys.
+    """
+    if raw is None:
+        return []
+    keys: list[str] = []
+    for segment in raw.split(",", MAX_PARTIAL_KEYS)[:MAX_PARTIAL_KEYS]:
+        key = segment.strip()
+        if key and len(key) <= MAX_PARTIAL_KEY_LENGTH:
+            keys.append(key)
+    return keys
+
+
+def build_partial_ancestors(keys: "Iterable[str]") -> "frozenset[str]":
+    """Precompute dot-path ancestor prefixes for partial-reload keys.
+
+    Args:
+        keys: Partial-reload prop key paths.
+
+    Returns:
+        Frozen set of non-empty ancestor prefixes for constant-time lookup.
+    """
+    ancestors: set[str] = set()
+    for item in keys:
+        idx = item.find(".")
+        while idx != -1:
+            if idx > 0:
+                ancestors.add(item[:idx])
+            idx = item.find(".", idx + 1)
+    return frozenset(ancestors)
 
 
 class InertiaDetails:
@@ -175,18 +229,27 @@ class InertiaDetails:
         """Return parsed partial-data keys.
 
         Returns:
-            Parsed partial-data keys.
+            Parsed partial-data keys bounded by ``MAX_PARTIAL_KEYS`` and ``MAX_PARTIAL_KEY_LENGTH``.
         """
-        return self.partial_data.split(",") if self.partial_data is not None else []
+        return _parse_bounded_header_keys(self.partial_data)
 
     @cached_property
     def partial_except_keys(self) -> list[str]:
         """Return parsed partial-except keys (takes precedence over partial_keys).
 
         Returns:
-            Parsed partial-except keys.
+            Parsed partial-except keys bounded by ``MAX_PARTIAL_KEYS`` and ``MAX_PARTIAL_KEY_LENGTH``.
         """
-        return self.partial_except.split(",") if self.partial_except is not None else []
+        return _parse_bounded_header_keys(self.partial_except)
+
+    @cached_property
+    def partial_data_ancestors(self) -> "frozenset[str]":
+        """Return precomputed dot-path ancestor prefixes for partial-data keys.
+
+        Returns:
+            Frozen set of ancestor prefixes derived from ``partial_keys``.
+        """
+        return build_partial_ancestors(self.partial_keys)
 
     @cached_property
     def except_once_props_keys(self) -> list[str]:
@@ -289,6 +352,15 @@ class InertiaRequest(Request[UserT, AuthT, StateT]):
             A set of prop keys to exclude.
         """
         return set(self.inertia.partial_except_keys)
+
+    @property
+    def partial_data_ancestors(self) -> "frozenset[str]":
+        """Get precomputed dot-path ancestor prefixes for partial-data keys.
+
+        Returns:
+            A frozen set of ancestor prefixes derived from ``partial_keys``.
+        """
+        return self.inertia.partial_data_ancestors
 
     @property
     def except_once_props_keys(self) -> "set[str]":

@@ -32,7 +32,7 @@ license = { text = "MIT" }
 name = "litestar-vite"
 readme = "README.md"
 requires-python = ">=3.10"
-version = "0.33.1"
+version = "0.34.0"
 
 [project.urls]
 Changelog = "https://litestar-org.github.io/litestar-vite/changelog/"
@@ -43,7 +43,7 @@ Issue = "https://github.com/litestar-org/litestar-vite/issues/"
 Source = "https://github.com/litestar-org/litestar-vite"
 
 [project.optional-dependencies]
-jinja = [ "jinja2"]
+jinja = ["jinja2>=3.1.6"]
 nodeenv = ["nodeenv"]
 node = ["nodejs-wheel>=22.0.0"]
 deno = ["deno>=2.0.0"]
@@ -104,7 +104,7 @@ test = [
 allow_dirty = true
 commit = false
 commit_args = "--no-verify"
-current_version = "0.33.1"
+current_version = "0.34.0"
 ignore_missing_files = false
 ignore_missing_version = false
 message = "chore(release): bump to `v{new_version}`"

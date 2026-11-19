@@ -16,6 +16,7 @@ from litestar.serialization import decode_json
 
 from litestar_vite.config import DeployConfig, PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig
 from litestar_vite.plugin import _utils as utils
+from litestar_vite.utils import read_hotfile_url
 
 
 def test_is_proxy_debug_caches(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -264,3 +265,67 @@ def test_route_prefix_cache_and_inertia_not_found(monkeypatch: pytest.MonkeyPatc
     request = cast("Request[Any, Any, Any]", SimpleNamespace(headers={}))
     response = utils.vite_not_found_handler(request, Mock())
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("raw_content", "expected"),
+    [
+        ("http://localhost:5173", "http://localhost:5173"),
+        ("http://localhost:5173/", "http://localhost:5173"),
+        ("  http://localhost:5173/\n", "http://localhost:5173"),
+        ("https://[::1]:32001", "https://[::1]:32001"),
+        ("https://[::1]:32001/", "https://[::1]:32001"),
+        ("https://dev.example.com:8443", "https://dev.example.com:8443"),
+    ],
+)
+def test_read_hotfile_url_accepts_valid_origins(tmp_path: Path, raw_content: str, expected: str) -> None:
+    hotfile = tmp_path / "hot"
+    hotfile.write_text(raw_content, encoding="utf-8")
+
+    assert read_hotfile_url(hotfile) == expected
+
+
+@pytest.mark.parametrize(
+    "raw_content",
+    [
+        "",
+        "   \t\n  ",
+        "file:///etc/passwd",
+        "javascript:alert(1)",
+        "ftp://127.0.0.1:21",
+        "http://",
+        "https://",
+        "http://localhost:5173?x=1",
+        "http://localhost:5173?",
+        "http://localhost:5173#frag",
+        "http://localhost:5173#",
+        "http://localhost:",
+        "http://localhost:5173/extra",
+        "http://user:pass@localhost:5173",
+        "http://user@localhost:5173",
+        "http://localhost:99999",
+        "http://localhost:abc",
+        "http://[::1",
+        "http://localhost:5173\r\nInjected: 1",
+        "http://localhost:5173 extra",
+        "http://localhost:5173\x7f",
+        "http://localhost:5173\x00",
+    ],
+)
+def test_read_hotfile_url_rejects_invalid_content(tmp_path: Path, raw_content: str) -> None:
+    hotfile = tmp_path / "hot"
+    hotfile.write_text(raw_content, encoding="utf-8")
+
+    assert read_hotfile_url(hotfile) == ""
+
+
+def test_read_hotfile_url_rejects_non_utf8_bytes(tmp_path: Path) -> None:
+    hotfile = tmp_path / "hot"
+    hotfile.write_bytes(b"\xff\xfehttp://localhost:5173")
+
+    assert read_hotfile_url(hotfile) == ""
+
+
+def test_read_hotfile_url_propagates_file_not_found(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        read_hotfile_url(tmp_path / "missing-hot")

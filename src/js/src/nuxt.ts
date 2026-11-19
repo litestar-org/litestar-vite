@@ -247,6 +247,7 @@ interface NuxtContext {
   options: {
     vite: { plugins?: Plugin[] }
     runtimeConfig?: {
+      litestar?: Record<string, unknown>
       public?: Record<string, unknown>
     }
     nitro?: {
@@ -275,11 +276,23 @@ function litestarNuxtModule(userOptions: LitestarNuxtConfig, nuxt: NuxtContext):
   nuxt.options.vite.plugins = nuxt.options.vite.plugins || []
   nuxt.options.vite.plugins.push(...plugins)
 
-  // Expose API proxy URL in runtime config for server routes to use
-  // Server routes can access this via useRuntimeConfig().public.apiProxy
+  // Keep API proxy URL in server-only runtimeConfig.litestar so it is never serialized to the client.
+  // Server routes and SSR composables can access this via useRuntimeConfig().litestar.apiProxy.
   nuxt.options.runtimeConfig = nuxt.options.runtimeConfig || {}
+  const existingLitestarConfig =
+    nuxt.options.runtimeConfig.litestar && typeof nuxt.options.runtimeConfig.litestar === "object" && !Array.isArray(nuxt.options.runtimeConfig.litestar)
+      ? nuxt.options.runtimeConfig.litestar
+      : {}
+  nuxt.options.runtimeConfig.litestar = {
+    ...existingLitestarConfig,
+    apiProxy: config.apiProxy,
+  }
   nuxt.options.runtimeConfig.public = nuxt.options.runtimeConfig.public || {}
-  nuxt.options.runtimeConfig.public.apiProxy = config.apiProxy
+  delete nuxt.options.runtimeConfig.public.apiProxy
+  const publicLitestarConfig = nuxt.options.runtimeConfig.public.litestar
+  if (publicLitestarConfig && typeof publicLitestarConfig === "object" && !Array.isArray(publicLitestarConfig)) {
+    delete (publicLitestarConfig as Record<string, unknown>).apiProxy
+  }
   nuxt.options.runtimeConfig.public.apiPrefix = config.apiPrefix
 
   // Configure Nitro devProxy for development HTTP requests

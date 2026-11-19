@@ -106,5 +106,5 @@ vite = VitePlugin(
     )
 )
 
-app = Litestar(route_handlers=[LibraryController], plugins=[vite], debug=True)
+app = Litestar(route_handlers=[LibraryController], plugins=[vite], debug=os.getenv("LITESTAR_DEBUG", "0") == "1")
 # [docs-end:tanstack-vite-config]

@@ -1,8 +1,10 @@
 """Development SSR HTTP transport framing and lifecycle regressions."""
 
 import gzip
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import anyio
 import httpx2
@@ -10,6 +12,7 @@ import pytest
 from anyio.abc import ByteStream, SocketAttribute
 
 from litestar_vite.ipc import IPCError, IPCTimeoutError, TCPStreamIPCTransport
+from litestar_vite.utils import read_bridge_config
 
 pytestmark = pytest.mark.anyio
 
@@ -135,3 +138,51 @@ async def test_tcp_ipc_uses_https_and_closes_client(monkeypatch: pytest.MonkeyPa
     assert str(requests[0].url) == "https://[::1]:5173/rpc"
     assert transport.scheme == "https"
     assert client.is_closed
+
+
+@pytest.mark.parametrize(
+    ("explicit_token", "bridge_token", "expected_header"),
+    [
+        ("explicit-tok", "bridge-tok", "explicit-tok"),
+        (None, "bridge-tok", "bridge-tok"),
+        (None, None, None),
+        ("", "bridge-tok", None),
+    ],
+)
+async def test_tcp_ipc_proxy_token_header_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    explicit_token: str | None,
+    bridge_token: str | None,
+    expected_header: str | None,
+) -> None:
+    read_bridge_config.cache_clear()
+    if bridge_token is not None:
+        bridge = tmp_path / ".litestar.json"
+        bridge.write_text(json.dumps({"proxyToken": bridge_token}))
+        monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge))
+    else:
+        monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(tmp_path / "missing.json"))
+    read_bridge_config.cache_clear()
+
+    requests: list[httpx2.Request] = []
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        requests.append(request)
+        return httpx2.Response(200, json={"result": {"ok": True}})
+
+    client = httpx2.AsyncClient(transport=httpx2.MockTransport(handle))
+    monkeypatch.setattr(httpx2, "AsyncClient", lambda **_kwargs: client)
+
+    transport = TCPStreamIPCTransport(proxy_token=explicit_token)
+    try:
+        result = await transport.send_request({"method": "render"})
+    finally:
+        await transport.close()
+
+    assert result == {"result": {"ok": True}}
+    assert len(requests) == 1
+    if expected_header is not None:
+        assert requests[0].headers.get("x-litestar-proxy-token") == expected_header
+    else:
+        assert "x-litestar-proxy-token" not in requests[0].headers

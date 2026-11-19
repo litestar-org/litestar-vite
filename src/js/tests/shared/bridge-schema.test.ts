@@ -2,7 +2,15 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { describe, expect, it, vi } from "vitest"
-import { parseBridgeSchema, readBridgeConfig } from "../../src/shared/bridge-schema"
+import {
+  BRIDGE_PROXY_TOKEN_HEADER,
+  isJsonContentType,
+  isLoopbackAddress,
+  parseBridgeSchema,
+  readBridgeConfig,
+  timingSafeTokenEqual,
+  verifyBridgeRequest,
+} from "../../src/shared/bridge-schema"
 
 const baseBridgeConfig = {
   assetUrl: "/static",
@@ -230,5 +238,209 @@ describe("bridge schema null routesTsPath and schemasTsPath", () => {
     expect(config.types?.asyncapiPath).toBe("src/generated/asyncapi.json")
     expect(config.types?.channelsTsPath).toBe("src/generated/channels.ts")
     expect(config.types?.generateChannels).toBe(true)
+  })
+})
+
+describe("bridge schema proxyToken", () => {
+  it("parses string, null, and omitted proxyToken without unknown-key warnings", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const withToken = parseBridgeSchema({ ...baseBridgeConfig, proxyToken: "test-token-placeholder" })
+      const withNull = parseBridgeSchema({ ...baseBridgeConfig, proxyToken: null })
+      const omitted = parseBridgeSchema(baseBridgeConfig)
+
+      expect(withToken.proxyToken).toBe("test-token-placeholder")
+      expect(withNull.proxyToken).toBeNull()
+      expect(omitted.proxyToken).toBeNull()
+      expect(warnSpy).not.toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it.each([123, true, { value: "bad" }])("rejects non-string proxyToken value %j", (invalidToken) => {
+    expect(() => parseBridgeSchema({ ...baseBridgeConfig, proxyToken: invalidToken })).toThrow(/"proxyToken" must be a string or null/)
+  })
+})
+
+describe("bridge request verification helpers", () => {
+  it("exports the canonical proxy token header name", () => {
+    expect(BRIDGE_PROXY_TOKEN_HEADER).toBe("x-litestar-proxy-token")
+  })
+
+  it.each([
+    ["exact match", "test-token-placeholder", "test-token-placeholder", true],
+    ["same-length mismatch", "test-token-placeholdeX", "test-token-placeholder", false],
+    ["shorter mismatch", "short", "test-token-placeholder", false],
+    ["longer mismatch", "test-token-placeholder-extra", "test-token-placeholder", false],
+    ["undefined header", undefined, "test-token-placeholder", false],
+    ["duplicate header array", ["test-token-placeholder"], "test-token-placeholder", false],
+    ["multi-value header array", ["test-token-placeholder", "other"], "test-token-placeholder", false],
+    ["empty expected token", "", "", false],
+  ] as const)("timingSafeTokenEqual handles %s", (_label, provided, expected, outcome) => {
+    expect(timingSafeTokenEqual(provided as string | string[] | undefined, expected)).toBe(outcome)
+  })
+
+  it.each([
+    ["127.0.0.1", true],
+    ["127.0.0.2", true],
+    ["127.255.255.254", true],
+    ["::1", true],
+    ["::ffff:127.0.0.1", true],
+    ["::FFFF:127.1.2.3", true],
+    ["192.168.1.5", false],
+    ["::ffff:192.168.1.5", false],
+    ["0.0.0.0", false],
+    ["::", false],
+    ["127.0.0.999", false],
+    ["127.evil.com", false],
+    ["", false],
+    [undefined, false],
+  ] as const)("isLoopbackAddress(%j) returns %s", (address, expected) => {
+    expect(isLoopbackAddress(address)).toBe(expected)
+  })
+
+  it.each([
+    ["application/json", true],
+    ["application/json; charset=utf-8", true],
+    ["APPLICATION/JSON;charset=UTF-8", true],
+    ["text/plain", false],
+    ["application/x-www-form-urlencoded", false],
+    [undefined, false],
+    [["application/json", "text/plain"], false],
+  ] as const)("isJsonContentType(%j) returns %s", (value, expected) => {
+    expect(isJsonContentType(value as string | string[] | undefined)).toBe(expected)
+  })
+
+  it.each([
+    [
+      "valid token and JSON content type",
+      {
+        headers: {
+          [BRIDGE_PROXY_TOKEN_HEADER]: "test-token-placeholder",
+          "content-type": "application/json; charset=utf-8",
+        },
+        socket: { remoteAddress: "10.0.0.5" },
+      },
+      "test-token-placeholder",
+      { ok: true },
+    ],
+    [
+      "wrong token",
+      {
+        headers: {
+          [BRIDGE_PROXY_TOKEN_HEADER]: "wrong-token",
+          "content-type": "application/json",
+        },
+        socket: { remoteAddress: "127.0.0.1" },
+      },
+      "test-token-placeholder",
+      { ok: false, statusCode: 403, message: "Forbidden" },
+    ],
+    [
+      "missing token header",
+      {
+        headers: { "content-type": "application/json" },
+        socket: { remoteAddress: "127.0.0.1" },
+      },
+      "test-token-placeholder",
+      { ok: false, statusCode: 403, message: "Forbidden" },
+    ],
+    [
+      "duplicate token header array",
+      {
+        headers: {
+          [BRIDGE_PROXY_TOKEN_HEADER]: ["test-token-placeholder", "test-token-placeholder"],
+          "content-type": "application/json",
+        },
+        socket: { remoteAddress: "127.0.0.1" },
+      },
+      "test-token-placeholder",
+      { ok: false, statusCode: 403, message: "Forbidden" },
+    ],
+    [
+      "standalone loopback IPv4",
+      {
+        headers: { "content-type": "application/json" },
+        socket: { remoteAddress: "127.0.0.1" },
+      },
+      null,
+      { ok: true },
+    ],
+    [
+      "standalone loopback IPv6",
+      {
+        headers: { "content-type": "application/json" },
+        socket: { remoteAddress: "::1" },
+      },
+      undefined,
+      { ok: true },
+    ],
+    [
+      "standalone non-loopback rejected",
+      {
+        headers: { "content-type": "application/json" },
+        socket: { remoteAddress: "192.168.1.5" },
+      },
+      null,
+      { ok: false, statusCode: 403, message: "Forbidden" },
+    ],
+    [
+      "missing content-type returns 415",
+      {
+        headers: { [BRIDGE_PROXY_TOKEN_HEADER]: "test-token-placeholder" },
+        socket: { remoteAddress: "127.0.0.1" },
+      },
+      "test-token-placeholder",
+      { ok: false, statusCode: 415, message: "Unsupported content type" },
+    ],
+    [
+      "wrong content-type returns 415",
+      {
+        headers: {
+          [BRIDGE_PROXY_TOKEN_HEADER]: "test-token-placeholder",
+          "content-type": "text/plain",
+        },
+        socket: { remoteAddress: "127.0.0.1" },
+      },
+      "test-token-placeholder",
+      { ok: false, statusCode: 415, message: "Unsupported content type" },
+    ],
+    [
+      "Origin header rejected with 403",
+      {
+        headers: {
+          [BRIDGE_PROXY_TOKEN_HEADER]: "test-token-placeholder",
+          "content-type": "application/json",
+          origin: "https://evil.example",
+        },
+        socket: { remoteAddress: "127.0.0.1" },
+      },
+      "test-token-placeholder",
+      {
+        ok: false,
+        statusCode: 403,
+        message: "Browser requests are not allowed on internal bridge endpoints",
+      },
+    ],
+    [
+      "Sec-Fetch-Site header rejected with 403",
+      {
+        headers: {
+          [BRIDGE_PROXY_TOKEN_HEADER]: "test-token-placeholder",
+          "content-type": "application/json",
+          "sec-fetch-site": "same-origin",
+        },
+        socket: { remoteAddress: "127.0.0.1" },
+      },
+      "test-token-placeholder",
+      {
+        ok: false,
+        statusCode: 403,
+        message: "Browser requests are not allowed on internal bridge endpoints",
+      },
+    ],
+  ])("verifyBridgeRequest: %s", (_label, req, expectedToken, expectedResult) => {
+    expect(verifyBridgeRequest(req, expectedToken)).toEqual(expectedResult)
   })
 })

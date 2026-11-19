@@ -18,6 +18,7 @@ from litestar.serialization import decode_json
 from litestar_vite.config import FSSPEC_INSTALLED
 from litestar_vite.config import DeployConfig as _DeployConfig
 from litestar_vite.exceptions import MissingDependencyError
+from litestar_vite.plugin._static import build_blocked_static_paths, is_blocked_static_metadata_path
 
 __all__ = ("FileInfo", "SyncPlan", "SyncResult", "ViteDeployer", "format_bytes")
 
@@ -134,6 +135,9 @@ class ViteDeployer:
             raise NotADirectoryError(msg)
 
         self.bundle_dir = bundle_dir
+        self._resolved_bundle_dir = bundle_dir.resolve()
+        self._manifest_name = manifest_name
+        self._blocked_paths = build_blocked_static_paths(manifest_name=manifest_name)
         manifest_rel = Path(manifest_name)
         manifest_path = bundle_dir / manifest_rel
         if (
@@ -160,46 +164,150 @@ class ViteDeployer:
         """
         return self._fs
 
+    def _resolve_contained_path(self, candidate: Path, *, source_label: str) -> tuple[Path, str]:
+        """Resolve ``candidate`` and enforce containment within ``bundle_dir``.
+
+        Args:
+            candidate: Filesystem path to resolve against the bundle directory.
+            source_label: Raw manifest entry or filename used in error diagnostics.
+
+        Returns:
+            Tuple of resolved path and POSIX path relative to the resolved bundle directory.
+
+        Raises:
+            ValueError: If the resolved path falls outside ``bundle_dir``.
+        """
+        resolved = candidate.resolve()
+        try:
+            rel = resolved.relative_to(self._resolved_bundle_dir)
+        except ValueError as exc:
+            msg = f"Manifest entry {source_label!r} resolves outside bundle directory '{self.bundle_dir}'."
+            raise ValueError(msg) from exc
+        return resolved, rel.as_posix()
+
+    def _is_within_bundle(self, candidate: Path) -> bool:
+        """Return whether ``candidate`` resolves inside the bundle directory.
+
+        Args:
+            candidate: Filesystem path to validate.
+
+        Returns:
+            ``True`` when ``candidate`` resolves inside ``bundle_dir``, ``False`` otherwise.
+        """
+        try:
+            candidate.resolve().relative_to(self._resolved_bundle_dir)
+        except (ValueError, OSError, RuntimeError):
+            return False
+        return True
+
+    def _is_excluded_deploy_path(self, rel_posix: str) -> bool:
+        """Return whether ``rel_posix`` is blocked from default deployment uploads.
+
+        Args:
+            rel_posix: Bundle-relative POSIX path to check.
+
+        Returns:
+            ``True`` when the path targets blocked metadata, dotfiles, or disabled source maps.
+        """
+        if is_blocked_static_metadata_path(rel_posix, self._blocked_paths):
+            return True
+        return not self.config.include_sourcemaps and rel_posix.lower().endswith(".map")
+
+    def _normalize_manifest_entry(self, raw_entry: str) -> str:
+        """Validate a raw manifest entry before resolving it within the bundle directory.
+
+        Args:
+            raw_entry: Raw path string extracted from the Vite manifest.
+
+        Returns:
+            Normalized bundle-relative POSIX path string.
+
+        Raises:
+            ValueError: If the entry uses backslashes, double slashes, empty segments, or ``..``.
+        """
+        if "\\" in raw_entry or raw_entry.startswith("//"):
+            msg = f"Manifest entry {raw_entry!r} resolves outside bundle directory '{self.bundle_dir}'."
+            raise ValueError(msg)
+        rel_entry = raw_entry.removeprefix("/")
+        if not rel_entry or Path(rel_entry).is_absolute() or any(part in {"", ".."} for part in rel_entry.split("/")):
+            msg = f"Manifest entry {raw_entry!r} resolves outside bundle directory '{self.bundle_dir}'."
+            raise ValueError(msg)
+        return rel_entry
+
+    def _collect_manifest_entries(self, manifest_paths: set[str], files: dict[str, FileInfo]) -> None:
+        """Resolve and collect manifest-referenced assets and optional source maps.
+
+        Args:
+            manifest_paths: Raw path entries extracted from the Vite manifest.
+            files: Dictionary mapping bundle-relative paths to file metadata to populate.
+        """
+        for raw_entry in manifest_paths:
+            rel_entry = self._normalize_manifest_entry(raw_entry)
+            resolved, rel_posix = self._resolve_contained_path(
+                self._resolved_bundle_dir / rel_entry, source_label=raw_entry
+            )
+            if (
+                resolved.is_file()
+                and not self._is_excluded_deploy_path(rel_entry)
+                and not self._is_excluded_deploy_path(rel_posix)
+            ):
+                stat = resolved.stat()
+                files[rel_posix] = FileInfo(path=rel_posix, size=stat.st_size, mtime=stat.st_mtime)
+
+            if self.config.include_sourcemaps:
+                map_rel_entry = f"{rel_entry}.map"
+                map_candidate = self._resolved_bundle_dir / map_rel_entry
+                if map_candidate.exists() and map_candidate.is_file():
+                    map_resolved, map_rel_posix = self._resolve_contained_path(
+                        map_candidate, source_label=f"{raw_entry}.map"
+                    )
+                    if not is_blocked_static_metadata_path(
+                        map_rel_entry, self._blocked_paths
+                    ) and not is_blocked_static_metadata_path(map_rel_posix, self._blocked_paths):
+                        map_stat = map_resolved.stat()
+                        files[map_rel_posix] = FileInfo(
+                            path=map_rel_posix, size=map_stat.st_size, mtime=map_stat.st_mtime
+                        )
+
     def collect_local_files(self) -> dict[str, FileInfo]:
         """Collect local files to publish.
 
         Returns:
             Mapping of relative paths to file metadata.
+
+        Raises:
+            ValueError: If a manifest entry or explicit manifest resolves outside ``bundle_dir``.
         """
-
         manifest_paths = self._get_manifest_paths()
-
-        include_manifest = self.config.include_manifest and self.manifest_path.exists()
         files: dict[str, FileInfo] = {}
 
         if manifest_paths:
-            candidate_paths: list[Path] = [self.bundle_dir / p.lstrip("/") for p in manifest_paths]
-            for p in manifest_paths:
-                map_path = self.bundle_dir / f"{p.lstrip('/')}.map"
-                if map_path.exists():
-                    candidate_paths.append(map_path)
-            if include_manifest:
-                candidate_paths.append(self.manifest_path)
-            candidates: Iterable[Path] = candidate_paths
-        else:
-            candidates = self.bundle_dir.rglob("*")
-
-        for path in candidates:
-            if path.is_dir():
-                continue
-            if not path.exists():
-                continue
-            rel_path = path.relative_to(self.bundle_dir).as_posix()
-            stat = path.stat()
-            files[rel_path] = FileInfo(path=rel_path, size=stat.st_size, mtime=stat.st_mtime)
-
-        if manifest_paths:
+            self._collect_manifest_entries(manifest_paths, files)
             self._index_unmanaged_files(manifest_paths, files)
+        else:
+            for path in self.bundle_dir.rglob("*"):
+                if path.is_dir() or not path.exists() or not self._is_within_bundle(path):
+                    continue
+                rel_posix = path.relative_to(self.bundle_dir).as_posix()
+                resolved_rel = path.resolve().relative_to(self._resolved_bundle_dir).as_posix()
+                if self._is_excluded_deploy_path(rel_posix) or self._is_excluded_deploy_path(resolved_rel):
+                    continue
+                stat = path.stat()
+                files[rel_posix] = FileInfo(path=rel_posix, size=stat.st_size, mtime=stat.st_mtime)
+
+        if self.config.include_manifest and self.manifest_path.exists() and self.manifest_path.is_file():
+            manifest_resolved, manifest_rel = self._resolve_contained_path(
+                self.manifest_path, source_label=self._manifest_name
+            )
+            stat = manifest_resolved.stat()
+            files[manifest_rel] = FileInfo(path=manifest_rel, size=stat.st_size, mtime=stat.st_mtime)
 
         index_html = self.bundle_dir / "index.html"
-        if index_html.exists():
-            stat = index_html.stat()
-            files.setdefault("index.html", FileInfo(path="index.html", size=stat.st_size, mtime=stat.st_mtime))
+        if index_html.is_file() and self._is_within_bundle(index_html):
+            resolved_index_rel = index_html.resolve().relative_to(self._resolved_bundle_dir).as_posix()
+            if not self._is_excluded_deploy_path(resolved_index_rel):
+                stat = index_html.stat()
+                files.setdefault("index.html", FileInfo(path="index.html", size=stat.st_size, mtime=stat.st_mtime))
 
         return files
 
@@ -221,19 +329,20 @@ class ViteDeployer:
         """
         managed_dirs: set[str] = {".vite"}
         for p in manifest_paths:
-            parts = Path(p.lstrip("/")).parts
+            parts = Path(p.removeprefix("/")).parts
             if len(parts) > 1:
                 managed_dirs.add(parts[0])
 
         for path in self.bundle_dir.rglob("*"):
-            if path.is_dir():
-                continue
-            if not path.exists():
+            if path.is_dir() or not path.exists() or not self._is_within_bundle(path):
                 continue
             rel = path.relative_to(self.bundle_dir)
             if rel.parts and rel.parts[0] in managed_dirs:
                 continue
             rel_posix = rel.as_posix()
+            resolved_rel = path.resolve().relative_to(self._resolved_bundle_dir).as_posix()
+            if self._is_excluded_deploy_path(rel_posix) or self._is_excluded_deploy_path(resolved_rel):
+                continue
             stat = path.stat()
             files.setdefault(rel_posix, FileInfo(path=rel_posix, size=stat.st_size, mtime=stat.st_mtime))
 
@@ -434,11 +543,11 @@ class ViteDeployer:
                     continue
                 file_path = value.get("file")
                 if isinstance(file_path, str):
-                    paths.add(file_path.lstrip("/"))
+                    paths.add(file_path)
                 for field in ("css", "assets"):
                     for item in value.get(field, []) or []:
                         if isinstance(item, str):
-                            paths.add(item.lstrip("/"))
+                            paths.add(item)
         return paths
 
     def _relative_remote_path(self, full_path: str, base: str) -> str:

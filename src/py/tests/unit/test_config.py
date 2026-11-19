@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path, PosixPath
 from typing import Any, cast
 
@@ -16,6 +17,7 @@ from litestar_vite.config import (
 from litestar_vite.config._inertia import InertiaConfig, InertiaSSRConfig
 from litestar_vite.config._runtime import _cached_resolve_proxy_mode
 from litestar_vite.executor import BunExecutor, NodeenvExecutor, NodeExecutor
+from litestar_vite.inertia.helpers import always, defer, lazy, merge, once, optional
 
 # C2 narrowed ViteConfig.mode to a Literal union; parametrize over `str` for
 # readability and cast at the call site so mypy is satisfied without burying the
@@ -235,6 +237,23 @@ def test_typegen_config_string_paths_normalize() -> None:
     assert config.routes_ts_path == Path("routes.ts")
     assert config.page_props_path == Path("pages.json")
     assert config.schemas_ts_path == Path("schemas.ts")
+
+
+def test_typegen_config_route_filter_defaults() -> None:
+    config = TypeGenConfig()
+    assert config.exclude_routes == ()
+    assert config.only_routes == ()
+
+
+@pytest.mark.parametrize(
+    ("exclude_routes", "only_routes"), [(["admin"], ("api",)), (("internal", "debug"), ["public"]), ([], ())]
+)
+def test_typegen_config_route_filter_custom_values(
+    exclude_routes: list[str] | tuple[str, ...], only_routes: list[str] | tuple[str, ...]
+) -> None:
+    config = TypeGenConfig(exclude_routes=exclude_routes, only_routes=only_routes)
+    assert config.exclude_routes == exclude_routes
+    assert config.only_routes == only_routes
 
 
 def test_runtime_config_external_dev_server_string_normalization() -> None:
@@ -587,6 +606,24 @@ def test_spa_config_custom_values() -> None:
     assert spa_config.cache_transformed_html is False
 
 
+@pytest.mark.parametrize("csrf_var_name", ["__LITESTAR_CSRF__", "$csrf", "_token1", "_x1", "CSRF_TOKEN"])
+def test_spa_config_valid_csrf_var_name(csrf_var_name: str) -> None:
+    """Test SPAConfig accepts valid JavaScript identifiers for csrf_var_name."""
+    spa_config = SPAConfig(csrf_var_name=csrf_var_name)
+
+    assert spa_config.csrf_var_name == csrf_var_name
+
+
+@pytest.mark.parametrize(
+    "csrf_var_name",
+    ["", "1abc", "1token", "a.b", "a;alert(1)", "x;y", "foo-bar", "foo bar", "a b", "__LITESTAR_CSRF__\n"],
+)
+def test_spa_config_invalid_csrf_var_name(csrf_var_name: str) -> None:
+    """Test SPAConfig rejects invalid JavaScript identifiers for csrf_var_name."""
+    with pytest.raises(ValueError, match="csrf_var_name"):
+        SPAConfig(csrf_var_name=csrf_var_name)
+
+
 def test_vite_config_spa_bool_shortcut() -> None:
     """Test spa=True creates SPAConfig with defaults."""
     config = ViteConfig(spa=True)
@@ -846,6 +883,80 @@ def test_inertia_ssr_config_rejects_non_positive_timeout_at_init(bad_timeout: fl
     """InertiaSSRConfig validates that timeout is strictly positive at construction time."""
     with pytest.raises(ValueError, match="timeout must be positive"):
         InertiaSSRConfig(timeout=bad_timeout)
+
+
+def test_inertia_config_extra_static_page_props_valid() -> None:
+    """InertiaConfig accepts plain static values and nested static containers."""
+    static_props: dict[str, Any] = {
+        "env": "prod",
+        "count": 42,
+        "enabled": True,
+        "empty": None,
+        "raw": b"bytes",
+        "flags": {"beta": True},
+        "tags": ["a"],
+        "pair": ("x", 1),
+    }
+
+    config = InertiaConfig(extra_static_page_props=static_props)
+
+    assert config.extra_static_page_props == static_props
+
+
+def test_inertia_config_extra_static_page_props_empty_skips_helpers_import(monkeypatch: pytest.MonkeyPatch) -> None:
+    """InertiaConfig skips importing inertia helpers when extra_static_page_props is empty."""
+    monkeypatch.setitem(sys.modules, "litestar_vite.inertia.helpers", None)
+
+    default_config = InertiaConfig()
+    empty_config = InertiaConfig(extra_static_page_props={})
+
+    assert default_config.extra_static_page_props == {}
+    assert empty_config.extra_static_page_props == {}
+
+
+@pytest.mark.parametrize(
+    ("case_name", "prop_value"),
+    [
+        ("static_prop", lazy("k", 1)),
+        ("lazy_deferred_prop", lazy("k", lambda: 1)),
+        ("deferred_prop", defer("k", lambda: 1)),
+        ("once_prop", once("k", 1)),
+        ("optional_prop", optional("k", lambda: 1)),
+        ("always_prop", always("k", 1)),
+        ("merge_prop", merge("k", [1])),
+    ],
+)
+def test_inertia_config_extra_static_page_props_rejects_top_level_dynamic_props(
+    case_name: str, prop_value: Any
+) -> None:
+    """InertiaConfig rejects special and merge prop wrappers at the top level."""
+    with pytest.raises(ValueError, match="extra_static_page_props") as exc_info:
+        InertiaConfig(extra_static_page_props={"k": prop_value})
+
+    message = str(exc_info.value)
+    assert "'k'" in message, case_name
+    assert "share()" in message
+
+
+@pytest.mark.parametrize(
+    ("expected_key", "props"),
+    [
+        ("nested", {"nested": {"inner": once("inner", 1)}}),
+        ("items", {"items": [defer("d", lambda: 1)]}),
+        ("pair", {"pair": (always("a", 1),)}),
+        ("deep", {"deep": {"entries": [{"merged": merge("m", [1])}]}}),
+    ],
+)
+def test_inertia_config_extra_static_page_props_rejects_nested_dynamic_props(
+    expected_key: str, props: dict[str, Any]
+) -> None:
+    """InertiaConfig rejects special and merge prop wrappers nested inside dicts, lists, and tuples."""
+    with pytest.raises(ValueError, match="extra_static_page_props") as exc_info:
+        InertiaConfig(extra_static_page_props=props)
+
+    message = str(exc_info.value)
+    assert repr(expected_key) in message
+    assert "share()" in message
 
 
 def test_validate_mode_rejects_negative_ssr_timeout() -> None:

@@ -411,3 +411,63 @@ def test_proxy_target_recovers_after_initial_missing_hotfile(tmp_path: Path, mon
     fake_time[0] += 1.0
 
     assert middleware._get_target_base_url() == "http://localhost:5173"
+
+
+@pytest.mark.parametrize(
+    "blocked_path",
+    [
+        "/.litestar.json",
+        "/%2elitestar.json",
+        "/%252elitestar.json",
+        "/@fs/project/.litestar.json",
+        "/.env",
+        "/.env.local",
+        "/@fs/project/.env",
+        "/@fs/project/.env.production/values.json",
+        "/.git/config",
+        "/@fs/project/.git/HEAD",
+        "/@fs/project/.npmrc",
+        "/node_modules/.pnpm/.modules.yaml/.hidden",
+        "/.well-known/.litestar.json",
+        "/.well-known/.env",
+    ],
+)
+def test_should_proxy_rejects_bridge_env_git_and_dotfiles(hotfile: Path, blocked_path: str) -> None:
+    """Bridge config, env files, Git metadata, and dotfiles must never be proxied to Vite."""
+
+    async def noop(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    default_middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
+    root_middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile, asset_url="/")
+    scope: Scope = {"type": "http", "path": "/", "headers": []}  # type: ignore
+
+    assert not default_middleware._should_proxy(blocked_path, scope)
+    assert not root_middleware._should_proxy(blocked_path, scope)
+
+
+@pytest.mark.parametrize(
+    "allowed_path",
+    [
+        "/@vite/client",
+        "/@id/virtual:litestar-static-props",
+        "/@fs/project/src/main.ts",
+        "/@react-refresh",
+        "/.well-known/appspecific/com.chrome.devtools.json",
+        "/node_modules/.vite/deps/vue.js",
+        "/node_modules/.pnpm/vue@3.5.0/node_modules/vue/dist/vue.runtime.esm-bundler.js",
+        "/@fs/project/node_modules/.pnpm/@fontsource+inter@5.0.0/node_modules/@fontsource/inter/index.css",
+        "/@fs/project/.yarn/__virtual__/pkg-virtual-abc/0/cache/pkg/index.js",
+        "/@fs/home/dev/.worktrees/app/src/main.ts",
+    ],
+)
+def test_should_proxy_keeps_vite_package_manager_and_well_known_paths(hotfile: Path, allowed_path: str) -> None:
+    """Vite endpoints, package-manager dot-directories, and .well-known remain proxied."""
+
+    async def noop(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
+    scope: Scope = {"type": "http", "path": "/", "headers": []}  # type: ignore
+
+    assert middleware._should_proxy(allowed_path, scope)

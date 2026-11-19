@@ -1,10 +1,10 @@
 """Tests for ProxyHeadersMiddleware and TrustedHosts."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from litestar_vite.plugin._proxy import ProxyHeadersMiddleware, TrustedHosts
+from litestar_vite.plugin._proxy import ProxyHeadersMiddleware, TrustedHosts, _parse_authority
 
 if TYPE_CHECKING:
     from litestar.types import Receive, Scope, Send
@@ -501,9 +501,21 @@ async def test_middleware_cidr_trust() -> None:
     assert recorder.scopes[0]["scheme"] == "https"
 
 
+async def _invoke_proxy_middleware(middleware: ProxyHeadersMiddleware, scope: dict[str, Any]) -> None:
+    """Invoke middleware with minimal typed ASGI stubs."""
+
+    async def _receive() -> dict[str, Any]:
+        return {}
+
+    async def _send(_message: dict[str, Any]) -> None:
+        return None
+
+    await middleware(cast("Scope", scope), cast("Receive", _receive), cast("Send", _send))
+
+
 @pytest.mark.anyio
-async def test_middleware_multiple_headers_first_wins() -> None:
-    """Test that first occurrence of header is used."""
+async def test_middleware_repeated_conflicting_forwarded_proto_ignored() -> None:
+    """Test that repeated conflicting X-Forwarded-Proto headers are joined and rejected."""
     recorder = _ScopeRecorder()
 
     middleware = ProxyHeadersMiddleware(recorder, trusted_hosts="*")
@@ -512,15 +524,198 @@ async def test_middleware_multiple_headers_first_wins() -> None:
         "type": "http",
         "scheme": "http",
         "client": ("127.0.0.1", 12345),
-        "headers": [
-            (b"x-forwarded-proto", b"https"),
-            (b"x-forwarded-proto", b"http"),  # Second occurrence should be ignored
-        ],
+        "headers": [(b"x-forwarded-proto", b"https"), (b"x-forwarded-proto", b"http")],
     }
 
-    await middleware(scope, lambda: ..., lambda x: ...)  # type: ignore
+    await _invoke_proxy_middleware(middleware, scope)
+
+    assert recorder.scopes[0]["scheme"] == "http"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("trusted_hosts", "client_ip", "headers", "expected_client"),
+    [
+        (
+            "10.0.0.1",
+            "10.0.0.1",
+            [(b"x-forwarded-for", b"1.2.3.4"), (b"x-forwarded-for", b"5.6.7.8, 10.0.0.1")],
+            ("5.6.7.8", 0),
+        ),
+        (
+            "127.0.0.1",
+            "127.0.0.1",
+            [(b"x-forwarded-for", b"1.2.3.4"), (b"x-forwarded-for", b"5.6.7.8")],
+            ("5.6.7.8", 0),
+        ),
+        (
+            "10.0.0.1",
+            "10.0.0.1",
+            [(b"X-Forwarded-For", b"1.2.3.4"), (b"X-Forwarded-For", b"5.6.7.8, 10.0.0.1")],
+            ("5.6.7.8", 0),
+        ),
+    ],
+)
+async def test_middleware_repeated_forwarded_for_headers_right_to_left(
+    trusted_hosts: str, client_ip: str, headers: list[tuple[bytes, bytes]], expected_client: tuple[str, int]
+) -> None:
+    """Test that repeated X-Forwarded-For headers are joined and resolved right-to-left."""
+    recorder = _ScopeRecorder()
+    middleware = ProxyHeadersMiddleware(recorder, trusted_hosts=trusted_hosts)
+
+    scope = {"type": "http", "scheme": "http", "client": (client_ip, 12345), "headers": headers}
+
+    await _invoke_proxy_middleware(middleware, scope)
+
+    assert recorder.scopes[0]["client"] == expected_client
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("raw_host", "expected_host"),
+    [
+        (b"example.com", b"example.com"),
+        (b"sub.example.com:8443", b"sub.example.com:8443"),
+        (b"localhost:8000", b"localhost:8000"),
+        (b"127.0.0.1:8000", b"127.0.0.1:8000"),
+        (b"[::1]", b"[::1]"),
+        (b"[::1]:8000", b"[::1]:8000"),
+        (b"[2001:db8::1]:443", b"[2001:db8::1]:443"),
+        (b"  example.com:8080\t", b"example.com:8080"),
+    ],
+)
+async def test_middleware_valid_forwarded_host_authorities(raw_host: bytes, expected_host: bytes) -> None:
+    """Test that valid single-authority X-Forwarded-Host values rewrite Host."""
+    recorder = _ScopeRecorder()
+    middleware = ProxyHeadersMiddleware(recorder, trusted_hosts="127.0.0.1", handle_forwarded_host=True)
+
+    scope = {
+        "type": "http",
+        "scheme": "http",
+        "client": ("127.0.0.1", 12345),
+        "headers": [(b"host", b"internal.local"), (b"x-forwarded-host", raw_host)],
+    }
+
+    await _invoke_proxy_middleware(middleware, scope)
+
+    headers = dict(recorder.scopes[0]["headers"])
+    assert headers[b"host"] == expected_host
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "invalid_host",
+    [
+        b"a.com, b.com",
+        b"a.com b.com",
+        b"a.com/path",
+        b"a.com\\path",
+        b"user@a.com",
+        b"a.com?q=1",
+        b"a.com#x",
+        b"a.com:0",
+        b"a.com:70000",
+        b"a.com:abc",
+        b"a.com\r\nx: 1",
+        b"a.com\r\n",
+        b"[not-ip]",
+        b"[fe80::1%eth0]",
+        b"::1",
+        b"",
+    ],
+)
+async def test_middleware_invalid_forwarded_host_preserves_original_host(invalid_host: bytes) -> None:
+    """Test that invalid X-Forwarded-Host values leave the original Host untouched."""
+    recorder = _ScopeRecorder()
+    middleware = ProxyHeadersMiddleware(recorder, trusted_hosts="127.0.0.1", handle_forwarded_host=True)
+
+    scope = {
+        "type": "http",
+        "scheme": "http",
+        "client": ("127.0.0.1", 12345),
+        "headers": [(b"host", b"internal.local"), (b"x-forwarded-host", invalid_host)],
+    }
+
+    await _invoke_proxy_middleware(middleware, scope)
+
+    assert recorder.scopes[0]["headers"] == [(b"host", b"internal.local"), (b"x-forwarded-host", invalid_host)]
+
+
+@pytest.mark.anyio
+async def test_middleware_repeated_forwarded_host_headers_ignored() -> None:
+    """Test that repeated X-Forwarded-Host headers join with comma and leave Host unchanged."""
+    recorder = _ScopeRecorder()
+    middleware = ProxyHeadersMiddleware(recorder, trusted_hosts="127.0.0.1", handle_forwarded_host=True)
+
+    initial_headers = [(b"host", b"internal.local"), (b"x-forwarded-host", b"a.com"), (b"x-forwarded-host", b"b.com")]
+    scope = {"type": "http", "scheme": "http", "client": ("127.0.0.1", 12345), "headers": initial_headers}
+
+    await _invoke_proxy_middleware(middleware, scope)
+
+    assert recorder.scopes[0]["headers"] == initial_headers
+
+
+@pytest.mark.anyio
+async def test_middleware_forwarded_host_replaces_case_insensitive_and_drops_duplicates() -> None:
+    """Test that Host rewriting replaces the first Host header case-insensitively and drops duplicates."""
+    recorder = _ScopeRecorder()
+    middleware = ProxyHeadersMiddleware(recorder, trusted_hosts="127.0.0.1", handle_forwarded_host=True)
+
+    scope = {
+        "type": "http",
+        "scheme": "http",
+        "client": ("127.0.0.1", 12345),
+        "headers": [(b"Host", b"internal.local"), (b"HOST", b"duplicate.local"), (b"X-Forwarded-Host", b"example.com")],
+    }
+
+    await _invoke_proxy_middleware(middleware, scope)
+
+    host_headers = [(k, v) for k, v in recorder.scopes[0]["headers"] if k.lower() == b"host"]
+    assert host_headers == [(b"host", b"example.com")]
+
+
+@pytest.mark.anyio
+async def test_middleware_case_insensitive_forwarded_proto_header_name() -> None:
+    """Test that mixed-case X-Forwarded-Proto header names are recognized."""
+    recorder = _ScopeRecorder()
+    middleware = ProxyHeadersMiddleware(recorder, trusted_hosts="127.0.0.1")
+
+    scope = {
+        "type": "http",
+        "scheme": "http",
+        "client": ("127.0.0.1", 12345),
+        "headers": [(b"X-Forwarded-Proto", b"https")],
+    }
+
+    await _invoke_proxy_middleware(middleware, scope)
 
     assert recorder.scopes[0]["scheme"] == "https"
+
+
+@pytest.mark.parametrize(
+    ("raw_authority", "expected"),
+    [
+        ("EXAMPLE.COM:8443", ("example.com", 8443)),
+        ("  localhost:1\t", ("localhost", 1)),
+        ("example.com.:65535", ("example.com.", 65535)),
+        ("[0:0::1]:8000", ("[::1]", 8000)),
+        ("[2001:0db8:0000:0000::1]", ("[2001:db8::1]", None)),
+        ("[::1", None),
+        ("[::1]extra", None),
+        ("[::1]:", None),
+        ("[::1]:0", None),
+        ("[::1]:65536", None),
+        ("a.com:", None),
+        (":8000", None),
+        ("a.com:\u00b2", None),
+        ("a" * 254, None),
+    ],
+)
+def test_parse_authority_canonicalization_and_boundaries(
+    raw_authority: str, expected: tuple[str, int | None] | None
+) -> None:
+    """Test _parse_authority normalization for IPv6 compression, casing, and boundary cases."""
+    assert _parse_authority(raw_authority) == expected
 
 
 @pytest.mark.anyio

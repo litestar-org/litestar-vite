@@ -2,6 +2,31 @@
 
 Notable changes to this project are documented in this file.
 
+## 0.34.0 - 2026-11-19
+
+### Added
+
+- Added `escape_json_for_html()` in `litestar_vite.html_transform`, the `inertia_page` `Markup` template context variable in `InertiaResponse.create_template_context()`, `TypeGenConfig.only_routes` and `TypeGenConfig.exclude_routes` for filtering exported routes and Inertia pages, `DeployConfig.include_sourcemaps` (`--include-sourcemaps` CLI flag), and configurable QuickJS memory and stack limits on `RuntimeConfig` / `WasmIPCTransport`. ([#407](https://github.com/litestar-org/litestar-vite/pull/407))
+- Added `SECURITY.md` and maintainer-scoped `.github/CODEOWNERS` rules for workflow and package manifests. ([#407](https://github.com/litestar-org/litestar-vite/pull/407))
+
+### Fixed
+
+- Standardized HTML-safe JSON serialization across `inject_page_script()`, `ViteAssetLoader.render_routes()`, `AppHandler._transform_html()`, and `InertiaResponse.create_template_context()`, escaped fragment CSS links and Jinja CSRF inputs, replaced regex string interpolation in `set_data_attribute()`, and moved SPA HTML shell caching ahead of per-request CSRF injection. ([#407](https://github.com/litestar-org/litestar-vite/pull/407))
+- Scoped Inertia prop evaluation caches (`DeferredProp`, `OnceProp`, `OptionalProp`) to the active request instead of mutating shared prop instances, bounded partial-reload headers and unconsumed session flash queues, and masked 5xx exception details when `app.debug` is `False`. ([#407](https://github.com/litestar-org/litestar-vite/pull/407))
+- Replaced regex tag stripping in `sanitizeHtml()` with an element and attribute allowlist (with `<form>` DOM-clobbering guards), isolated `ls-html`/`ls-text` swaps from nested directive execution, restricted `expression.ts` primitive calls to an explicit allowlist, encoded path parameters and rejected `.`/`..` segments in `formatRouteUrl()` and generated `routes.ts`, and restricted `csrfFetch()` and HTMX CSRF headers to same-origin (`document.baseURI`) or explicit `trustedOrigins` targets. ([#407](https://github.com/litestar-org/litestar-vite/pull/407))
+- Aligned `ProxyHeadersMiddleware` with RFC 9110 repeated forwarded headers and strict authority validation, validated development WebSocket `Origin` headers and hotfile bare origins, normalized static metadata filtering (including symlinked subdirectories), and preserved explicit `dev_mode=False`. ([#407](https://github.com/litestar-org/litestar-vite/pull/407))
+- Standardized TypeScript and Python codegen literal escaping and identifier/reserved-word validation, excluded `include_in_schema=False` routes from codegen exports, and aligned scaffold and example defaults to loopback dev servers and environment-driven debug/session settings. ([#407](https://github.com/litestar-org/litestar-vite/pull/407))
+
+### Changed
+
+- **Breaking**: Vite development server binding now defaults to `127.0.0.1` instead of `0.0.0.0`, and `VITE_ALLOW_REMOTE` is no longer set by default. Docker or remote development setups must set `VITE_ALLOW_REMOTE=1` or configure `server.host` explicitly. ([#407](https://github.com/litestar-org/litestar-vite/pull/407))
+- **Breaking**: CLI type generation (`litestar assets generate-types`) now resolves `litestar-vite-typegen` from local `node_modules/.bin` and no longer falls back to `npx` when the binary is absent. Install `litestar-vite-plugin` in project `devDependencies` or ensure the binary is on `PATH`. ([#407](https://github.com/litestar-org/litestar-vite/pull/407))
+- **Breaking**: Inertia redirect resolution (`_get_redirect_url()`) now accepts only leading-slash relative paths or same-origin HTTP(S) URLs, falling back to the configured redirect target for cross-origin or protocol-relative `Referer` headers. ([#407](https://github.com/litestar-org/litestar-vite/pull/407))
+- **Breaking**: `VitePlugin.get_static_server_config()` narrows Granian's `StaticPlacement.NATIVE` mount to `<asset_url>/assets` when `bundle_dir` contains build metadata (such as `manifest.json` or `.vite/manifest.json`), serving top-level `bundle_dir` files through Litestar's ASGI static router with `404` responses for metadata files and dotfiles; non-dev static serving also no longer mounts `resource_dir` under `asset_url`. ([#407](https://github.com/litestar-org/litestar-vite/pull/407))
+- Raised the `jinja` extra floor to `jinja2>=3.1.6` and updated the `vite` peer dependency range in `package.json` to `^7.3.7 || >=8.3.3`. ([#407](https://github.com/litestar-org/litestar-vite/pull/407))
+- Defaulted `VITE_AUTO_DEV_MODE`, `DeployConfig.delete_orphaned`, and `DeployConfig.include_sourcemaps` to `False`, moved Nuxt `apiProxy` into server-only `runtimeConfig.litestar`, and enabled per-run bridge token verification and `server.fs.deny` rules for `.litestar.json` and hotfiles in development mode. ([#407](https://github.com/litestar-org/litestar-vite/pull/407))
+- Split `.github/workflows/publish.yml` into isolated build and tag-guarded release jobs, added least-privilege `contents: read` permissions, pinned external GitHub Actions across `.github/workflows/*.yml` to full commit SHAs, and refreshed Python, JavaScript, and pre-commit dependencies. ([#407](https://github.com/litestar-org/litestar-vite/pull/407))
+
 ## 0.33.1 - 2026-11-16
 
 ### Fixed

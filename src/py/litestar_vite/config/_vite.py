@@ -15,7 +15,13 @@ from litestar_vite.config._constants import FSSPEC_INSTALLED, JINJA_INSTALLED, T
 from litestar_vite.config._deploy import DeployConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._inertia import InertiaConfig, InertiaSSRConfig, InertiaTypeGenConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._paths import PathConfig  # pyright: ignore[reportPrivateUsage]
-from litestar_vite.config._runtime import ExternalDevServer, RuntimeConfig, detect_runtime  # pyright: ignore[reportPrivateUsage]
+from litestar_vite.config._runtime import (
+    _UNSET_DEV_MODE,  # pyright: ignore[reportPrivateUsage]
+    ExternalDevServer,
+    RuntimeConfig,
+    _unset_dev_mode,  # pyright: ignore[reportPrivateUsage]
+    detect_runtime,
+)
 from litestar_vite.config._spa import LoggingConfig, SPAConfig  # pyright: ignore[reportPrivateUsage]
 from litestar_vite.config._types import TypeGenConfig  # pyright: ignore[reportPrivateUsage]
 
@@ -153,8 +159,8 @@ class ViteConfig:
     """SPA HTML transformation settings (`True` for default `SPAConfig()`, `False` to disable)."""
     logging: "LoggingConfig | bool | None" = None
     """Console output and banner logging settings (`True`/`None` for default `LoggingConfig()`)."""
-    dev_mode: bool = False
-    """Shortcut flag that sets `runtime.dev_mode = True` when enabled."""
+    dev_mode: bool = field(default_factory=_unset_dev_mode)
+    """Shortcut flag that explicitly sets `runtime.dev_mode` to `True` or `False` when provided."""
     base_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_BASE_URL"))
     """Base URL prefix for the application entrypoint (`VITE_BASE_URL`)."""
     deploy: "DeployConfig | bool" = False
@@ -174,6 +180,16 @@ class ViteConfig:
 
     _executor_instance: "JSExecutor | None" = field(default=None, repr=False)
     _mode_auto_detected: bool = field(default=False, repr=False)
+    _dev_mode_explicit: bool = field(default=False, init=False, repr=False)
+
+    @property
+    def has_explicit_dev_mode(self) -> bool:
+        """Return whether development mode was explicitly configured on the root or runtime config.
+
+        Returns:
+            True when ``dev_mode`` was explicitly set on ``ViteConfig``, ``RuntimeConfig``, or ``VITE_DEV_MODE``.
+        """
+        return self._dev_mode_explicit or self.runtime.has_explicit_dev_mode
 
     def __post_init__(self) -> None:
         """Normalize configurations and apply shortcuts."""
@@ -338,8 +354,13 @@ class ViteConfig:
 
     def _apply_dev_mode_shortcut(self) -> None:
         """Apply dev mode shortcuts to the runtime configuration."""
-        if self.dev_mode:
-            self.runtime.dev_mode = True
+        if self.dev_mode is _UNSET_DEV_MODE:
+            self.dev_mode = False
+            self._dev_mode_explicit = False
+            return
+        self.dev_mode = bool(self.dev_mode)
+        self._dev_mode_explicit = True
+        self.runtime.apply_explicit_dev_mode(self.dev_mode)
 
     def _auto_detect_mode(self) -> None:
         if self.mode is None:
@@ -468,13 +489,30 @@ class ViteConfig:
             self.spa = False
 
     def _auto_enable_dev_mode(self) -> None:
-        if not self._mode_auto_detected:
+        if not self._mode_auto_detected or self.has_explicit_dev_mode:
             return
 
-        auto_dev_mode = os.getenv("VITE_AUTO_DEV_MODE", "True") in TRUE_VALUES
+        auto_dev_mode = os.getenv("VITE_AUTO_DEV_MODE", "False").strip() in TRUE_VALUES
         if auto_dev_mode and not self.runtime.dev_mode and self.wants_spa_config and not self.has_built_assets():
             self.runtime.dev_mode = True
             self._apply_proxy_mode_defaults()
+
+    def enable_debug_auto_dev_mode(self) -> bool:
+        """Enable development mode automatically for debug apps when dev_mode was omitted.
+
+        Returns:
+            True when development mode was enabled by this call, otherwise False.
+        """
+        if self.has_explicit_dev_mode or self.runtime.dev_mode or not self.wants_spa_config or self.has_built_assets():
+            return False
+
+        env_auto = os.getenv("VITE_AUTO_DEV_MODE")
+        if env_auto is not None and env_auto.strip() not in TRUE_VALUES:
+            return False
+
+        self.runtime.dev_mode = True
+        self._apply_proxy_mode_defaults()
+        return True
 
     def _detect_mode(self) -> Literal["spa", "template", "hybrid"]:
         """Auto-detect the serving mode based on project structure.

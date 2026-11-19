@@ -1,6 +1,7 @@
 """Tests for VitePlugin functionality and integration."""
 
 import gc
+import logging
 import signal
 import subprocess
 import sys
@@ -127,15 +128,17 @@ def test_static_server_config_asgi_without_reason_raises() -> None:
 
 
 def test_vite_plugin_get_static_server_config_returns_production_bundle_mount(tmp_path: Path) -> None:
-    """A valid production Vite bundle is eligible for native static serving."""
+    """A valid production Vite bundle with manifest mounts its clean assets subdirectory natively."""
     bundle_dir = tmp_path / "dist"
-    bundle_dir.mkdir()
-    (bundle_dir / "manifest.json").write_text('{"src/main.ts":{"file":"assets/main.js"}}', encoding="utf-8")
+    assets_dir = bundle_dir / "assets"
+    assets_dir.mkdir(parents=True)
+    (bundle_dir / "manifest.json").write_text('{"src/main.ts":{"file":"assets/main-12345678.js"}}', encoding="utf-8")
+    (assets_dir / "main-12345678.js").write_text("console.log('ok');", encoding="utf-8")
 
     plugin = VitePlugin(
         config=ViteConfig(
             mode="template",
-            paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir, asset_url="/assets/"),
+            paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir, asset_url="/static/"),
             runtime=RuntimeConfig(dev_mode=False),
         )
     )
@@ -145,16 +148,19 @@ def test_vite_plugin_get_static_server_config_returns_production_bundle_mount(tm
     assert config.placement is StaticPlacement.NATIVE
     assert config.reason is None
     assert len(config.mounts) == 1
-    assert config.mounts[0].route == "/assets"
-    assert config.mounts[0].directory == bundle_dir.resolve()
+    assert config.mounts[0].route == "/static/assets"
+    assert config.mounts[0].directory == assets_dir.resolve()
     assert config.mounts[0].directory_index is None
 
 
 def test_vite_plugin_get_static_server_config_accepts_nested_vite_manifest(tmp_path: Path) -> None:
-    """Vite's default nested manifest path is a valid production marker."""
+    """Vite's default nested manifest path submounts its clean assets subdirectory natively."""
     bundle_dir = tmp_path / "dist"
     (bundle_dir / ".vite").mkdir(parents=True)
     (bundle_dir / ".vite" / "manifest.json").write_text("{}", encoding="utf-8")
+    assets_dir = bundle_dir / "assets"
+    assets_dir.mkdir()
+    (assets_dir / "main-12345678.js").write_text("console.log('ok');", encoding="utf-8")
     plugin = VitePlugin(
         config=ViteConfig(
             mode="template",
@@ -166,14 +172,16 @@ def test_vite_plugin_get_static_server_config_accepts_nested_vite_manifest(tmp_p
     config = plugin.get_static_server_config()
 
     assert config.placement is StaticPlacement.NATIVE
-    assert config.mounts[0].directory == bundle_dir.resolve()
+    assert config.mounts[0].route == "/static/assets"
+    assert config.mounts[0].directory == assets_dir.resolve()
 
 
 def test_vite_plugin_get_static_server_config_accepts_built_index_without_manifest(tmp_path: Path) -> None:
-    """Manifest-less static builds can use their built index as readiness evidence."""
+    """Manifest-less static builds without dotfiles mount bundle_dir natively."""
     bundle_dir = tmp_path / "dist"
     bundle_dir.mkdir()
     (bundle_dir / "index.html").write_text("<!doctype html>", encoding="utf-8")
+    (bundle_dir / "app.js").write_text("console.log('ok');", encoding="utf-8")
     plugin = VitePlugin(
         config=ViteConfig(
             mode="template",
@@ -185,6 +193,8 @@ def test_vite_plugin_get_static_server_config_accepts_built_index_without_manife
     config = plugin.get_static_server_config()
 
     assert config.placement is StaticPlacement.NATIVE
+    assert config.mounts[0].route == "/static"
+    assert config.mounts[0].directory == bundle_dir.resolve()
     assert config.mounts[0].directory_index is None
 
 
@@ -224,10 +234,12 @@ def test_vite_plugin_get_static_server_config_rejects_ineligible_runtime_config(
 def _build_manifest_only_plugin(
     tmp_path: Path, static_files_config: "StaticFilesConfig | None" = None, **config_kwargs: Any
 ) -> VitePlugin:
-    """Build a plugin over a minimal production bundle (manifest.json only)."""
+    """Build a plugin over a minimal production bundle with manifest.json and a compiled asset."""
     bundle_dir = tmp_path / "dist"
-    bundle_dir.mkdir(exist_ok=True)
+    assets_dir = bundle_dir / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
     (bundle_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    (assets_dir / "main-12345678.js").write_text("console.log('ok');", encoding="utf-8")
     return VitePlugin(
         config=ViteConfig(
             mode="template",
@@ -376,8 +388,10 @@ def test_vite_plugin_get_static_server_config_rejects_invalid_build(tmp_path: Pa
 def test_vite_plugin_get_static_server_config_keeps_litestar_static_router(tmp_path: Path) -> None:
     """Native eligibility never removes Litestar's server-neutral fallback route."""
     bundle_dir = tmp_path / "dist"
-    bundle_dir.mkdir()
+    assets_dir = bundle_dir / "assets"
+    assets_dir.mkdir(parents=True)
     (bundle_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    (assets_dir / "main-12345678.js").write_text("console.log('ok');", encoding="utf-8")
     plugin = VitePlugin(
         config=ViteConfig(
             mode="template",
@@ -392,6 +406,38 @@ def test_vite_plugin_get_static_server_config_keeps_litestar_static_router(tmp_p
         plugin.on_app_init(app_config)
 
     create_router.assert_called_once()
+
+
+@pytest.mark.parametrize("assets_state", ["missing", "empty", "dotfile"])
+def test_vite_plugin_get_static_server_config_falls_back_when_assets_submount_ineligible(
+    tmp_path: Path, assets_state: str
+) -> None:
+    """Bundles with manifest metadata fall back to ASGI when assets/ is missing, empty, or dirty."""
+    bundle_dir = tmp_path / "dist"
+    bundle_dir.mkdir()
+    (bundle_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    if assets_state == "empty":
+        (bundle_dir / "assets").mkdir()
+    elif assets_state == "dotfile":
+        assets_dir = bundle_dir / "assets"
+        assets_dir.mkdir()
+        (assets_dir / "main-12345678.js").write_text("console.log('ok');", encoding="utf-8")
+        (assets_dir / ".env").write_text("SECRET=1", encoding="utf-8")
+
+    plugin = VitePlugin(
+        config=ViteConfig(
+            mode="template",
+            paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir),
+            runtime=RuntimeConfig(dev_mode=False),
+        )
+    )
+
+    config = plugin.get_static_server_config()
+
+    assert config.mounts == ()
+    assert config.placement is StaticPlacement.ASGI
+    assert config.reason is not None
+    assert "assets/" in config.reason
 
 
 def test_vite_plugin_static_files_config_ignores_none_overrides() -> None:
@@ -2308,3 +2354,139 @@ def test_route_prefixes_unchanged_without_asyncapi_plugin() -> None:
     app = Litestar(route_handlers=[])
     prefixes = build_litestar_route_prefixes(app)
     assert "/asyncapi" not in prefixes
+
+
+@pytest.mark.parametrize(
+    (
+        "debug",
+        "root_dev_mode",
+        "runtime_dev_mode",
+        "env_dev_mode",
+        "env_auto_dev_mode",
+        "expected_dev_mode",
+        "expected_proxy_mode",
+    ),
+    [
+        (True, None, None, None, None, True, "vite"),
+        (False, None, None, None, None, False, None),
+        (True, False, None, None, None, False, None),
+        (True, None, False, None, None, False, None),
+        (True, None, None, "false", None, False, None),
+        (True, None, None, None, "false", False, None),
+        (True, False, None, "true", "true", False, None),
+    ],
+)
+def test_vite_plugin_debug_auto_dev_mode_respects_explicit_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    debug: bool,
+    root_dev_mode: bool | None,
+    runtime_dev_mode: bool | None,
+    env_dev_mode: str | None,
+    env_auto_dev_mode: str | None,
+    expected_dev_mode: bool,
+    expected_proxy_mode: str | None,
+) -> None:
+    """Litestar(debug=True) auto-enables dev mode only when dev_mode was omitted and not opted out."""
+    if env_dev_mode is None:
+        monkeypatch.delenv("VITE_DEV_MODE", raising=False)
+    else:
+        monkeypatch.setenv("VITE_DEV_MODE", env_dev_mode)
+
+    if env_auto_dev_mode is None:
+        monkeypatch.delenv("VITE_AUTO_DEV_MODE", raising=False)
+    else:
+        monkeypatch.setenv("VITE_AUTO_DEV_MODE", env_auto_dev_mode)
+
+    resource_dir = tmp_path / "src"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text("<html><body><div id='app'></div></body></html>")
+    bundle_dir = tmp_path / "dist"
+    bundle_dir.mkdir()
+    paths = PathConfig(root=tmp_path, resource_dir=resource_dir, bundle_dir=bundle_dir)
+
+    if root_dev_mode is not None:
+        config = ViteConfig(dev_mode=root_dev_mode, paths=paths)
+    elif runtime_dev_mode is not None:
+        config = ViteConfig(paths=paths, runtime=RuntimeConfig(dev_mode=runtime_dev_mode))
+    else:
+        config = ViteConfig(paths=paths)
+
+    plugin = VitePlugin(config=config)
+    Litestar(debug=debug, plugins=[plugin])
+
+    assert config.runtime.dev_mode is expected_dev_mode
+    assert config.proxy_mode == expected_proxy_mode
+
+
+@pytest.mark.parametrize("static_is_resource", [False, True])
+def test_vite_plugin_dev_static_mount_excludes_resource_dir(tmp_path: Path, static_is_resource: bool) -> None:
+    """Dev static router serves bundle_dir and distinct static_dir without exposing resource_dir."""
+    bundle_dir = tmp_path / "dist"
+    resource_dir = tmp_path / "src"
+    static_dir = resource_dir if static_is_resource else tmp_path / "public"
+
+    bundle_dir.mkdir()
+    resource_dir.mkdir()
+    static_dir.mkdir(exist_ok=True)
+
+    (bundle_dir / "from-bundle.txt").write_text("bundle-content")
+    (resource_dir / "from-resource.txt").write_text("resource-content")
+    if not static_is_resource:
+        (static_dir / "from-public.txt").write_text("public-content")
+
+    config = ViteConfig(
+        mode="template",
+        paths=PathConfig(
+            root=tmp_path, bundle_dir=bundle_dir, resource_dir=resource_dir, static_dir=static_dir, asset_url="/static/"
+        ),
+        runtime=RuntimeConfig(dev_mode=True, set_static_folders=True, set_environment=False, start_dev_server=False),
+    )
+    app = Litestar(plugins=[VitePlugin(config=config)])
+
+    with TestClient(app=app) as client:
+        assert client.get("/static/from-resource.txt").status_code == 404
+        bundle_response = client.get("/static/from-bundle.txt")
+        assert bundle_response.status_code == 200
+        assert bundle_response.text == "bundle-content"
+        if not static_is_resource:
+            public_response = client.get("/static/from-public.txt")
+            assert public_response.status_code == 200
+            assert public_response.text == "public-content"
+
+
+@pytest.mark.parametrize(("mode", "create_source_index"), [("template", False), ("spa", True)])
+async def test_vite_plugin_lifespan_warns_when_production_assets_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    mode: str,
+    create_source_index: bool,
+) -> None:
+    """Production lifespan logs a clear warning when bundle assets are absent without failing startup."""
+    bundle_dir = tmp_path / "dist"
+    bundle_dir.mkdir()
+    resource_dir = tmp_path / "src"
+    resource_dir.mkdir()
+    if create_source_index:
+        (resource_dir / "index.html").write_text("<html><body><div id='app'></div></body></html>")
+
+    config = ViteConfig(
+        mode=cast("Any", mode),
+        paths=PathConfig(root=tmp_path, bundle_dir=bundle_dir, resource_dir=resource_dir),
+        runtime=RuntimeConfig(dev_mode=False, set_environment=False, start_dev_server=False),
+    )
+    plugin = VitePlugin(config=config)
+    app = Litestar(plugins=[plugin], logging_config=None)
+
+    monkeypatch.setattr("litestar_vite.plugin._utils.console", Mock(is_terminal=False))
+
+    with caplog.at_level(logging.WARNING, logger="litestar_vite"):
+        async with plugin.lifespan(app):
+            pass
+
+    warnings_text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "dev_mode=False" in warnings_text
+    assert "litestar assets build" in warnings_text
+    assert "VITE_DEV_MODE=1" in warnings_text
+    assert str(bundle_dir) in warnings_text

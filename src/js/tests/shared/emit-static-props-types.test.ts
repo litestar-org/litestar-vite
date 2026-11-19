@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import ts from "typescript"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { emitStaticPropsTypes } from "../../src/shared/emit-static-props-types"
@@ -286,5 +287,87 @@ describe("emitStaticPropsTypes", () => {
     const outFile = path.join(outputDir, "static-props.ts")
     const content = fs.readFileSync(outFile, "utf-8")
     expect(content).toContain("fromCustomRoot: boolean")
+  })
+
+  it("escapes line separators, sanitizes digit-prefixed interfaces, and skips reserved named exports", async () => {
+    const tmpDir = createTmpDir()
+    createBridgeConfig(
+      {
+        "123config": { a: 1 },
+        default: "x",
+        arguments: "arg-val",
+        eval: "eval-val",
+        staticProps: "y",
+        note: "a\u2028b\u2029c",
+        "bad\u2028key": 42,
+      },
+      tmpDir,
+    )
+
+    const outputDir = path.join(tmpDir, "generated")
+    await emitStaticPropsTypes(outputDir)
+
+    const outFile = path.join(outputDir, "static-props.ts")
+    const content = fs.readFileSync(outFile, "utf-8")
+
+    expect(content).not.toContain("\u2028")
+    expect(content).not.toContain("\u2029")
+    expect(content).toContain("export interface StaticProp123config {")
+    expect(content).toContain('"123config": StaticProp123config')
+    expect(content).toContain("default: string")
+    expect(content).toContain("arguments: string")
+    expect(content).toContain("eval: string")
+    expect(content).toContain("staticProps: string")
+    expect(content).toContain('"bad\\u2028key": number')
+    expect(content).toContain("a\\u2028b\\u2029c")
+    expect(content).not.toContain("export const default =")
+    expect(content).not.toContain("export const arguments =")
+    expect(content).not.toContain("export const eval =")
+    expect(content).not.toContain("export const staticProps = staticProps.staticProps")
+    expect(content).toContain("export const note = staticProps.note")
+
+    const program = ts.createProgram([outFile], {
+      noEmit: true,
+      strict: true,
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+    })
+    expect(ts.getPreEmitDiagnostics(program)).toHaveLength(0)
+  })
+
+  it("deduplicates colliding nested interface names and avoids StaticProps collision", async () => {
+    const tmpDir = createTmpDir()
+    createBridgeConfig(
+      {
+        "my-config": { a: 1 },
+        my_config: { b: 2 },
+        "---": { c: 3 },
+        staticProps: { d: 4 },
+      },
+      tmpDir,
+    )
+
+    const outputDir = path.join(tmpDir, "generated")
+    await emitStaticPropsTypes(outputDir)
+
+    const outFile = path.join(outputDir, "static-props.ts")
+    const content = fs.readFileSync(outFile, "utf-8")
+
+    expect(content).toContain("export interface MyConfig {")
+    expect(content).toContain("export interface MyConfig2 {")
+    expect(content).toContain("export interface StaticProp {")
+    expect(content).toContain("export interface StaticPropStaticProps {")
+    expect(content).toContain("staticProps: StaticPropStaticProps")
+    expect(content).not.toContain("export const staticProps = staticProps.staticProps")
+
+    const program = ts.createProgram([outFile], {
+      noEmit: true,
+      strict: true,
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+    })
+    expect(ts.getPreEmitDiagnostics(program)).toHaveLength(0)
   })
 })

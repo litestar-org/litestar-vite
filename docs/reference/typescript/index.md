@@ -9,7 +9,7 @@ The `litestar-vite-plugin` npm package ships 18 typed ESM entrypoints covering t
 
 | Subpath | Import Specifier | Source Entrypoint | Exports |
 | :--- | :--- | :--- | :--- |
-| `.` | `litestar-vite-plugin` | `src/js/src/index.ts` | `PluginConfig`, `RefreshConfig`, `ResolvedPluginConfig`, `TypesConfig`, `DevServerUrl`, `litestar`, +4 more |
+| `.` | `litestar-vite-plugin` | `src/js/src/index.ts` | `PluginConfig`, `RefreshConfig`, `ResolvedPluginConfig`, `TypesConfig`, `DevServerUrl`, `ParsedHtmlTag`, +5 more |
 | `./inertia` | `litestar-vite-plugin/inertia` | `src/js/src/inertia-types.ts` | `User`, `AuthData`, `FlashMessages`, `SharedProps`, `GeneratedSharedProps`, `PageProps`, +4 more |
 | `./virtual` | `litestar-vite-plugin/virtual` | `src/js/src/virtual.d.ts` | `StaticProps`, `virtual:litestar-static-props` |
 
@@ -24,6 +24,7 @@ The `litestar-vite-plugin` npm package ships 18 typed ESM entrypoints covering t
 | `ResolvedPluginConfig` | `interface` | Resolved plugin configuration with all defaults applied. Note: `types` is resolved to <code>RequiredTypeGenConfig &#124; false</code> instead of <code>boolean &#124; TypesConfig</code> Note: `executor` remains optional - undefined means auto-detect from env Note: `inertiaMode` is resolved to boolean (auto-detected from .litestar.json Inertia metadata) |
 | `TypesConfig` | `type` | Configuration for TypeScript type generation. |
 | `DevServerUrl` | `type` | Exported `type` from `src/js/src/index.ts`. |
+| `ParsedHtmlTag` | `type` | Exported `type` from `src/js/src/index.ts`. |
 | `litestar` | `default function` | Litestar plugin for Vite. |
 | `litestarViteSsrPlugin` | `function` | Exported `function` from `src/js/src/dev-ssr.ts`. |
 | `DevSsrOptions` | `interface` | Exported `interface` from `src/js/src/shared/ssr-types.ts`. |
@@ -55,6 +56,7 @@ export interface PluginConfig
 | `transformOnServe?` | `(code: string, url: DevServerUrl) => string` | — | — |
 | `types?` | <code>boolean &#124; "auto" &#124; TypesConfig</code> | — | — |
 | `executor?` | <code>"node" &#124; "bun" &#124; "deno" &#124; "yarn" &#124; "pnpm"</code> | — | — |
+| `host?` | `string` | — | — |
 
 #### `RefreshConfig`
 
@@ -70,7 +72,7 @@ export interface RefreshConfig
 #### `ResolvedPluginConfig`
 
 ```ts
-export interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor" | "inertiaMode" | "deployAssetUrl">
+export interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor" | "inertiaMode" | "deployAssetUrl" | "host">
 ```
 
 Resolved plugin configuration with all defaults applied. Note: `types` is resolved to `RequiredTypeGenConfig | false` instead of `boolean | TypesConfig` Note: `executor` remains optional - undefined means auto-detect from env Note: `inertiaMode` is resolved to boolean (auto-detected from .litestar.json Inertia metadata)
@@ -79,6 +81,7 @@ Resolved plugin configuration with all defaults applied. Note: `types` is resolv
 | :--- | :--- | :--- | :--- |
 | `types` | <code>RequiredTypeGenConfig &#124; false</code> | — | — |
 | `executor?` | <code>"node" &#124; "bun" &#124; "deno" &#124; "yarn" &#124; "pnpm"</code> | — | — |
+| `host?` | `string` | — | — |
 | `deployAssetUrl?` | `string` | — | — |
 | `inertiaMode` | `boolean` | — | — |
 | `hasPythonConfig` | `boolean` | — | — |
@@ -117,6 +120,12 @@ Configuration for TypeScript type generation.
 export type DevServerUrl = `${"http" | "https"}://${string}:${number}`
 ```
 
+#### `ParsedHtmlTag`
+
+```ts
+export type ParsedHtmlTag = {
+```
+
 #### `litestar`
 
 ```ts
@@ -144,6 +153,7 @@ export interface DevSsrOptions
 | `clientEntry?` | `string` | — | — |
 | `endpoint?` | `string` | — | — |
 | `hmr?` | `boolean` | — | — |
+| `proxyToken?` | `string` | — | — |
 
 #### `SsrRenderRequest`
 

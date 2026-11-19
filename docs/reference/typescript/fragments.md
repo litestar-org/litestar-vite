@@ -187,6 +187,8 @@ export interface SsrWorkerOptions
 | :--- | :--- | :--- | :--- |
 | `render?` | <code>(page: any) =&gt; unknown &#124; Promise&lt;unknown&gt;</code> | — | — |
 | `renderFragment?` | <code>(params: Record&lt;string, unknown&gt;) =&gt; unknown &#124; Promise&lt;unknown&gt;</code> | — | — |
+| `ssrDir?` | `string` | — | — |
+| `authToken?` | `string` | — | — |
 
 #### `IPCRequest`
 
@@ -200,6 +202,7 @@ export interface IPCRequest
 | `method?` | `string` | — | — |
 | `params?` | `Record<string, unknown>` | — | — |
 | `payload?` | `Record<string, unknown>` | — | — |
+| `token?` | `string` | — | — |
 
 #### `dispatchSsrRequest`
 

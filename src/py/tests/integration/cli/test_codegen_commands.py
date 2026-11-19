@@ -141,10 +141,10 @@ def test_export_routes_typescript_integration(tmp_path: Path) -> None:
     assert "export type RouteName =" in content
     assert "export const routeDefinitions = {" in content
     assert "export function route<" in content
-    assert "'list_users'" in content
-    assert "'get_user'" in content
-    assert "'dashboard'" in content
-    assert "component: 'Dashboard/Index'" in content
+    assert '"list_users"' in content
+    assert '"get_user"' in content
+    assert '"dashboard"' in content
+    assert 'component: "Dashboard/Index"' in content
     assert "user_id: number" in content  # Type inference from OpenAPI
 
 
@@ -178,4 +178,4 @@ def test_typescript_routes_with_config(tmp_path: Path) -> None:
 
     assert output_path.exists()
     content = output_path.read_text()
-    assert "'test_route'" in content
+    assert '"test_route"' in content
