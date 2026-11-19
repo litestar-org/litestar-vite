@@ -38,4 +38,6 @@ export interface DevSsrOptions {
   clientEntry?: string
   endpoint?: string
   hmr?: boolean
+  /** Shared token overriding `.litestar.json` `proxyToken` for bridge authentication. */
+  proxyToken?: string
 }

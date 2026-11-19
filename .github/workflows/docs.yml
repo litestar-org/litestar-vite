@@ -13,7 +13,7 @@ jobs:
   generate-demos:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install system dependencies
         run: |
@@ -21,7 +21,7 @@ jobs:
           sudo apt-get install -y tree ffmpeg
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
 
       - name: Set up Python
         run: uv python install 3.12
@@ -33,7 +33,7 @@ jobs:
         run: uv pip install -e .
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -44,20 +44,21 @@ jobs:
           npm run build
 
       - name: Install Go (for VHS)
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version: ">=1.24.0"
           check-latest: true
 
       - name: Install VHS
         run: |
-          go install github.com/charmbracelet/vhs@latest
+          go install github.com/charmbracelet/vhs@v0.12.1
           echo "$HOME/go/bin" >> $GITHUB_PATH
 
       - name: Install ttyd
         run: |
           sudo apt-get install -y ttyd || {
             curl -fsSL -o /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64
+            echo "8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55  /tmp/ttyd" | sha256sum --check -
             chmod +x /tmp/ttyd
             sudo mv /tmp/ttyd /usr/local/bin/ttyd
           }
@@ -80,7 +81,7 @@ jobs:
         run: ls -la docs/assets/demos/ || echo "No demos generated"
 
       - name: Upload demos artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: demo-gifs
           path: docs/assets/demos/
@@ -90,17 +91,17 @@ jobs:
     needs: generate-demos
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Download demo artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: demo-gifs
           path: docs/assets/demos/
         continue-on-error: true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -111,7 +112,7 @@ jobs:
           npm run build
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
 
       - name: Set up Python
         run: uv python install 3.12
@@ -125,7 +126,7 @@ jobs:
           DOCS_EXAMPLES_STRICT=1 uv run python tools/check_docs_examples.py
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: docs-build
 
@@ -145,4 +146,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

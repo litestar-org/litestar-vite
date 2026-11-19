@@ -21,10 +21,12 @@ class DeployConfig:
     """Provider options forwarded to `fsspec` (credentials, region, endpoint)."""
     asset_url: "str | None" = field(default_factory=lambda: os.getenv("VITE_DEPLOY_ASSET_URL"))
     """Public CDN URL prefix written to `.litestar.json` as `deployAssetUrl` during `vite build`."""
-    delete_orphaned: bool = field(default_factory=lambda: os.getenv("VITE_DEPLOY_DELETE", "true") in TRUE_VALUES)
+    delete_orphaned: bool = field(default_factory=lambda: os.getenv("VITE_DEPLOY_DELETE", "false") in TRUE_VALUES)
     """Remove remote files not present in the local bundle during sync."""
-    include_manifest: bool = True
+    include_manifest: bool = False
     """Upload `manifest.json` alongside built assets."""
+    include_sourcemaps: bool = False
+    """Upload `.map` source map files alongside built assets."""
     content_types: dict[str, str] = field(default_factory=default_content_types)
     """Optional content-type overrides keyed by file extension."""
 
@@ -44,6 +46,7 @@ class DeployConfig:
         storage_options: "dict[str, Any] | None" = None,
         asset_url: "str | None" = None,
         delete_orphaned: "bool | None" = None,
+        include_sourcemaps: "bool | None" = None,
     ) -> "DeployConfig":
         """Return a copy with overrides applied.
 
@@ -52,6 +55,7 @@ class DeployConfig:
             storage_options: Override for backend options.
             asset_url: Override for the public asset URL.
             delete_orphaned: Override deletion behaviour.
+            include_sourcemaps: Override source map upload behaviour.
 
         Returns:
             DeployConfig copy with updated fields.
@@ -62,4 +66,5 @@ class DeployConfig:
             storage_options=storage_options or self.storage_options,
             asset_url=asset_url or self.asset_url,
             delete_orphaned=self.delete_orphaned if delete_orphaned is None else delete_orphaned,
+            include_sourcemaps=self.include_sourcemaps if include_sourcemaps is None else include_sourcemaps,
         )

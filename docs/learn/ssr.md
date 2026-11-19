@@ -8,12 +8,12 @@ Litestar Vite provides unified Server-Side Rendering (SSR) for both **Inertia.js
 
 ## How Dev and Prod SSR Differ
 
-| Stage | Development (`dev_mode=True`) | Production (`dev_mode=False`) | Production without JS Runtime (`ssr_transport="wasm"`) |
+| Stage | Development (`dev_mode=True`) | Production (`dev_mode=False`, `ssr_transport="stdio"` — Recommended) | Production without JS Runtime (`ssr_transport="wasm"`) |
 | --- | --- | --- | --- |
-| **IPC Transport** | [`TCPStreamIPCTransport`](../reference/fragments-and-ipc.md#litestar_vite.ipc.TCPStreamIPCTransport) (`POST /__litestar_ssr__` over pooled `httpx2`) | [`StdioIPCTransport`](../reference/fragments-and-ipc.md#litestar_vite.ipc.StdioIPCTransport) (persistent Node/Bun/Deno subprocess over `stdin`/`stdout` NDJSON pipes) | [`WasmIPCTransport`](../reference/fragments-and-ipc.md#litestar_vite.ipc.WasmIPCTransport) (embedded QuickJS engine on a dedicated worker thread via `litestar-vite[wasm]`) |
+| **IPC Transport** | [`TCPStreamIPCTransport`](../reference/fragments-and-ipc.md#litestar_vite.ipc.TCPStreamIPCTransport) (`POST /__litestar_ssr__` over pooled `httpx2`) | [`StdioIPCTransport`](../reference/fragments-and-ipc.md#litestar_vite.ipc.StdioIPCTransport) — primary recommended production SSR transport (process-isolated Node/Bun/Deno worker over `stdin`/`stdout` NDJSON pipes) | [`WasmIPCTransport`](../reference/fragments-and-ipc.md#litestar_vite.ipc.WasmIPCTransport) (embedded QuickJS engine on a dedicated worker thread via `litestar-vite[wasm]`) |
 | **Module Evaluation** | Vite 7+ `RunnableDevEnvironment.runner.import()` (`ModuleRunner` with recursive importer HMR invalidation) | Self-contained SSR bundle (`bootstrap/ssr/ssr.js`) loaded once at worker startup | Self-contained ES-module `ssr.js` (`ssr.noExternal: true`) loaded via `Context.module` |
 | **Build Step Required?** | **No** — edits to `.tsx`/`.vue`/`.svelte` files reflect immediately on the next refresh | **Yes** — `litestar assets build` compiles both the client bundle and the SSR bundle | **Yes** — `litestar assets build` inlines dependencies into `ssr.js` |
-| **Fault Tolerance** | [`SSRCircuitBreaker`](../reference/fragments-and-ipc.md#litestar_vite.ipc.SSRCircuitBreaker) + automatic fallback to client-side rendering (`fallback_to_client=True`) | [`SSRCircuitBreaker`](../reference/fragments-and-ipc.md#litestar_vite.ipc.SSRCircuitBreaker) + bounded `stderr` ring buffer + automatic worker restart | [`SSRCircuitBreaker`](../reference/fragments-and-ipc.md#litestar_vite.ipc.SSRCircuitBreaker) + per-request `set_time_limit(timeout)` + automatic context rebuild on timeout |
+| **Fault Tolerance** | [`SSRCircuitBreaker`](../reference/fragments-and-ipc.md#litestar_vite.ipc.SSRCircuitBreaker) + automatic fallback to client-side rendering (`fallback_to_client=True`) | [`SSRCircuitBreaker`](../reference/fragments-and-ipc.md#litestar_vite.ipc.SSRCircuitBreaker) + bounded `stderr` ring buffer + automatic worker restart | [`SSRCircuitBreaker`](../reference/fragments-and-ipc.md#litestar_vite.ipc.SSRCircuitBreaker) + default QuickJS limits (`128 MiB` memory, `1 MiB` stack, CPU time limit aligned with SSR timeout) + automatic context rebuild on timeout or limit errors |
 
 ---
 
@@ -23,9 +23,9 @@ When building the production SSR bundle (`ssrOutputDir`), `litestar-vite-plugin`
 
 Production transport selection is controlled by `RuntimeConfig.ssr_transport` (`"auto"`, `"stdio"`, or `"wasm"`) and resolved by [`resolve_ssr_transport()`](../reference/fragments-and-ipc.md#litestar_vite.ipc.resolve_ssr_transport):
 
-- **`"auto"` (default)**: An explicit `InertiaSSRConfig.command` wins, followed by the configured JavaScript runtime (`node`, `bun`, or `deno`), and finally `WasmIPCTransport` when `quickjs` is installed.
-- **`"stdio"`**: Spawns the compiled `ssr.js` bundle in a child process (`node`, `bun run`, or `deno run --allow-read --allow-env`). The worker (`startSsrWorker` from `litestar-vite-plugin/ssr-worker`) reads `process.stdin` using a streaming `TextDecoder` (without `node:readline`) and exits with status `0` once `stdin` reaches EOF and in-flight renders drain.
-- **`"wasm"` (experimental)**: Evaluates `ssr.js` inside an embedded QuickJS engine on a dedicated worker thread with no external JS runtime required on the host. Each request enforces a CPU time limit (`timeout`) and automatically rebuilds the context if a render times out.
+- **`"auto"` (default)**: An explicit `InertiaSSRConfig.command` wins, followed by the configured JavaScript runtime (`node`, `bun`, or `deno`) over `StdioIPCTransport`, and finally `WasmIPCTransport` when `quickjs` is installed.
+- **`"stdio"` (primary recommended production transport)**: Spawns the compiled `ssr.js` bundle in a process-isolated Node, Bun, or Deno worker (`node`, `bun run`, or `deno run --allow-read --allow-env`). The worker (`startSsrWorker` from `litestar-vite-plugin/ssr-worker`) reads `process.stdin` using a streaming `TextDecoder` (without `node:readline`) and exits with status `0` once `stdin` reaches EOF and in-flight renders drain.
+- **`"wasm"` (experimental)**: Evaluates `ssr.js` inside an embedded QuickJS engine on a dedicated worker thread with no external JS runtime required on the host. QuickJS enforces default resource limits of `128 MiB` memory (`RuntimeConfig.wasm_memory_limit`), `1 MiB` call stack (`RuntimeConfig.wasm_max_stack_size`), and a CPU time limit aligned with `InertiaSSRConfig.timeout` (or `RuntimeConfig.wasm_time_limit` when explicitly set, defaulting to `10.0s` otherwise). The context rebuilds automatically on timeout or resource-limit errors.
 
 ---
 

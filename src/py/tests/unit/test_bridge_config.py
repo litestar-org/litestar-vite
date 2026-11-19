@@ -13,7 +13,10 @@ import time
 from pathlib import Path
 
 import pytest
+from litestar.serialization import decode_json
 
+from litestar_vite.config import PathConfig, RuntimeConfig, ViteConfig
+from litestar_vite.plugin import _utils as plugin_utils
 from litestar_vite.utils import read_bridge_config
 
 # ===== Fixtures and helpers =====
@@ -162,3 +165,127 @@ def test_read_bridge_config_cache_clear(tmp_path: Path, monkeypatch: pytest.Monk
     second = read_bridge_config()
     assert second is not None
     assert second["appUrl"] == "http://two"
+
+
+@pytest.mark.parametrize(("initial_value", "expected_value"), [(None, None), ("1", "1"), ("false", "false")])
+def test_set_environment_preserves_loopback_default_for_vite_allow_remote(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, initial_value: str | None, expected_value: str | None
+) -> None:
+    """Verify set_environment leaves VITE_ALLOW_REMOTE unset unless explicitly provided."""
+    if initial_value is None:
+        monkeypatch.delenv("VITE_ALLOW_REMOTE", raising=False)
+    else:
+        monkeypatch.setenv("VITE_ALLOW_REMOTE", initial_value)
+
+    config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=True))
+    plugin_utils.set_environment(config)
+
+    assert os.environ.get("VITE_ALLOW_REMOTE") == expected_value
+
+
+def test_write_runtime_config_file_emits_proxy_token_and_enforces_0600_mode(tmp_path: Path) -> None:
+    """Verify atomic bridge writes emit a stable per-process proxyToken with 0o600 permissions."""
+    config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=True))
+
+    path_str, first_changed = plugin_utils.write_runtime_config_file(config, return_status=True)
+    bridge_path = Path(path_str)
+    first_data = decode_json(bridge_path.read_bytes())
+
+    assert first_changed is True
+    assert isinstance(first_data["proxyToken"], str)
+    assert len(first_data["proxyToken"]) >= 32
+    assert bridge_path.read_bytes().endswith(b"\n")
+    assert list(tmp_path.glob("*.tmp")) == []
+    if os.name == "posix":
+        assert (bridge_path.stat().st_mode & 0o777) == 0o600
+
+    _, second_changed = plugin_utils.write_runtime_config_file(config, return_status=True)
+    second_data = decode_json(bridge_path.read_bytes())
+
+    assert second_changed is False
+    assert second_data["proxyToken"] == first_data["proxyToken"]
+
+    if os.name == "posix":
+        bridge_path.chmod(0o644)
+        assert (bridge_path.stat().st_mode & 0o777) == 0o644
+
+        _, third_changed = plugin_utils.write_runtime_config_file(config, return_status=True)
+
+        assert third_changed is False
+        assert (bridge_path.stat().st_mode & 0o777) == 0o600
+
+
+def test_write_runtime_config_file_explicit_proxy_token_invalidates_bridge_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify explicit proxy_token overrides the generated token and invalidates the bridge cache."""
+    config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=True))
+    first_path = Path(plugin_utils.write_runtime_config_file(config, proxy_token="test-token-placeholder"))
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(first_path))
+
+    assert plugin_utils.get_bridge_proxy_token() == "test-token-placeholder"
+
+    updated_path, changed = plugin_utils.write_runtime_config_file(
+        config, proxy_token="test-token-placeholder-updated", return_status=True
+    )
+
+    assert changed is True
+    assert Path(updated_path) == first_path
+    assert plugin_utils.get_bridge_proxy_token() == "test-token-placeholder-updated"
+
+
+def test_write_runtime_config_file_cleans_temp_file_on_replace_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify failed atomic replacement unlinks the temporary file before propagating."""
+    config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=True))
+
+    def fail_replace(self: Path, target: Path) -> Path:
+        msg = "simulated replace failure"
+        raise OSError(msg)
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="simulated replace failure"):
+        plugin_utils.write_runtime_config_file(config)
+
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_get_bridge_proxy_token_resolution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify get_bridge_proxy_token follows explicit path, env var, and missing-file semantics."""
+    env_config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path / "env"), runtime=RuntimeConfig(dev_mode=True))
+    explicit_config = ViteConfig(
+        mode="spa", paths=PathConfig(root=tmp_path / "explicit"), runtime=RuntimeConfig(dev_mode=True)
+    )
+    env_path = Path(plugin_utils.write_runtime_config_file(env_config, proxy_token="test-token-placeholder-env"))
+    explicit_path = Path(
+        plugin_utils.write_runtime_config_file(explicit_config, proxy_token="test-token-placeholder-explicit")
+    )
+
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(env_path))
+    assert plugin_utils.get_bridge_proxy_token() == "test-token-placeholder-env"
+    assert plugin_utils.get_bridge_proxy_token(explicit_path) == "test-token-placeholder-explicit"
+
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(tmp_path / "missing.json"))
+    assert plugin_utils.get_bridge_proxy_token() is None
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"proxyToken": "test-token-placeholder"}, "test-token-placeholder"),
+        ({"appUrl": "http://localhost:8000"}, None),
+        ({"proxyToken": None}, None),
+        ({"proxyToken": ""}, None),
+        ({"proxyToken": 123}, None),
+    ],
+)
+def test_get_bridge_proxy_token_payload_variants(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: dict[str, object], expected: str | None
+) -> None:
+    """Verify get_bridge_proxy_token returns only non-empty string tokens."""
+    bridge = _write_bridge(tmp_path / ".litestar.json", payload)
+    monkeypatch.setenv("LITESTAR_VITE_CONFIG_PATH", str(bridge))
+
+    assert plugin_utils.get_bridge_proxy_token() == expected

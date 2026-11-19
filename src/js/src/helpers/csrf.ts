@@ -30,7 +30,13 @@ export interface CsrfOptions {
   cookieName?: string
 }
 
-export interface CsrfFetchOptions extends CsrfOptions {}
+export interface CsrfFetchOptions extends CsrfOptions {
+  /**
+   * Additional cross-origin origins allowed to receive automatic CSRF headers.
+   * Each entry is normalized to its URL origin (for example `"https://api.example.com"`).
+   */
+  trustedOrigins?: readonly string[]
+}
 
 interface CsrfTokenCache {
   token: string
@@ -42,6 +48,7 @@ interface CsrfTokenCache {
 
 let csrfTokenCache: CsrfTokenCache | null = null
 const DEFAULT_CSRF_HEADER_NAME = "X-CSRFToken"
+const URL_SCHEME_RE = /^[a-zA-Z][a-zA-Z0-9+.-]*:/
 
 /**
  * Get the configured CSRF header name.
@@ -294,12 +301,123 @@ export function csrfHeaders(additionalHeaders: Record<string, string> = {}, opti
   }
 }
 
+function extractTargetUrl(target: RequestInfo | URL | undefined): string {
+  if (typeof target === "string") {
+    return target
+  }
+  if (target instanceof URL) {
+    return target.href
+  }
+  if (target && typeof target === "object") {
+    if ("url" in target && typeof target.url === "string") {
+      return target.url
+    }
+    if ("href" in target && typeof target.href === "string") {
+      return target.href
+    }
+  }
+  return ""
+}
+
+function normalizeTrustedOrigins(trustedOrigins?: readonly string[]): Set<string> {
+  const trusted = new Set<string>()
+  if (!trustedOrigins) {
+    return trusted
+  }
+  for (const entry of trustedOrigins) {
+    if (typeof entry !== "string") {
+      continue
+    }
+    try {
+      const origin = new URL(entry).origin
+      if (origin && origin !== "null") {
+        trusted.add(origin)
+      }
+    } catch {
+      // ignore malformed trusted origin entries
+    }
+  }
+  return trusted
+}
+
+function normalizeUrlTarget(raw: string): string {
+  const trimmed = raw.trim()
+  let start = 0
+  let end = trimmed.length
+  while (start < end && trimmed.charCodeAt(start) <= 0x20) {
+    start += 1
+  }
+  while (end > start && trimmed.charCodeAt(end - 1) <= 0x20) {
+    end -= 1
+  }
+  const sliced = trimmed.slice(start, end)
+  let normalized = ""
+  for (let i = 0; i < sliced.length; i += 1) {
+    const code = sliced.charCodeAt(i)
+    if (code !== 0x09 && code !== 0x0a && code !== 0x0d) {
+      normalized += sliced[i]
+    }
+  }
+  return normalized
+}
+
+function isProtocolRelativePrefix(value: string): boolean {
+  return value.startsWith("//") || value.startsWith("\\\\") || value.startsWith("/\\") || value.startsWith("\\/")
+}
+
+function isRequestObject(input: RequestInfo | URL): input is Request {
+  return typeof Request !== "undefined" && input instanceof Request
+}
+
 /**
- * Create a fetch wrapper that automatically includes CSRF token.
+ * Determine whether a request target is allowed to receive an automatic CSRF header.
+ *
+ * Permits same-origin URLs and origins explicitly listed in `trustedOrigins`.
+ * Rejects protocol-relative URLs, opaque origins, and malformed URLs.
+ *
+ * @param target - Request URL string, URL instance, Request object, or undefined
+ * @param trustedOrigins - Optional cross-origin origins explicitly trusted for CSRF headers
+ * @returns True when the target origin matches the current origin or a trusted origin
+ */
+export function isCsrfTrustedTarget(target: RequestInfo | URL | undefined, trustedOrigins?: readonly string[]): boolean {
+  const rawTarget = extractTargetUrl(target)
+  const trustedSet = normalizeTrustedOrigins(trustedOrigins)
+  const currentOrigin = typeof window !== "undefined" ? window.location?.origin : undefined
+  const trimmed = normalizeUrlTarget(rawTarget)
+
+  if (isProtocolRelativePrefix(trimmed)) {
+    return false
+  }
+
+  if (currentOrigin && currentOrigin !== "null") {
+    try {
+      const baseUrl = (typeof document !== "undefined" && document.baseURI) || window.location?.href || currentOrigin
+      const resolved = new URL(trimmed, baseUrl)
+      return resolved.origin !== "null" && (resolved.origin === currentOrigin || trustedSet.has(resolved.origin))
+    } catch {
+      return false
+    }
+  }
+
+  if (!URL_SCHEME_RE.test(trimmed)) {
+    return typeof window !== "undefined"
+  }
+
+  try {
+    const resolved = new URL(trimmed)
+    return resolved.origin !== "null" && trustedSet.has(resolved.origin)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Create a fetch wrapper that automatically includes CSRF token for same-origin
+ * or explicitly trusted targets.
  *
  * @param input - Request URL or Request object
  * @param init - Request options
- * @param options - Optional CSRF configuration options (headerName and/or cookieName fallbacks)
+ * @param options - Optional CSRF configuration options (headerName, cookieName, and/or trustedOrigins)
  * @returns Fetch response promise
  *
  * @example
@@ -316,13 +434,23 @@ export function csrfHeaders(additionalHeaders: Record<string, string> = {}, opti
 export function csrfFetch(input: RequestInfo | URL, init?: RequestInit, options?: CsrfFetchOptions): Promise<Response> {
   const token = getCsrfToken(options?.cookieName)
 
-  if (!token) {
+  if (!token || !isCsrfTrustedTarget(input, options?.trustedOrigins)) {
     return fetch(input, init)
   }
 
   const headerName = getCsrfHeaderName(options?.headerName ?? DEFAULT_CSRF_HEADER_NAME)
-  if (!hasCsrfHeader(init?.headers, headerName)) {
+  const hasExplicitCsrfHeader = hasCsrfHeader(init?.headers, headerName) || (isRequestObject(input) && hasCsrfHeader(input.headers, headerName))
+  if (!hasExplicitCsrfHeader) {
     if (!init || typeof init.headers === "undefined") {
+      if (isRequestObject(input)) {
+        const headers = new Headers(input.headers)
+        headers.set(headerName, token)
+        return fetch(input, {
+          ...init,
+          headers,
+        })
+      }
+
       return fetch(input, {
         ...init,
         headers: { [headerName]: token },

@@ -393,5 +393,5 @@ def test_routes_methods_are_sorted() -> None:
 
     # In routes that support multiple methods, they should be sorted
     # For single-method routes, this doesn't apply but the route names should be sorted
-    assert "'create_user'" in ts_content
-    assert "'list_users'" in ts_content
+    assert '"create_user"' in ts_content
+    assert '"list_users"' in ts_content

@@ -9,6 +9,7 @@
  * @module
  */
 
+import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 
@@ -47,6 +48,7 @@ export interface BridgeSchema {
   appUrl: string | null
   csrfCookieName: string | null
   csrfHeaderName: string | null
+  proxyToken?: string | null
   /**
    * Litestar dev server port. Used by framework integrations to set
    * `vite.server.ws.clientPort` on Vite 8.1+ (`vite.server.hmr.clientPort` on
@@ -96,6 +98,7 @@ const allowedTopLevelKeys: ReadonlySet<string> = new Set([
   "appUrl",
   "csrfCookieName",
   "csrfHeaderName",
+  "proxyToken",
   "litestarPort",
   "bundleDir",
   "resourceDir",
@@ -293,6 +296,7 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
   const appUrl = assertOptionalNullableString(obj, "appUrl")
   const csrfCookieName = assertOptionalNullableString(obj, "csrfCookieName")
   const csrfHeaderName = assertOptionalNullableString(obj, "csrfHeaderName")
+  const proxyToken = assertOptionalNullableString(obj, "proxyToken")
   const litestarPort = assertOptionalNullableInteger(obj, "litestarPort")
   const bundleDir = assertString(obj, "bundleDir")
   const resourceDir = assertString(obj, "resourceDir")
@@ -320,6 +324,7 @@ export function parseBridgeSchema(value: unknown): BridgeSchema {
     appUrl,
     csrfCookieName,
     csrfHeaderName,
+    proxyToken,
     litestarPort,
     bundleDir,
     resourceDir,
@@ -402,4 +407,86 @@ function readBridgeConfigFile(filePath: string): BridgeSchema {
   }
 
   return parseBridgeSchema(raw)
+}
+
+export const BRIDGE_PROXY_TOKEN_HEADER = "x-litestar-proxy-token"
+
+export interface BridgeIncomingRequest {
+  headers?: Record<string, string | string[] | undefined>
+  socket?: { remoteAddress?: string | undefined } | null
+}
+
+export type BridgeRequestCheckResult = { ok: true } | { ok: false; statusCode: 403 | 415; message: string }
+
+function isIpv4Loopback(address: string): boolean {
+  const parts = address.split(".")
+  if (parts.length !== 4 || parts[0] !== "127") {
+    return false
+  }
+  for (const part of parts) {
+    if (!/^(?:0|[1-9]\d{0,2})$/.test(part)) {
+      return false
+    }
+    const octet = Number(part)
+    if (octet < 0 || octet > 255) {
+      return false
+    }
+  }
+  return true
+}
+
+export function isJsonContentType(value: string | string[] | undefined): boolean {
+  if (typeof value !== "string") {
+    return false
+  }
+  const mediaType = value.split(";", 1)[0]?.trim().toLowerCase()
+  return mediaType === "application/json"
+}
+
+export function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) {
+    return false
+  }
+  const normalized = address.trim().toLowerCase()
+  if (normalized === "::1") {
+    return true
+  }
+  if (normalized.startsWith("::ffff:")) {
+    return isIpv4Loopback(normalized.slice("::ffff:".length))
+  }
+  return isIpv4Loopback(normalized)
+}
+
+export function timingSafeTokenEqual(provided: string | string[] | undefined, expected: string): boolean {
+  if (typeof provided !== "string" || expected.length === 0) {
+    return false
+  }
+  const providedBytes = Buffer.from(provided, "utf8")
+  const expectedBytes = Buffer.from(expected, "utf8")
+  const providedDigest = crypto.createHash("sha256").update(providedBytes).digest()
+  const expectedDigest = crypto.createHash("sha256").update(expectedBytes).digest()
+  const digestsEqual = crypto.timingSafeEqual(providedDigest, expectedDigest)
+  return digestsEqual && providedBytes.length === expectedBytes.length
+}
+
+export function verifyBridgeRequest(req: BridgeIncomingRequest, expectedToken: string | null | undefined): BridgeRequestCheckResult {
+  const headers = req.headers ?? {}
+  if (headers.origin !== undefined || headers["sec-fetch-site"] !== undefined) {
+    return {
+      ok: false,
+      statusCode: 403,
+      message: "Browser requests are not allowed on internal bridge endpoints",
+    }
+  }
+  if (expectedToken) {
+    if (!timingSafeTokenEqual(headers[BRIDGE_PROXY_TOKEN_HEADER], expectedToken)) {
+      return { ok: false, statusCode: 403, message: "Forbidden" }
+    }
+  } else if (!isLoopbackAddress(req.socket?.remoteAddress)) {
+    return { ok: false, statusCode: 403, message: "Forbidden" }
+  }
+  if (!isJsonContentType(headers["content-type"])) {
+    return { ok: false, statusCode: 415, message: "Unsupported content type" }
+  }
+  return { ok: true }
 }

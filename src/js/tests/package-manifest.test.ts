@@ -38,6 +38,14 @@ describe("package manifest", () => {
     expect(packageJson.peerDependenciesMeta?.["@hey-api/openapi-ts"]?.optional).toBe(true)
   })
 
+  it("declares patched Vite 7/8 peer dependency floor", () => {
+    const packageJson = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf-8")) as {
+      peerDependencies?: Record<string, string>
+    }
+
+    expect(packageJson.peerDependencies?.vite).toBe("^7.3.7 || >=8.3.3")
+  })
+
   it("keeps browser helpers free of external imports", () => {
     const helpersDirectory = path.resolve(process.cwd(), "src/js/src/helpers")
     const externalImports = listTypeScriptFiles(helpersDirectory).flatMap((filePath) =>

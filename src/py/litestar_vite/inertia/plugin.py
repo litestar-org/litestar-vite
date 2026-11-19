@@ -154,7 +154,7 @@ class InertiaPlugin(InitPlugin):
         app_config.signature_types.extend([InertiaRequest, InertiaResponse, InertiaBack, StaticProp, DeferredProp])
         app_config.type_encoders = {
             StaticProp: lambda val: val.render(),
-            DeferredProp: lambda val: val.render(),
+            DeferredProp: lambda val: val.render(cache={}),
             **(app_config.type_encoders or {}),
         }
         app_config.type_decoders = [

@@ -785,3 +785,100 @@ def test_inertia_page_metadata_full() -> None:
     assert page.wrap_with_content is True
     assert page.schema_ref == "#/components/schemas/DashboardProps"
     assert page.handler_name == "dashboard_index"
+
+
+@pytest.mark.parametrize("exclusion_mode", ["handler", "router", "opt"])
+def test_extract_inertia_pages_excludes_schema_hidden_routes(exclusion_mode: str) -> None:
+    """Inertia routes with include_in_schema=False via handler, router, or opt are omitted."""
+    from litestar import Router
+
+    @get("/public", opt={"component": "Public"}, sync_to_thread=False)
+    def public_page() -> dict[str, str]:
+        return {}
+
+    if exclusion_mode == "handler":
+
+        @get("/secret", opt={"component": "Secret"}, include_in_schema=False, sync_to_thread=False)
+        def secret_page() -> dict[str, str]:
+            return {}
+
+        app = Litestar([public_page, secret_page])
+    elif exclusion_mode == "router":
+
+        @get("/panel", opt={"component": "InternalPanel"}, sync_to_thread=False)
+        def panel_page() -> dict[str, str]:
+            return {}
+
+        internal_router = Router(path="/internal", route_handlers=[panel_page], include_in_schema=False)
+        app = Litestar([public_page, internal_router])
+    else:
+
+        @get("/opt", opt={"component": "OptHidden", "include_in_schema": False}, sync_to_thread=False)
+        def opt_hidden_page() -> dict[str, str]:
+            return {}
+
+        app = Litestar([public_page, opt_hidden_page])
+
+    pages = extract_inertia_pages(app)
+    payload = generate_inertia_pages_json(app)
+
+    assert [page.component for page in pages] == ["Public"]
+    assert list(payload["pages"]) == ["Public"]
+
+
+def test_extract_inertia_pages_prefers_visible_handler_when_hidden_handler_shares_component() -> None:
+    """When a component has both a hidden handler and a visible handler, only the visible handler is used."""
+
+    @get("/hidden-dashboard", opt={"component": "Dashboard"}, include_in_schema=False, sync_to_thread=False)
+    def hidden_dashboard() -> dict[str, str]:
+        return {}
+
+    @get("/dashboard", opt={"component": "Dashboard"}, sync_to_thread=False)
+    def visible_dashboard() -> dict[str, int]:
+        return {}
+
+    app = Litestar([hidden_dashboard, visible_dashboard])
+    pages = extract_inertia_pages(app)
+
+    assert len(pages) == 1
+    assert pages[0].route_path == "/dashboard"
+    assert pages[0].handler_name == "visible_dashboard"
+
+
+@pytest.mark.parametrize(
+    ("only_routes", "exclude_routes", "expected_components"),
+    [
+        ((), ("admin",), ["AppDashboard", "AppInternal", "PublicPage"]),
+        (("/app",), ("internal",), ["AppDashboard"]),
+        (("/app",), (), ["AppDashboard", "AppInternal"]),
+    ],
+)
+def test_generate_inertia_pages_json_applies_typegen_route_filters(
+    only_routes: tuple[str, ...], exclude_routes: tuple[str, ...], expected_components: list[str]
+) -> None:
+    """generate_inertia_pages_json honors TypeGenConfig.only_routes and exclude_routes."""
+
+    @get("/app/dashboard", name="app.dashboard", opt={"component": "AppDashboard"}, sync_to_thread=False)
+    def app_dashboard() -> dict[str, str]:
+        return {}
+
+    @get("/app/internal", name="app.internal", opt={"component": "AppInternal"}, sync_to_thread=False)
+    def app_internal() -> dict[str, str]:
+        return {}
+
+    @get("/admin/users", name="admin.users", opt={"component": "AdminUsers"}, sync_to_thread=False)
+    def admin_users() -> dict[str, str]:
+        return {}
+
+    @get("/public", name="public.page", opt={"component": "PublicPage"}, sync_to_thread=False)
+    def public_page() -> dict[str, str]:
+        return {}
+
+    app = Litestar([app_dashboard, app_internal, admin_users, public_page])
+    types_config = TypeGenConfig(only_routes=only_routes, exclude_routes=exclude_routes)
+
+    pages = extract_inertia_pages(app, only=only_routes or None, exclude=exclude_routes or None)
+    payload = generate_inertia_pages_json(app, types_config=types_config)
+
+    assert sorted(page.component for page in pages) == sorted(expected_components)
+    assert sorted(payload["pages"].keys()) == sorted(expected_components)

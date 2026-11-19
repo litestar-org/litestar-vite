@@ -93,7 +93,7 @@ Inertia works in two HTML shell modes:
 
 === "Jinja2 Template"
 
-    When you configure Litestar's `TemplateConfig(engine=JinjaTemplateEngine)`, `InertiaResponse` renders `root_template` through Jinja2 using the `vite_hmr()`, `vite()`, and `inertia` template callables:
+    When you configure Litestar's `TemplateConfig(engine=JinjaTemplateEngine)`, `InertiaResponse` renders `root_template` through Jinja2 with the `vite_hmr()` and `vite()` template callables plus the `inertia_page` context value (`markupsafe.Markup` emitting `<script type="application/json" id="app_page" data-page="app">...</script>`):
 
     ```html title="templates/index.html.j2"
     <!doctype html>
@@ -106,10 +106,13 @@ Inertia works in two HTML shell modes:
         {{ vite('resources/main.tsx') }}
       </head>
       <body>
-        {{ inertia }}
+        <div id="app"></div>
+        {{ inertia_page }}
       </body>
     </html>
     ```
+
+    `InertiaResponse` also provides `inertia` as a unicode-escaped JSON `str`, so double-quoted `data-page="{{ inertia }}"` attributes stay auto-escaped under Jinja2 while legacy `<script type="application/json">` templates that opt out of escaping remain unicode-escaped.
 
 ---
 

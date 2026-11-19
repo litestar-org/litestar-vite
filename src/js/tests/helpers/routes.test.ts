@@ -441,4 +441,57 @@ describe("route helpers", () => {
       ).toThrow('Route "books" is not a WebSocket route')
     })
   })
+
+  describe("formatRouteUrl encoding, wildcards, and leading slashes", () => {
+    const normalizedWildcardRoutes = {
+      file_serve: {
+        path: "/files/{file_path}",
+        methods: ["GET"] as const,
+        pathParams: ["file_path"] as const,
+        queryParams: ["download"] as const,
+        wildcardParams: ["file_path"] as const,
+      },
+      root_wildcard: {
+        path: "/{file_path:path}",
+        methods: ["GET"] as const,
+        pathParams: ["file_path"] as const,
+        queryParams: ["v"] as const,
+      },
+      root_normalized_wildcard: {
+        path: "/{file_path}",
+        methods: ["GET"] as const,
+        pathParams: ["file_path"] as const,
+        queryParams: ["v"] as const,
+        wildcardParams: ["file_path"] as const,
+      },
+    } as const satisfies Record<string, RouteDefinition>
+
+    it("percent-encodes reserved characters in standard path parameters", () => {
+      expect(formatRouteUrl("book_detail", sampleRoutes, { book_id: "a/b?x=1#frag" })).toBe("/api/books/a%2Fb%3Fx%3D1%23frag")
+      expect(formatRouteUrl("book_detail", sampleRoutes, { book_id: "../admin" })).toBe("/api/books/..%2Fadmin")
+    })
+
+    it("encodes :path wildcard parameters segment by segment while preserving slashes", () => {
+      expect(formatRouteUrl("file_serve", sampleRoutes, { file_path: "docs/my file.txt" })).toBe("/files/docs/my%20file.txt")
+      expect(formatRouteUrl("file_serve", sampleRoutes, { file_path: "a/b?c=1#d" })).toBe("/files/a/b%3Fc%3D1%23d")
+      expect(formatRouteUrl("file_serve", normalizedWildcardRoutes, { file_path: "docs/my file.txt", download: "1" })).toBe("/files/docs/my%20file.txt?download=1")
+      expect(formatRouteUrl("file_serve", normalizedWildcardRoutes, { file_path: "a/b?c=1#d" })).toBe("/files/a/b%3Fc%3D1%23d")
+      expect(formatRouteUrl("file_serve", sampleRoutes, { file_path: "docs/..hidden/file..txt" })).toBe("/files/docs/..hidden/file..txt")
+    })
+
+    it.each([".", ".."])('rejects "%s" value on single-segment path parameter', (badParam) => {
+      expect(() => formatRouteUrl("book_detail", sampleRoutes, { book_id: badParam })).toThrow(/Invalid path segment/)
+    })
+
+    it.each([".", "./secret", "a/./b", "a/.", "..", "../secret", "a/../b", "a/.."])('rejects "." and ".." segments in :path wildcard (%s)', (badPath) => {
+      expect(() => formatRouteUrl("file_serve", sampleRoutes, { file_path: badPath })).toThrow(/Invalid path segment/)
+      expect(() => formatRouteUrl("file_serve", normalizedWildcardRoutes, { file_path: badPath })).toThrow(/Invalid path segment/)
+    })
+
+    it.each(["/other.example/a", "///other.example/a"])("collapses repeated leading slashes before query serialization (%s)", (leadingPath) => {
+      expect(formatRouteUrl("root_wildcard", normalizedWildcardRoutes, { file_path: leadingPath })).toBe("/other.example/a")
+      expect(formatRouteUrl("root_normalized_wildcard", normalizedWildcardRoutes, { file_path: leadingPath, v: "1" })).toBe("/other.example/a?v=1")
+      expect(formatRouteUrl("root_wildcard", normalizedWildcardRoutes, { file_path: leadingPath }, "https://app.example.com/")).toBe("https://app.example.com/other.example/a")
+    })
+  })
 })

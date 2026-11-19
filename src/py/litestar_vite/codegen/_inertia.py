@@ -1,7 +1,7 @@
 """Inertia page-props metadata extraction and export."""
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -331,6 +331,8 @@ def extract_inertia_pages(
     openapi_schema: dict[str, Any] | None = None,
     fallback_type: "str" = "unknown",
     openapi_support: OpenAPISupport | None = None,
+    only: "Sequence[str] | None" = None,
+    exclude: "Sequence[str] | None" = None,
 ) -> list[InertiaPageMetadata]:
     """Extract Inertia page metadata from an application.
 
@@ -343,6 +345,8 @@ def extract_inertia_pages(
         fallback_type: TypeScript fallback type for unknown types.
         openapi_support: Optional shared OpenAPISupport instance. If not provided,
             a new one will be created. Sharing improves determinism and performance.
+        only: Optional sequence of route name or path substrings to include.
+        exclude: Optional sequence of route name or path substrings to exclude.
 
     Returns:
         List of InertiaPageMetadata for each discovered page.
@@ -358,6 +362,13 @@ def extract_inertia_pages(
     for http_route, route_handler in iter_route_handlers(app):
         component = extract_inertia_component(route_handler)
         if not component:
+            continue
+
+        route_name = route_handler.name or route_handler.handler_name or ""
+        full_path = str(http_route.path)
+        if only and not any(pattern in route_name or pattern in full_path for pattern in only):
+            continue
+        if exclude and any(pattern in route_name or pattern in full_path for pattern in exclude):
             continue
 
         normalized_path = normalize_path(str(http_route.path))
@@ -414,7 +425,13 @@ def iter_route_handlers(app: "Litestar") -> "list[tuple[HTTPRoute, HTTPRouteHand
     handlers: list[tuple[HTTPRoute, HTTPRouteHandler]] = []
     for route in app.routes:
         if isinstance(route, HTTPRoute):
-            handlers.extend((route, route_handler) for route_handler in route.route_handlers)
+            for route_handler in route.route_handlers:
+                if route_handler.resolve_include_in_schema() is False:
+                    continue
+                opt = getattr(route_handler, "opt", None)
+                if isinstance(opt, dict) and cast("dict[str, Any]", opt).get("include_in_schema") is False:
+                    continue
+                handlers.append((route, route_handler))
     return sorted(handlers, key=lambda x: (str(x[0].path), x[1].handler_name or x[1].name or ""))
 
 
@@ -640,6 +657,8 @@ def generate_inertia_pages_json(
     include_default_flash: bool = True,
     inertia_config: "InertiaConfig | None" = None,
     types_config: "TypeGenConfig | None" = None,
+    only: "Sequence[str] | None" = None,
+    exclude: "Sequence[str] | None" = None,
 ) -> dict[str, Any]:
     """Generate Inertia pages metadata JSON.
 
@@ -654,12 +673,20 @@ def generate_inertia_pages_json(
         An Inertia pages metadata payload as a dictionary with sorted keys.
     """
     openapi_support = OpenAPISupport.from_app(app, openapi_schema)
+    effective_only = (
+        only if only is not None else (types_config.only_routes or None if types_config is not None else None)
+    )
+    effective_exclude = (
+        exclude if exclude is not None else (types_config.exclude_routes or None if types_config is not None else None)
+    )
 
     pages_metadata = extract_inertia_pages(
         app,
         openapi_schema=openapi_schema,
         fallback_type=types_config.fallback_type if types_config is not None else "unknown",
         openapi_support=openapi_support,
+        only=effective_only,
+        exclude=effective_exclude,
     )
 
     pages_dict: dict[str, dict[str, Any]] = {}

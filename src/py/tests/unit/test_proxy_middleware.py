@@ -411,3 +411,56 @@ def test_proxy_target_recovers_after_initial_missing_hotfile(tmp_path: Path, mon
     fake_time[0] += 1.0
 
     assert middleware._get_target_base_url() == "http://localhost:5173"
+
+
+@pytest.mark.parametrize(
+    "blocked_path",
+    [
+        "/.litestar.json",
+        "/%2elitestar.json",
+        "/%252elitestar.json",
+        "/@fs/project/.litestar.json",
+        "/.env",
+        "/.env.local",
+        "/@fs/project/.env",
+        "/.git/config",
+        "/.vite/manifest.json",
+        "/.well-known/.litestar.json",
+        "/.well-known/.env",
+    ],
+)
+def test_should_proxy_rejects_bridge_and_dot_segments(hotfile: Path, blocked_path: str) -> None:
+    """Bridge config and dot-segment paths must never be proxied to Vite."""
+
+    async def noop(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    default_middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
+    root_middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile, asset_url="/")
+    scope: Scope = {"type": "http", "path": "/", "headers": []}  # type: ignore
+
+    assert not default_middleware._should_proxy(blocked_path, scope)
+    assert not root_middleware._should_proxy(blocked_path, scope)
+
+
+@pytest.mark.parametrize(
+    "allowed_path",
+    [
+        "/@vite/client",
+        "/@id/virtual:litestar-static-props",
+        "/@fs/project/src/main.ts",
+        "/@react-refresh",
+        "/.well-known/appspecific/com.chrome.devtools.json",
+        "/node_modules/.vite/deps/vue.js",
+    ],
+)
+def test_should_proxy_keeps_vite_and_well_known_paths(hotfile: Path, allowed_path: str) -> None:
+    """Vite dev endpoints, non-dotfile @fs paths, and .well-known remain proxied."""
+
+    async def noop(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    middleware = ViteProxyMiddleware(noop, hotfile_path=hotfile)
+    scope: Scope = {"type": "http", "path": "/", "headers": []}  # type: ignore
+
+    assert middleware._should_proxy(allowed_path, scope)

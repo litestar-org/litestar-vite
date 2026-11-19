@@ -9,11 +9,13 @@ package. This module deliberately carries no litestar-granian import.
 """
 
 import inspect
+import posixpath
 import re
 from dataclasses import dataclass, fields
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, cast
+from urllib.parse import unquote
 
 from litestar.exceptions import NotFoundException
 
@@ -67,18 +69,103 @@ def is_hashed_asset_path(file_path: "str | Path", assets_dir: str = HASHED_ASSET
     return bool(_HASHED_ASSET_PATTERN.search(path.name))
 
 
+def _normalize_static_relative_path(raw_path: str) -> str:
+    """Decode percent-encoding up to two passes and normalize separators and dot-segments."""
+    decoded = unquote(raw_path)
+    if "%" in decoded:
+        decoded = unquote(decoded)
+    cleaned = decoded.replace("\\", "/").strip("/")
+    if not cleaned:
+        return ""
+    normalized = posixpath.normpath(cleaned)
+    return "" if normalized == "." else normalized
+
+
 def is_blocked_static_metadata_path(relative_path: str, extra_blocked: "Iterable[str]" = ()) -> bool:
-    """Return True when ``relative_path`` targets an internal build or bridge metadata file."""
-    normalized = relative_path.replace("\\", "/").strip("/").lower()
+    """Return True when ``relative_path`` targets a dotfile, traversal, or internal metadata file.
+
+    Args:
+        relative_path: Request or filesystem path relative to the static mount root.
+        extra_blocked: Additional relative metadata paths to treat as blocked.
+
+    Returns:
+        ``True`` if the normalized path escapes the root, contains any dot-prefixed
+        segment, or matches a blocked build or bridge metadata file.
+    """
+    normalized = _normalize_static_relative_path(relative_path)
     if not normalized:
         return False
-    blocked = BLOCKED_STATIC_METADATA_FILES.union(
-        item.replace("\\", "/").strip("/").lower() for item in extra_blocked if item
-    )
-    if normalized in blocked:
+    if normalized == ".." or normalized.startswith("../"):
         return True
-    parts = normalized.split("/")
-    return ".litestar.json" in parts or normalized.endswith(("/.vite/manifest.json", "/.vite/ssr-manifest.json"))
+    normalized_lower = normalized.lower()
+    parts = normalized_lower.split("/")
+    if any(part.startswith(".") for part in parts):
+        return True
+    blocked = BLOCKED_STATIC_METADATA_FILES.union(
+        normalized_item for item in extra_blocked if (normalized_item := _normalize_static_relative_path(item).lower())
+    )
+    return normalized_lower in blocked
+
+
+def build_blocked_static_paths(*, manifest_name: str = "manifest.json", hot_file: str = "hot") -> frozenset[str]:
+    """Build the normalized set of blocked internal Vite metadata paths.
+
+    Args:
+        manifest_name: Configured Vite manifest filename or relative path.
+        hot_file: Configured Vite HMR hotfile filename or relative path.
+
+    Returns:
+        A frozenset of lowercased normalized relative paths blocked from static serving.
+    """
+    extra: set[str] = set()
+    clean_manifest = _normalize_static_relative_path(manifest_name).lower()
+    if clean_manifest:
+        extra.add(clean_manifest)
+        extra.add(f".vite/{clean_manifest}")
+    clean_hot = _normalize_static_relative_path(hot_file).lower()
+    if clean_hot:
+        extra.add(clean_hot)
+    return BLOCKED_STATIC_METADATA_FILES.union(extra)
+
+
+def directory_has_blocked_static_files(
+    directory: Path, extra_blocked: "Iterable[str]" = (), *, base_dir: Path | None = None, relative_prefix: str = ""
+) -> bool:
+    """Return True when ``directory`` contains blocked metadata, dotfiles, or unsafe symlinks.
+
+    Args:
+        directory: Directory to inspect recursively for blocked static files.
+        extra_blocked: Additional relative metadata paths to treat as blocked.
+        base_dir: Optional root directory that resolved paths must remain within.
+        relative_prefix: Optional path prefix prepended when checking entry paths.
+
+    Returns:
+        ``True`` if any entry is blocked, escapes ``base_dir``, or cannot be inspected.
+    """
+    blocked = tuple(extra_blocked)
+    prefix = relative_prefix.strip("/")
+    try:
+        resolved_dir = directory.resolve()
+        resolved_base = base_dir.resolve() if base_dir is not None else resolved_dir
+        if base_dir is not None:
+            resolved_dir_rel = resolved_dir.relative_to(resolved_base).as_posix()
+            if is_blocked_static_metadata_path(resolved_dir_rel, blocked):
+                return True
+        for entry in directory.rglob("*"):
+            rel = entry.relative_to(directory).as_posix()
+            resolved_entry = entry.resolve()
+            resolved_rel = resolved_entry.relative_to(resolved_base).as_posix()
+            prefixed_rel = f"{prefix}/{rel}" if prefix else ""
+            if (
+                is_blocked_static_metadata_path(rel, blocked)
+                or (bool(prefixed_rel) and is_blocked_static_metadata_path(prefixed_rel, blocked))
+                or is_blocked_static_metadata_path(resolved_rel, blocked)
+                or (entry.is_symlink() and resolved_entry.is_dir())
+            ):
+                return True
+    except (ValueError, OSError, RuntimeError):
+        return True
+    return False
 
 
 class _StaticBeforeRequestHook:
@@ -94,13 +181,13 @@ class _StaticBeforeRequestHook:
     async def __call__(self, request: "Request[Any, Any, Any]") -> Any:
         file_param = request.path_params.get("file_path")
         if file_param is not None:
-            rel_path = str(file_param).replace("\\", "/").strip("/")
+            rel_path = str(file_param)
         else:
             req_path = request.url.path
             if self._asset_prefix and req_path.startswith(f"{self._asset_prefix}/"):
-                rel_path = req_path[len(self._asset_prefix) + 1 :].strip("/")
+                rel_path = req_path[len(self._asset_prefix) + 1 :]
             else:
-                rel_path = req_path.strip("/")
+                rel_path = req_path
 
         if is_blocked_static_metadata_path(rel_path, self._blocked_paths):
             raise NotFoundException(detail="Static metadata file not found")
@@ -142,9 +229,7 @@ def build_static_before_request_hook(
     *, asset_url: str, manifest_name: str = "manifest.json", hot_file: str = "hot", user_hook: Any = None
 ) -> "_StaticBeforeRequestHook":
     """Build a static router before_request hook that blocks internal Vite metadata files."""
-    clean_manifest = manifest_name.replace("\\", "/").strip("/")
-    clean_hot = hot_file.replace("\\", "/").strip("/")
-    blocked = BLOCKED_STATIC_METADATA_FILES.union({clean_manifest, f".vite/{clean_manifest}", clean_hot})
+    blocked = build_blocked_static_paths(manifest_name=manifest_name, hot_file=hot_file)
     return _StaticBeforeRequestHook(asset_url=asset_url, blocked_paths=blocked, user_hook=user_hook)
 
 

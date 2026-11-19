@@ -1,12 +1,13 @@
 """HTTP/WebSocket proxy middleware and HMR handlers."""
 
 import ipaddress
+import re
 import time
 from collections.abc import AsyncGenerator, Awaitable
 from contextlib import AsyncExitStack, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 import anyio
 import httpx2
@@ -111,6 +112,8 @@ _HOP_BY_HOP_HEADERS = frozenset({
 _REQUEST_SKIP_HEADERS = _HOP_BY_HOP_HEADERS
 
 _WS_REQUEST_SKIP_HEADERS = _REQUEST_SKIP_HEADERS | {
+    "authorization",
+    "cookie",
     "host",
     "sec-websocket-key",
     "sec-websocket-version",
@@ -121,6 +124,95 @@ _WS_REQUEST_SKIP_HEADERS = _REQUEST_SKIP_HEADERS | {
 _HOTFILE_REVALIDATE_TTL_SECONDS = 0.3
 
 _NO_CONNECTION_TOKENS: "frozenset[str]" = frozenset()
+
+_HOSTNAME_RE = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*\.?$"
+)
+_INVALID_AUTHORITY_CHARS = frozenset(",/\\@?#")
+_VALID_FORWARDED_SCHEMES = frozenset({"http", "https", "ws", "wss"})
+_WS_SCHEME_MAP: dict[str, str] = {"https": "wss", "http": "ws", "ws": "ws", "wss": "wss"}
+
+
+def _parse_authority_port(port_str: str) -> int | None:
+    """Parse an ASCII TCP port string in the range 1..65535.
+
+    Args:
+        port_str: Raw port substring following ``:`` in an authority.
+
+    Returns:
+        The integer port when valid, or ``None`` otherwise.
+    """
+    if not (port_str and port_str.isascii() and port_str.isdigit()):
+        return None
+    port = int(port_str)
+    return port if 1 <= port <= 65535 else None
+
+
+def _parse_ipv6_authority(candidate: str) -> tuple[str, int | None] | None:
+    """Parse a bracketed IPv6 authority with optional ``:port`` suffix.
+
+    Args:
+        candidate: Pre-validated authority string starting with ``[``.
+
+    Returns:
+        A ``(canonical_bracketed_ipv6, port)`` tuple when valid, or ``None`` otherwise.
+    """
+    end_idx = candidate.find("]")
+    inner = candidate[1:end_idx] if end_idx != -1 else ""
+    if end_idx == -1 or "%" in inner:
+        return None
+    try:
+        ip = ipaddress.IPv6Address(inner)
+    except ValueError:
+        return None
+    if ip.scope_id is not None:
+        return None
+    remainder = candidate[end_idx + 1 :]
+    if not remainder:
+        return (f"[{ip.compressed}]", None)
+    port = _parse_authority_port(remainder[1:]) if remainder.startswith(":") else None
+    return (f"[{ip.compressed}]", port) if port is not None else None
+
+
+def _parse_authority(value: str) -> tuple[str, int | None] | None:
+    """Parse and canonicalize a single RFC 9110 authority (host with optional port).
+
+    Strips leading and trailing HTTP optional whitespace (spaces and tabs), rejects
+    multi-value lists, path/userinfo/query/fragment delimiters, whitespace, and control
+    characters, and returns a normalized ``(host, port)`` tuple or ``None`` if invalid.
+
+    Bracketed IPv6 literals are parsed without zone identifiers and canonicalized via
+    ``ipaddress.IPv6Address.compressed`` so equivalent IPv6 authorities compare equal.
+
+    Args:
+        value: Raw authority string from a ``Host`` or ``X-Forwarded-Host`` header.
+
+    Returns:
+        A ``(canonical_host, port)`` tuple when valid, or ``None`` otherwise.
+    """
+    candidate = value.strip(" \t")
+    if not candidate or any(
+        ord(ch) <= 0x20 or ord(ch) == 0x7F or ch.isspace() or ch in _INVALID_AUTHORITY_CHARS for ch in candidate
+    ):
+        return None
+
+    if candidate.startswith("["):
+        return _parse_ipv6_authority(candidate)
+
+    if candidate.count(":") > 1:
+        return None
+
+    port: int | None
+    if ":" in candidate:
+        host, port_str = candidate.split(":", 1)
+        port = _parse_authority_port(port_str)
+        if port is None:
+            return None
+    else:
+        host = candidate
+        port = None
+
+    return (host.lower(), port) if 0 < len(host) <= 253 and _HOSTNAME_RE.match(host) is not None else None
 
 
 def _normalize_header_key(raw_key: Any) -> str:
@@ -416,56 +508,76 @@ class ProxyHeadersMiddleware(AbstractMiddleware):
     async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
         """Process the request and apply proxy headers if trusted.
 
+        Joins repeated ``X-Forwarded-For``, ``X-Forwarded-Proto``, and
+        ``X-Forwarded-Host`` headers per RFC 9110 before applying them.
+
         Args:
             scope: The ASGI scope.
             receive: The receive callable.
             send: The send callable.
         """
-        client_addr = scope.get("client")  # pyright: ignore[reportUnknownMemberType]
+        scope_dict = cast("dict[str, Any]", scope)
+        client_addr = scope_dict.get("client")
         client_host = client_addr[0] if client_addr else None
 
         if client_host in self.trusted_hosts:
-            headers: dict[bytes, bytes] = {}
-            for key, value in scope.get("headers", []):  # pyright: ignore[reportUnknownMemberType]
-                if key not in headers:
-                    headers[key] = value
+            raw_headers: list[tuple[bytes, bytes]] = list(scope_dict.get("headers", ()))
+            xff_values: list[str] = []
+            proto_values: list[str] = []
+            host_values: list[str] = []
+            for key, value in raw_headers:
+                lower_key = key.lower()
+                if lower_key == b"x-forwarded-for":
+                    xff_values.append(value.decode("latin-1"))
+                elif lower_key == b"x-forwarded-proto":
+                    proto_values.append(value.decode("latin-1"))
+                elif lower_key == b"x-forwarded-host":
+                    host_values.append(value.decode("latin-1"))
 
-            scope_dict = cast("dict[str, Any]", scope)
+            if proto_values:
+                proto = ", ".join(proto_values).strip(" \t").lower()
+                if proto in _VALID_FORWARDED_SCHEMES:
+                    scope_dict["scheme"] = _WS_SCHEME_MAP[proto] if scope_dict["type"] == "websocket" else proto
 
-            if b"x-forwarded-proto" in headers:
-                proto = headers[b"x-forwarded-proto"].decode("latin-1").strip().lower()
-                if proto in {"http", "https", "ws", "wss"}:
-                    if scope["type"] == "websocket":
-                        if proto == "https":
-                            scope_dict["scheme"] = "wss"
-                        elif proto == "http":
-                            scope_dict["scheme"] = "ws"
-                        else:
-                            scope_dict["scheme"] = proto
-                    else:
-                        scope_dict["scheme"] = proto
-
-            if b"x-forwarded-for" in headers:
-                x_forwarded_for = headers[b"x-forwarded-for"].decode("latin-1")
-                real_client = self.trusted_hosts.get_trusted_client_host(x_forwarded_for)
+            if xff_values:
+                real_client = self.trusted_hosts.get_trusted_client_host(", ".join(xff_values))
                 if real_client:
                     scope_dict["client"] = (real_client, 0)
 
-            if self.handle_forwarded_host and b"x-forwarded-host" in headers:
-                forwarded_host = headers[b"x-forwarded-host"]
-                new_headers: list[tuple[bytes, bytes]] = []
-                host_replaced = False
-                for key, value in scope.get("headers", []):  # pyright: ignore[reportUnknownMemberType]
-                    if key == b"host" and not host_replaced:
-                        new_headers.append((b"host", forwarded_host))
-                        host_replaced = True
-                    else:
-                        new_headers.append((key, value))
-                if not host_replaced:
-                    new_headers.append((b"host", forwarded_host))
-                scope_dict["headers"] = new_headers
+            if self.handle_forwarded_host and host_values:
+                candidate = ", ".join(host_values).strip(" \t")
+                if _parse_authority(candidate) is not None:
+                    scope_dict["headers"] = self._rewrite_host_header(raw_headers, candidate.encode("latin-1"))
 
         await self.app(scope, receive, send)
+
+    @staticmethod
+    def _rewrite_host_header(
+        raw_headers: list[tuple[bytes, bytes]], forwarded_host: bytes
+    ) -> list[tuple[bytes, bytes]]:
+        """Replace the first ``Host`` header case-insensitively and drop duplicate ``Host`` headers.
+
+        Appends a new ``host`` header when the original request did not carry one.
+
+        Args:
+            raw_headers: Original ASGI scope headers.
+            forwarded_host: Validated ``Host`` header value encoded as Latin-1 bytes.
+
+        Returns:
+            Updated header list with a single normalized ``host`` entry.
+        """
+        new_headers: list[tuple[bytes, bytes]] = []
+        host_replaced = False
+        for key, value in raw_headers:
+            if key.lower() == b"host":
+                if not host_replaced:
+                    new_headers.append((b"host", forwarded_host))
+                    host_replaced = True
+            else:
+                new_headers.append((key, value))
+        if not host_replaced:
+            new_headers.append((b"host", forwarded_host))
+        return new_headers
 
 
 class ViteProxyMiddleware(AbstractMiddleware):
@@ -539,11 +651,35 @@ class ViteProxyMiddleware(AbstractMiddleware):
         """Check if a path contains directory traversal sequences."""
         return ".." in path or "\\" in path
 
+    @staticmethod
+    def _has_blocked_proxy_segment(path: str) -> bool:
+        """Return True when ``path`` targets ``.litestar.json`` or an unsafe dot-segment."""
+        segments = [segment for segment in path.split("/") if segment]
+        for index, segment in enumerate(segments):
+            lower_segment = segment.lower()
+            if lower_segment == ".litestar.json":
+                return True
+            if not lower_segment.startswith("."):
+                continue
+            if index == 0 and lower_segment == ".well-known":
+                continue
+            if index > 0 and lower_segment == ".vite" and segments[index - 1] == "node_modules":
+                continue
+            return True
+        return False
+
     def _should_proxy(self, path: str, scope: "Scope") -> bool:
         decoded = unquote(path) if "%" in path else path
         double_decoded = unquote(decoded) if "%" in decoded else decoded
 
         if self._has_path_traversal(decoded) or self._has_path_traversal(double_decoded):
+            return False
+
+        if (
+            self._has_blocked_proxy_segment(path)
+            or self._has_blocked_proxy_segment(decoded)
+            or self._has_blocked_proxy_segment(double_decoded)
+        ):
             return False
 
         path_lower = path.lower()
@@ -616,6 +752,8 @@ def build_hmr_target_url(hotfile_path: Path, scope: dict[str, Any], hmr_path: st
         hotfile_url = read_hotfile_url(hotfile_path)
     except FileNotFoundError:
         return None
+    if not hotfile_url:
+        return None
 
     ws_url = hotfile_url.replace("http://", "ws://").replace("https://", "wss://")
     original_path = scope.get("path", hmr_path)
@@ -632,15 +770,128 @@ def build_hmr_target_url(hotfile_path: Path, scope: dict[str, Any], hmr_path: st
 
 
 def extract_forward_headers(scope: dict[str, Any]) -> list[tuple[str, str]]:
-    """Extract headers to forward, excluding WebSocket handshake headers.
+    """Extract headers to forward, excluding WebSocket handshake and credential headers.
 
-    Excludes protocol-specific headers that websockets library handles itself.
-    The sec-websocket-protocol header is also excluded since we handle subprotocols separately.
+    Excludes protocol-specific headers that websockets library handles itself as well
+    as ``cookie`` and ``authorization`` credentials. The sec-websocket-protocol header
+    is also excluded since we handle subprotocols separately.
 
     Returns:
         A list of (header_name, header_value) tuples.
     """
     return _extract_request_headers(scope.get("headers", []), extra_skip_headers=_WS_REQUEST_SKIP_HEADERS)
+
+
+def _normalize_origin_host(hostname: str) -> str | None:
+    """Canonicalize an origin hostname, bracketing and compressing IPv6 literals.
+
+    Args:
+        hostname: Hostname extracted from a parsed ``Origin`` URL.
+
+    Returns:
+        Canonical host string matching ``_parse_authority`` output, or ``None`` if invalid.
+    """
+    if ":" not in hostname:
+        return hostname.lower()
+    if "%" in hostname:
+        return None
+    try:
+        ip = ipaddress.IPv6Address(hostname)
+    except ValueError:
+        return None
+    return f"[{ip.compressed}]" if ip.scope_id is None else None
+
+
+def _parse_websocket_origin(raw_origin: str) -> tuple[str, int | None, int] | None:
+    """Parse and canonicalize a WebSocket ``Origin`` header value.
+
+    Args:
+        raw_origin: Raw ``Origin`` header value.
+
+    Returns:
+        A ``(canonical_host, port, default_port)`` tuple when valid, or ``None`` otherwise.
+    """
+    origin = raw_origin.strip()
+    if (
+        not origin
+        or origin.lower() == "null"
+        or any(ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F for ch in origin)
+        or "?" in origin
+        or "#" in origin
+    ):
+        return None
+
+    try:
+        parsed = urlsplit(origin)
+        origin_port = parsed.port
+    except ValueError:
+        return None
+
+    hostname = parsed.hostname
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.netloc.endswith(":")
+        or hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != ""
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+
+    origin_host = _normalize_origin_host(hostname)
+    if origin_host is None:
+        return None
+
+    origin_default_port = 443 if parsed.scheme == "https" else 80
+    return (origin_host, origin_port, origin_default_port)
+
+
+def _is_allowed_websocket_origin(scope: dict[str, Any]) -> bool:
+    """Validate that a WebSocket handshake ``Origin`` header matches the request ``Host``.
+
+    Non-browser clients and test scopes that omit ``Origin`` are allowed unless
+    duplicate ``Host`` headers are present. When ``Origin`` is present, exactly one
+    valid ``Origin`` and one valid ``Host`` header must be supplied and their
+    canonical host and effective port must match.
+
+    Args:
+        scope: ASGI WebSocket connection scope dictionary.
+
+    Returns:
+        ``True`` if the WebSocket origin is allowed, ``False`` otherwise.
+    """
+    origins: list[str] = []
+    hosts: list[str] = []
+    for raw_key, raw_value in scope.get("headers", []):
+        key = _normalize_header_key(raw_key)
+        if key == "origin":
+            origins.append(_normalize_header_value(raw_value))
+        elif key == "host":
+            hosts.append(_normalize_header_value(raw_value))
+        if len(origins) > 1 or len(hosts) > 1:
+            return False
+
+    if not origins:
+        return True
+
+    parsed_origin = _parse_websocket_origin(origins[0])
+    parsed_host = _parse_authority(hosts[0]) if len(hosts) == 1 else None
+    if parsed_origin is None or parsed_host is None:
+        return False
+
+    origin_host, origin_port, origin_default_port = parsed_origin
+    req_host, req_port = parsed_host
+    if origin_host != req_host:
+        return False
+
+    return (
+        (origin_port if origin_port is not None else origin_default_port) == req_port
+        if req_port is not None
+        else (origin_port is None or origin_port == origin_default_port)
+    )
 
 
 def extract_subprotocols(scope: dict[str, Any]) -> list[str]:
@@ -726,6 +977,10 @@ def create_vite_hmr_handler(hotfile_path: Path, hmr_path: str = "/static/vite-hm
     async def vite_hmr_proxy(socket: "WebSocket[Any, Any, Any]") -> None:
         """Proxy WebSocket messages between browser and Vite dev server."""
         scope_dict = dict(socket.scope)
+        if not _is_allowed_websocket_origin(scope_dict):
+            await socket.close(code=1008, reason="Origin not allowed")
+            return
+
         target = build_hmr_target_url(hotfile_path, scope_dict, hmr_path, asset_url)
         if target is None:
             console.print("[yellow][vite-hmr] Vite server not running[/]")
@@ -874,8 +1129,8 @@ def create_target_url_getter(
             return cached_target[0].rstrip("/") if cached_target[0] else None
 
         try:
-            cached_target[0] = read_hotfile_url(hotfile_path)
-            if is_proxy_debug():
+            cached_target[0] = read_hotfile_url(hotfile_path) or None
+            if is_proxy_debug() and cached_target[0]:
                 console.print(f"[dim][{debug_label}] Dynamic target: {cached_target[0]}[/]")
         except (FileNotFoundError, OSError):
             cached_target[0] = None
@@ -944,6 +1199,8 @@ def create_hmr_target_getter(
                 url = read_hotfile_url(candidate)
             except (FileNotFoundError, OSError):
                 continue
+            if not url:
+                continue
 
             cached_path[0] = candidate
             cached_mtime_ns[0] = candidate_stat.st_mtime_ns
@@ -1000,13 +1257,17 @@ async def _proxy_ssr_websocket_from_socket(
     socket: Any, get_target_url: "Callable[[], str | None]", get_hmr_target_url: "Callable[[], str | None]"
 ) -> None:
     """Resolve and proxy an SSR HMR WebSocket from a Litestar socket."""
+    scope_dict = dict(socket.scope)
+    if not _is_allowed_websocket_origin(scope_dict):
+        await socket.close(code=1008, reason="Origin not allowed")
+        return
+
     target_url = get_hmr_target_url() or get_target_url()
     if target_url is None:
         await socket.close(code=1011, reason="SSR server not running")
         return
 
     ws_target = target_url.replace("http://", "ws://").replace("https://", "wss://")
-    scope_dict = dict(socket.scope)
     ws_path = str(scope_dict.get("path", "/"))
     query_bytes = cast("bytes", scope_dict.get("query_string", b""))
     ws_url = build_proxy_url(ws_target, ws_path, query_bytes.decode("utf-8") if query_bytes else "")

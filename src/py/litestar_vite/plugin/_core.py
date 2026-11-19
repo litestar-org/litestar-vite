@@ -29,11 +29,14 @@ from litestar_vite.plugin._proxy import (
     create_vite_hmr_handler,
 )
 from litestar_vite.plugin._static import (
+    HASHED_ASSETS_DIR,
     StaticPlacement,
     StaticServerConfig,
     StaticServerMount,
+    build_blocked_static_paths,
     build_static_after_request_hook,
     build_static_before_request_hook,
+    directory_has_blocked_static_files,
 )
 from litestar_vite.plugin._utils import (
     build_litestar_route_prefixes,
@@ -314,8 +317,9 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         Returns:
             A ``StaticServerConfig`` whose ``placement`` is ``NATIVE`` with one mount when
-            the production bundle is eligible for direct web-server serving, or ``ASGI`` with
-            a diagnostic ``reason`` when Litestar's static router must serve.
+            the production bundle or its clean ``assets/`` subdirectory is eligible for
+            direct web-server serving, or ``ASGI`` with a diagnostic ``reason`` when
+            Litestar's static router must serve.
         """
         asset_url = self._config.asset_url
         bundle_dir = self._resolve_bundle_dir()
@@ -327,9 +331,39 @@ class VitePlugin(InitPlugin, CLIPlugin):
         if reason is not None:
             return StaticServerConfig(placement=StaticPlacement.ASGI, reason=reason)
 
+        blocked_paths = build_blocked_static_paths(
+            manifest_name=self._config.manifest_name, hot_file=self._config.hot_file
+        )
+        if not directory_has_blocked_static_files(bundle_dir, blocked_paths):
+            return StaticServerConfig(
+                placement=StaticPlacement.NATIVE,
+                mounts=(StaticServerMount(route=asset_url.rstrip("/"), directory=bundle_dir.resolve()),),
+            )
+
+        assets_dir = bundle_dir / HASHED_ASSETS_DIR
+        try:
+            has_assets = assets_dir.is_dir() and next(assets_dir.iterdir(), None) is not None
+        except OSError:
+            has_assets = False
+
+        if has_assets and not directory_has_blocked_static_files(
+            assets_dir, blocked_paths, base_dir=bundle_dir, relative_prefix=HASHED_ASSETS_DIR
+        ):
+            return StaticServerConfig(
+                placement=StaticPlacement.NATIVE,
+                mounts=(
+                    StaticServerMount(
+                        route=f"{asset_url.rstrip('/')}/{HASHED_ASSETS_DIR}", directory=assets_dir.resolve()
+                    ),
+                ),
+            )
+
         return StaticServerConfig(
-            placement=StaticPlacement.NATIVE,
-            mounts=(StaticServerMount(route=asset_url.rstrip("/"), directory=bundle_dir.resolve()),),
+            placement=StaticPlacement.ASGI,
+            reason=(
+                "Vite's production bundle directory contains internal metadata or dotfiles "
+                "and has no clean non-empty 'assets/' subdirectory eligible for native serving."
+            ),
         )
 
     def _get_static_runtime_fallback_reason(self) -> str | None:
@@ -590,9 +624,13 @@ class VitePlugin(InitPlugin, CLIPlugin):
         if not static_dir.is_absolute():
             static_dir = self._config.root_dir / static_dir
 
-        static_dirs = [bundle_dir, resource_dir]
-        if static_dir.exists() and static_dir != bundle_dir:
-            static_dirs.append(static_dir)
+        resolved_bundle_dir = bundle_dir.resolve()
+        resolved_resource_dir = resource_dir.resolve()
+        static_dirs = [bundle_dir]
+        if static_dir.exists():
+            resolved_static_dir = static_dir.resolve()
+            if resolved_static_dir not in {resolved_bundle_dir, resolved_resource_dir}:
+                static_dirs.append(static_dir)
 
         opt: dict[str, Any] = {}
         if self._config.exclude_static_from_auth:
@@ -770,6 +808,9 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         if self._is_inert():
             return app_config
+
+        if app_config.debug:
+            self._config.enable_debug_auto_dev_mode()
 
         app_config.signature_namespace["Response"] = Response
         app_config.signature_namespace["Request"] = LitestarRequest
@@ -1013,9 +1054,11 @@ class VitePlugin(InitPlugin, CLIPlugin):
 
         is_ssr_mode = self._config.wants_html_proxy
         if not self._config.is_dev_mode and not self._config.has_built_assets() and not is_ssr_mode:
+            bundle_dir = self._resolve_bundle_dir()
             log_warn(
-                "Vite dev server is disabled (dev_mode=False) but no index.html was found. "
-                "Run your front-end build or set VITE_DEV_MODE=1 to enable HMR.",
+                f"Vite dev server is disabled (dev_mode=False) and no production assets "
+                f"(manifest or built index.html) were found in {bundle_dir}. "
+                "Run `litestar assets build` to build production assets or set VITE_DEV_MODE=1 to enable HMR.",
                 level=self._config.logging_config.level,
             )
 

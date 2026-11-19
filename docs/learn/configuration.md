@@ -24,7 +24,7 @@ flowchart LR
 | [`RuntimeConfig`](../reference/plugin-and-config.md#litestar_vite.config.RuntimeConfig) | Dev proxy, JS executor, subprocess management, SSR transport, and asset security | `dev_mode`, `proxy_mode`, `host`, `port`, `executor`, `provisioning_mode`, `ssr_transport`, `csp_nonce`, `link_preload_headers`, `early_hints`, `immutable_cache_headers`, `trusted_proxies` |
 | [`InertiaConfig`](../reference/plugin-and-config.md#litestar_vite.config.InertiaConfig) | Inertia.js protocol, shared props, SSR, and Precognition | `root_template`, `ssr`, `use_script_element`, `precognition`, `extra_static_page_props`, `shared_page_prop_types` |
 | [`TypeGenConfig`](../reference/plugin-and-config.md#litestar_vite.config.TypeGenConfig) | OpenAPI, route, Inertia page-props, and AsyncAPI codegen | `output`, `openapi_path`, `routes_path`, `page_props_path`, `schemas_path`, `generate_sdk`, `generate_routes`, `generate_channels` |
-| [`DeployConfig`](../reference/plugin-and-config.md#litestar_vite.config.DeployConfig) | Cloud object storage (`fsspec`) bundle upload and CDN URLs | `enabled`, `storage_backend`, `storage_options`, `asset_url`, `delete_orphaned` |
+| [`DeployConfig`](../reference/plugin-and-config.md#litestar_vite.config.DeployConfig) | Cloud object storage (`fsspec`) bundle upload and CDN URLs | `enabled`, `storage_backend`, `storage_options`, `asset_url`, `delete_orphaned`, `include_sourcemaps` |
 
 ---
 
@@ -71,7 +71,7 @@ Every runtime setting can be controlled via environment variables for container 
 
 | Environment Variable | Maps To | Default |
 | --- | --- | --- |
-| `VITE_DEV_MODE` | `RuntimeConfig.dev_mode` | `"False"` (auto-enabled when running `litestar run --reload` or `--debug`) |
+| `VITE_DEV_MODE` | `RuntimeConfig.dev_mode` | `"False"` (set `VITE_DEV_MODE=true`, or omit `dev_mode` and run `litestar run --debug` / `LITESTAR_DEBUG=1` to auto-enable when built assets are absent; explicit `dev_mode=False` is preserved) |
 | `VITE_PROXY_MODE` | `RuntimeConfig.proxy_mode` | Auto-derived from `ViteConfig.mode` (`"vite"` or `"proxy"`) |
 | `VITE_HOST` | `RuntimeConfig.host` | `"127.0.0.1"` |
 | `VITE_PORT` | `RuntimeConfig.port` | `5173` |
@@ -79,7 +79,8 @@ Every runtime setting can be controlled via environment variables for container 
 | `ASSET_URL` | `PathConfig.asset_url` | `"/static/"` |
 | `VITE_DEPLOY_STORAGE` | `DeployConfig.storage_backend` | `None` |
 | `VITE_DEPLOY_ASSET_URL` | `DeployConfig.asset_url` | `None` |
-| `LITESTAR_TRUSTED_PROXIES` | `RuntimeConfig.trusted_proxies` | `None` (`"*"` or comma-separated CIDR/IP list) |
+| `VITE_DEPLOY_DELETE` | `DeployConfig.delete_orphaned` | `"false"` (set `"true"` to prune orphaned remote files) |
+| `LITESTAR_TRUSTED_PROXIES` | `RuntimeConfig.trusted_proxies` | `None` (comma-separated loopback/CIDR list such as `"127.0.0.1,10.0.0.0/8"`; limit `"*"` to isolated container networks) |
 
 ---
 

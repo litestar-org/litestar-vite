@@ -40,10 +40,10 @@ When paired with [`litestar-granian`](https://github.com/litestar-org/litestar-g
 
 ### Server & Static Placement Matrix
 
-| ASGI Server | Static Serving Mechanism | Metadata Blocking (`manifest.json`, `hot`) | Immutable Cache Headers |
+| ASGI Server | Static Serving Mechanism | Metadata Blocking (`manifest.json`, `.vite/*`, `hot`, dotfiles) | Immutable Cache Headers |
 | --- | --- | --- | --- |
-| **Granian (`StaticPlacement.NATIVE`)** | Rust HTTP worker serves static files before Python/ASGI | Router hooks preserve `StaticPlacement.NATIVE`; configure equivalent server/CDN rules for native hits | Configure at server/CDN layer for native hits |
-| **Uvicorn / Hypercorn (`StaticPlacement.ASGI`)** | Litestar `create_static_files_router` | Enforced via `_StaticBeforeRequestHook` (404 Not Found) | Enforced via `_StaticAfterRequestHook` |
+| **Granian (`StaticPlacement.NATIVE`)** | Rust HTTP worker serves clean `bundle_dir` at `<asset_url>`, or `bundle_dir/assets` under `<asset_url>/assets` when root contains build metadata | Root files and internal metadata stay on Litestar's ASGI route (`_StaticBeforeRequestHook` returns `404`); falls back to `StaticPlacement.ASGI` when no clean `assets/` directory exists | Configure at server/CDN layer for native hits |
+| **Uvicorn / Hypercorn (`StaticPlacement.ASGI`)** | Litestar `create_static_files_router` | Enforced via `_StaticBeforeRequestHook` (`404 Not Found` for metadata and dotfiles) | Enforced via `_StaticAfterRequestHook` |
 
 ---
 
@@ -59,20 +59,26 @@ Production HTML and asset responses served by Litestar apply browser-facing perf
 | `csp_nonce="..."` | Inline and entry scripts carry `nonce="..."`. Inertia and template responses also honor a per-request `request.scope["state"]["csp_nonce"]` set by middleware. |
 | Manifest `integrity` (SRI) | When your Vite build populates `integrity` hashes in `manifest.json` (e.g. via `vite-plugin-manifest-sri`), `ViteAssetLoader` automatically propagates `integrity="sha384-..."` and `crossorigin="anonymous"` onto `<script>`, `<link rel="stylesheet">`, and `<link rel="modulepreload">` tags. |
 
-Internal build metadata (`manifest.json`, `.vite/manifest.json`, `ssr-manifest.json`, `.litestar.json`, and the `hot` file) returns `404` from the Litestar static route regardless of these settings.
+Internal build metadata (`manifest.json`, `.vite/*`, `ssr-manifest.json`, `.litestar.json`, `hot`) and dotfile path segments return `404` from the Litestar static route regardless of these settings.
 
 !!! note "Granian Native Static Placement (`StaticPlacement.NATIVE`)"
-    The built-in asset hardening (`immutable_cache_headers` and `404` blocking for `manifest.json` / `.vite/manifest.json` / `hot`) is implemented as picklable router-level hooks (`_StaticBeforeRequestHook`, `_StaticAfterRequestHook`) so `StaticFilesConfig.has_asgi_overrides()` stays `False` and the bundle remains eligible for Granian native serving. Consequently, router hooks do not execute on Granian-native hits — configure equivalent cache headers and metadata blocking at the reverse proxy or CDN layer when relying on `StaticPlacement.NATIVE`.
+    When `bundle_dir` contains no internal build metadata or dotfiles, `VitePlugin.get_static_server_config()` exposes a native mount at `<asset_url>`. When `bundle_dir` contains internal build metadata (`manifest.json`, `.vite/*`, `ssr-manifest.json`, `.litestar.json`, `hot`) or dotfiles, `VitePlugin` mounts only the clean `bundle_dir/assets` subdirectory natively under `<asset_url>/assets` so Litestar continues serving root files and filtering internal metadata and dotfiles through `_StaticBeforeRequestHook` (`404 Not Found`). If no clean non-empty `assets/` subdirectory exists, `get_static_server_config()` falls back to `StaticPlacement.ASGI` with a diagnostic reason. Because router hooks (`_StaticAfterRequestHook`) do not execute on Granian-native hits, configure `Cache-Control: public, max-age=31536000, immutable` at the reverse proxy or CDN layer for native `/assets` responses.
 
 ---
 
 ## Deploying Bundles to S3, GCS, or Cloudflare R2
 
-When `DeployConfig` is configured (or `--storage` / `VITE_DEPLOY_STORAGE` is set), `litestar assets deploy` runs `vite build` (unless `--no-build` is passed), uploads your compiled `bundle_dir` to any [`fsspec`](https://filesystem-spec.readthedocs.io/) storage backend, and prunes orphaned files:
+When [`DeployConfig`](../reference/plugin-and-config.md#litestar_vite.config.DeployConfig) is configured (or `--storage` / `VITE_DEPLOY_STORAGE` is set), `litestar assets deploy` runs `vite build` (unless `--no-build` is passed) and uploads built assets from `bundle_dir` to any [`fsspec`](https://filesystem-spec.readthedocs.io/) storage backend:
 
 ```bash
 litestar assets deploy --storage s3://my-app-assets-prod/assets --storage-option region_name=us-east-1
 ```
+
+By default, [`DeployConfig`](../reference/plugin-and-config.md#litestar_vite.config.DeployConfig) keeps remote uploads non-destructive and excludes internal build artifacts:
+
+- `delete_orphaned=False` — remote files not present in the local bundle are kept unless you opt in with `DeployConfig(delete_orphaned=True)` or `VITE_DEPLOY_DELETE=true` (pass `--no-delete` to disable pruning for a single run).
+- `include_manifest=False` — internal build metadata (`manifest.json`, `.vite/*`, `ssr-manifest.json`, `.litestar.json`, `hot`) and dotfiles are excluded by default.
+- `include_sourcemaps=False` — `.map` source map files are excluded unless you opt in with `DeployConfig(include_sourcemaps=True)` or pass `--include-sourcemaps` to `litestar assets deploy`.
 
 Use `--dry-run` in CI pull requests to preview which hashed files would be uploaded or deleted without mutating remote storage:
 

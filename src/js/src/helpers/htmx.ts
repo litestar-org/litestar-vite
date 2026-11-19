@@ -28,7 +28,7 @@
  * @module
  */
 
-import { getCsrfHeaderName, getCsrfToken } from "./csrf.js"
+import { getCsrfHeaderName, getCsrfToken, isCsrfTrustedTarget } from "./csrf.js"
 import { compileExpression } from "./expression.js"
 
 /** Type for route function - matches generated routes.ts */
@@ -53,18 +53,29 @@ interface HtmxExtension {
   handleSwap?: (swapStyle: string, target: Element, fragment: DocumentFragment | Element) => Element[]
 }
 
+export interface HtmxExtensionOptions {
+  /**
+   * Additional cross-origin origins allowed to receive automatic CSRF headers
+   * during `htmx:configRequest` events.
+   */
+  trustedOrigins?: readonly string[]
+}
+
 type HtmxHeaders = Record<string, string> | Headers
 
 interface HtmxConfigRequestEventDetail {
   headers?: HtmxHeaders
+  path?: string
+  url?: string
 }
 
-function getHeadersFromConfigRequestEvent(evt: CustomEvent): HtmxHeaders | null {
+function getConfigRequestFromEvent(evt: CustomEvent): { headers: HtmxHeaders; target: string } | null {
   const detail = evt.detail as unknown
   if (!detail || typeof detail !== "object") return null
-  const { headers } = detail as HtmxConfigRequestEventDetail
+  const { headers, path, url } = detail as HtmxConfigRequestEventDetail
   if (!headers || typeof headers !== "object") return null
-  return headers
+  const target = typeof path === "string" && path.length > 0 ? path : typeof url === "string" ? url : ""
+  return { headers, target }
 }
 
 /** Template context - inherits from data via prototype for direct access */
@@ -115,21 +126,25 @@ function runtime(node: Node): Record<string, unknown> {
 // Registration
 // =============================================================================
 
-export function registerHtmxExtension(): void {
+export function registerHtmxExtension(options?: HtmxExtensionOptions): void {
   if (typeof window === "undefined" || !window.htmx) return
   const htmx = window.htmx as unknown as object
   if (registeredHtmxInstances.has(htmx)) return
   registeredHtmxInstances.add(htmx)
 
+  const trustedOrigins = options?.trustedOrigins ? [...options.trustedOrigins] : undefined
+
   window.htmx.defineExtension("litestar", {
     onEvent(name, evt) {
       if (name === "htmx:configRequest") {
-        const token = getCsrfToken()
-        const headerName = getCsrfHeaderName()
-        const headers = getHeadersFromConfigRequestEvent(evt)
-        if (token && headers) {
-          if (headers instanceof Headers) headers.set(headerName, token)
-          else headers[headerName] = token
+        const config = getConfigRequestFromEvent(evt)
+        if (config && isCsrfTrustedTarget(config.target, trustedOrigins)) {
+          const token = getCsrfToken()
+          const headerName = getCsrfHeaderName()
+          if (token) {
+            if (config.headers instanceof Headers) config.headers.set(headerName, token)
+            else config.headers[headerName] = token
+          }
         }
       }
       return true
@@ -231,6 +246,9 @@ function swap(node: Node, ctx: Ctx, end?: Node, parse = false): Node | null {
     if (c === false) return el
     if (!c) return null
 
+    const isolatesChildren = el.hasAttribute("ls-html") || el.hasAttribute("ls-text")
+    if (isolatesChildren) return el
+
     // Recurse children
     swapKids(el.firstChild, undefined, c, parse)
     return el
@@ -286,6 +304,7 @@ const directives: Dir[] = [
     match: (a) => a.name.startsWith(":"),
     create(_el, a) {
       const name = a.name.slice(1)
+      if (isBlockedAttrName(name)) return null
       const g = expr(a.value)
       if (!g) return null
       return (ctx, el) => {
@@ -580,13 +599,172 @@ function compileTextExpr(t: string): ((c: Ctx) => unknown) | null {
 // HTML Sanitizer
 // =============================================================================
 
-const DANGEROUS_TAGS = new Set(["script", "style", "iframe", "object", "embed", "form", "meta", "link", "base"])
-const DANGEROUS_ATTR_RE = /^on/i
-const DANGEROUS_PROTO_RE = /^\s*javascript\s*:/i
-const URL_ATTRS = new Set(["href", "src", "action"])
+const ALLOWED_TAGS: ReadonlySet<string> = new Set([
+  "a",
+  "abbr",
+  "address",
+  "article",
+  "aside",
+  "b",
+  "bdi",
+  "bdo",
+  "blockquote",
+  "br",
+  "caption",
+  "cite",
+  "code",
+  "col",
+  "colgroup",
+  "data",
+  "dd",
+  "del",
+  "details",
+  "dfn",
+  "div",
+  "dl",
+  "dt",
+  "em",
+  "figcaption",
+  "figure",
+  "footer",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "header",
+  "hgroup",
+  "hr",
+  "i",
+  "img",
+  "ins",
+  "kbd",
+  "li",
+  "main",
+  "mark",
+  "nav",
+  "ol",
+  "p",
+  "picture",
+  "pre",
+  "q",
+  "rp",
+  "rt",
+  "ruby",
+  "s",
+  "samp",
+  "section",
+  "small",
+  "source",
+  "span",
+  "strong",
+  "sub",
+  "summary",
+  "sup",
+  "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "time",
+  "tr",
+  "u",
+  "ul",
+  "wbr",
+])
+
+const ALLOWED_ATTRS: ReadonlySet<string> = new Set([
+  "alt",
+  "cite",
+  "class",
+  "colspan",
+  "datetime",
+  "decoding",
+  "dir",
+  "download",
+  "headers",
+  "height",
+  "hidden",
+  "href",
+  "hreflang",
+  "id",
+  "lang",
+  "loading",
+  "media",
+  "open",
+  "rel",
+  "reversed",
+  "role",
+  "rowspan",
+  "scope",
+  "sizes",
+  "span",
+  "src",
+  "start",
+  "tabindex",
+  "target",
+  "title",
+  "translate",
+  "type",
+  "value",
+  "width",
+])
+
+const BLOCKED_ATTR_NAMES: ReadonlySet<string> = new Set(["srcdoc", "formaction"])
+const SAFE_ARIA_ATTR_RE = /^aria-[a-z0-9-]+$/
+const SAFE_DATA_ATTR_RE = /^data-[a-z0-9_-]+$/
+const URL_ATTRS: ReadonlySet<string> = new Set(["href", "src", "action", "xlink:href", "poster", "cite", "formaction"])
+const ALLOWED_URL_SCHEMES: ReadonlySet<string> = new Set(["http:", "https:", "mailto:", "tel:"])
+
+function isBlockedAttrName(name: string): boolean {
+  const lower = name.toLowerCase()
+  return (
+    lower.length === 0 ||
+    lower.startsWith("on") ||
+    lower.startsWith("ls-") ||
+    lower.startsWith("data-ls-") ||
+    lower.startsWith(":") ||
+    lower.startsWith("@") ||
+    lower.startsWith("hx-") ||
+    lower.startsWith("data-hx-") ||
+    BLOCKED_ATTR_NAMES.has(lower)
+  )
+}
+
+function isAllowedSanitizedAttr(name: string): boolean {
+  if (isBlockedAttrName(name)) return false
+  const lower = name.toLowerCase()
+  return ALLOWED_ATTRS.has(lower) || SAFE_ARIA_ATTR_RE.test(lower) || SAFE_DATA_ATTR_RE.test(lower)
+}
+
+function stripAsciiControlAndSpace(value: string): string {
+  let normalized = ""
+  for (let i = 0; i < value.length; i += 1) {
+    if (value.charCodeAt(i) > 0x20) {
+      normalized += value[i]
+    }
+  }
+  return normalized
+}
+
+function isSafeUrlValue(value: string): boolean {
+  const normalized = stripAsciiControlAndSpace(value)
+  if (normalized.length === 0) return true
+  if (normalized.startsWith("//") || normalized.startsWith("\\\\") || normalized.startsWith("/\\") || normalized.startsWith("\\/")) {
+    return false
+  }
+  const colonIndex = normalized.indexOf(":")
+  if (colonIndex === -1) return true
+  const firstDelimiter = normalized.search(/[/?#]/)
+  if (firstDelimiter !== -1 && colonIndex > firstDelimiter) return true
+  const scheme = normalized.slice(0, colonIndex + 1).toLowerCase()
+  return ALLOWED_URL_SCHEMES.has(scheme)
+}
 
 function isDangerousUrlAttribute(name: string, value: string): boolean {
-  return URL_ATTRS.has(name.toLowerCase()) && DANGEROUS_PROTO_RE.test(value)
+  return URL_ATTRS.has(name.toLowerCase()) && !isSafeUrlValue(value)
 }
 
 function sanitizeHtml(html: string): string {
@@ -596,27 +774,41 @@ function sanitizeHtml(html: string): string {
   return tpl.innerHTML
 }
 
+function getSafeElementTagName(el: Element): string {
+  const descriptor = typeof Element !== "undefined" ? Object.getOwnPropertyDescriptor(Element.prototype, "tagName") : undefined
+  const raw = descriptor?.get?.call(el) ?? (typeof el.tagName === "string" ? el.tagName : "")
+  return typeof raw === "string" ? raw.toLowerCase() : ""
+}
+
 function sanitizeNode(node: Node): void {
   const toRemove: Node[] = []
   for (let i = 0; i < node.childNodes.length; i++) {
     const child = node.childNodes[i]
-    if (child.nodeType === 1) {
-      const el = child as Element
-      if (DANGEROUS_TAGS.has(el.tagName.toLowerCase())) {
-        toRemove.push(el)
-        continue
-      }
-      for (const attr of Array.from(el.attributes)) {
-        if (DANGEROUS_ATTR_RE.test(attr.name)) {
-          el.removeAttribute(attr.name)
-        } else if (isDangerousUrlAttribute(attr.name, attr.value)) {
-          el.removeAttribute(attr.name)
-        }
-      }
-      sanitizeNode(el)
+    if (typeof child.nodeType !== "number") {
+      toRemove.push(child)
+      continue
     }
+    if (child.nodeType === 3) {
+      continue
+    }
+    if (child.nodeType !== 1) {
+      toRemove.push(child)
+      continue
+    }
+    const el = child as Element
+    const tag = getSafeElementTagName(el)
+    if (!ALLOWED_TAGS.has(tag) || tag.includes("-")) {
+      toRemove.push(el)
+      continue
+    }
+    for (const attr of Array.from(el.attributes)) {
+      if (!isAllowedSanitizedAttr(attr.name) || isDangerousUrlAttribute(attr.name, attr.value)) {
+        el.removeAttribute(attr.name)
+      }
+    }
+    sanitizeNode(el)
   }
-  for (const n of toRemove) n.parentNode?.removeChild(n)
+  for (const n of toRemove) node.removeChild(n)
 }
 
 // =============================================================================

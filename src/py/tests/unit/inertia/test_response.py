@@ -1,9 +1,13 @@
 import asyncio
+import html
+import json
+import re
 from pathlib import Path
 from time import sleep
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import markupsafe
 import pytest
 from litestar import Request, delete, get, post
 from litestar.exceptions import ImproperlyConfiguredException, NotAuthorizedException
@@ -18,7 +22,7 @@ from litestar.template.config import TemplateConfig
 from litestar.testing import create_test_client  # pyright: ignore[reportUnknownVariableType]
 from litestar.utils.scope.state import ScopeState
 
-from litestar_vite.config import InertiaConfig, ViteConfig
+from litestar_vite.config import InertiaConfig, RuntimeConfig, ViteConfig
 from litestar_vite.inertia import InertiaHeaders, InertiaPlugin
 from litestar_vite.inertia.helpers import (
     DeferredProp,
@@ -3385,3 +3389,374 @@ async def test_inertia_response_component_defaults_to_route_component(
 
     assert response.status_code == 200
     assert response.json()["component"] == "Users/Show"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "</script><script>alert(1)</script>",
+        "<!--<script>alert(1)</script>-->",
+        "O'Reilly & Sons",
+        "line\u2028sep\u2029end",
+    ],
+)
+async def test_create_template_context_escapes_html_and_provides_inertia_page(
+    payload: str, tmp_path: Path, inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin
+) -> None:
+    """Template context returns plain unicode-escaped str for inertia and safe Markup for inertia_page."""
+    (tmp_path / "double_attr.html.j2").write_text(
+        '<!DOCTYPE html><html><body><div id="app" data-page="{{ inertia }}"></div></body></html>'
+    )
+    (tmp_path / "single_attr.html.j2").write_text(
+        "<!DOCTYPE html><html><body><div id=\"app\" data-page='{{ inertia | safe }}'></div></body></html>"
+    )
+    (tmp_path / "legacy_script.html.j2").write_text(
+        '<!DOCTYPE html><html><body><script type="application/json">{{ inertia | safe }}</script></body></html>'
+    )
+    (tmp_path / "inertia_page.html.j2").write_text(
+        '<!DOCTYPE html><html><body><div id="app"></div>{{ inertia_page }}</body></html>'
+    )
+
+    captured_context: dict[str, Any] = {}
+
+    class _CapturingInertiaResponse(InertiaResponse[dict[str, Any]]):
+        def create_template_context(
+            self, request: Request[Any, Any, Any], page_props: PageProps[dict[str, Any]], type_encoders: Any = None
+        ) -> dict[str, Any]:
+            ctx = super().create_template_context(request, page_props, type_encoders)
+            captured_context.clear()
+            captured_context.update(ctx)
+            return ctx
+
+    @get("/double", component="Home")
+    async def double_handler() -> _CapturingInertiaResponse:
+        return _CapturingInertiaResponse(content={"payload": payload}, template_name="double_attr.html.j2")
+
+    @get("/single", component="Home")
+    async def single_handler() -> InertiaResponse[dict[str, Any]]:
+        return InertiaResponse(content={"payload": payload}, template_name="single_attr.html.j2")
+
+    @get("/legacy", component="Home")
+    async def legacy_handler() -> InertiaResponse[dict[str, Any]]:
+        return InertiaResponse(content={"payload": payload}, template_name="legacy_script.html.j2")
+
+    @get("/page", component="Home")
+    async def page_handler() -> InertiaResponse[dict[str, Any]]:
+        return InertiaResponse(content={"payload": payload}, template_name="inertia_page.html.j2")
+
+    with create_test_client(
+        route_handlers=[double_handler, single_handler, legacy_handler, page_handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=TemplateConfig(engine=JinjaTemplateEngine(directory=tmp_path)),
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        double_response = client.get("/double")
+        single_response = client.get("/single")
+        legacy_response = client.get("/legacy")
+        page_response = client.get("/page")
+
+    assert double_response.status_code == 200
+    assert type(captured_context["inertia"]) is str
+    assert not isinstance(captured_context["inertia"], markupsafe.Markup)
+    assert isinstance(captured_context["inertia_page"], markupsafe.Markup)
+    assert "<" not in captured_context["inertia"]
+    assert ">" not in captured_context["inertia"]
+    assert "&" not in captured_context["inertia"]
+    assert "'" not in captured_context["inertia"]
+    assert "\u2028" not in captured_context["inertia"]
+    assert "\u2029" not in captured_context["inertia"]
+
+    double_match = re.search(r'data-page="([^"]*)"', double_response.text)
+    assert double_match is not None
+    assert "&#34;" in double_match.group(1) or "&quot;" in double_match.group(1)
+    assert json.loads(html.unescape(double_match.group(1)))["props"]["payload"] == payload
+
+    assert single_response.status_code == 200
+    single_match = re.search(r"data-page='([^']*)'", single_response.text)
+    assert single_match is not None
+    assert json.loads(single_match.group(1))["props"]["payload"] == payload
+
+    assert legacy_response.status_code == 200
+    assert legacy_response.text.count("</script>") == 1
+    legacy_match = re.search(r'<script type="application/json">(.*?)</script>', legacy_response.text, re.DOTALL)
+    assert legacy_match is not None
+    assert json.loads(legacy_match.group(1))["props"]["payload"] == payload
+
+    assert page_response.status_code == 200
+    assert page_response.text.count("</script>") == 1
+    page_match = re.search(
+        r'<script type="application/json" id="app_page" data-page="app">(.*?)</script>', page_response.text, re.DOTALL
+    )
+    assert page_match is not None
+    assert json.loads(page_match.group(1))["props"]["payload"] == payload
+
+
+@pytest.mark.parametrize("source", ["vite_plugin", "request_state", "template_context"])
+async def test_create_template_context_csp_nonce_propagation(
+    source: str, tmp_path: Path, inertia_plugin: InertiaPlugin
+) -> None:
+    """CSP nonces from VitePlugin, request.state, or template context are HTML-escaped on inertia_page."""
+    (tmp_path / "inertia_page.html.j2").write_text(
+        '<!DOCTYPE html><html><body><div id="app"></div>{{ inertia_page }}</body></html>'
+    )
+    nonce_value = 'n"1'
+    vite_plugin = VitePlugin(
+        config=ViteConfig(
+            mode="template",
+            runtime=RuntimeConfig(csp_nonce=nonce_value if source == "vite_plugin" else None),
+            inertia=inertia_plugin.config,
+        )
+    )
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, Any]]:
+        if source == "request_state":
+            request.state.csp_nonce = nonce_value
+        extra_context = {"csp_nonce": nonce_value} if source == "template_context" else None
+        return InertiaResponse(content={"ok": True}, template_name="inertia_page.html.j2", context=extra_context)
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=TemplateConfig(engine=JinjaTemplateEngine(directory=tmp_path)),
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    match = re.search(
+        r'<script type="application/json" id="app_page" data-page="app" nonce="n&quot;1">(.*?)</script>',
+        response.text,
+        re.DOTALL,
+    )
+    assert match is not None
+    assert json.loads(match.group(1))["props"]["ok"] is True
+
+
+async def test_create_template_context_csp_nonce_precedence_and_omission(
+    tmp_path: Path, inertia_plugin: InertiaPlugin
+) -> None:
+    """Context nonce overrides request.state nonce, which overrides VitePlugin nonce, and empty omits nonce."""
+    (tmp_path / "inertia_page.html.j2").write_text(
+        '<!DOCTYPE html><html><body><div id="app"></div>{{ inertia_page }}</body></html>'
+    )
+    vite_plugin = VitePlugin(
+        config=ViteConfig(
+            mode="template", runtime=RuntimeConfig(csp_nonce="plugin-nonce"), inertia=inertia_plugin.config
+        )
+    )
+
+    @get("/ctx-wins", component="Home")
+    async def ctx_wins(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, Any]]:
+        request.state.csp_nonce = "state-nonce"
+        return InertiaResponse(
+            content={"ok": True}, template_name="inertia_page.html.j2", context={"csp_nonce": "ctx-nonce"}
+        )
+
+    @get("/state-wins", component="Home")
+    async def state_wins(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, Any]]:
+        request.state.csp_nonce = "state-nonce"
+        return InertiaResponse(content={"ok": True}, template_name="inertia_page.html.j2")
+
+    with create_test_client(
+        route_handlers=[ctx_wins, state_wins],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=TemplateConfig(engine=JinjaTemplateEngine(directory=tmp_path)),
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        ctx_response = client.get("/ctx-wins")
+        state_response = client.get("/state-wins")
+
+    assert 'nonce="ctx-nonce"' in ctx_response.text
+    assert 'nonce="state-nonce"' in state_response.text
+
+    no_nonce_plugin = VitePlugin(config=ViteConfig(mode="template", inertia=inertia_plugin.config))
+
+    @get("/none", component="Home")
+    async def no_nonce_handler() -> InertiaResponse[dict[str, Any]]:
+        return InertiaResponse(content={"ok": True}, template_name="inertia_page.html.j2")
+
+    with create_test_client(
+        route_handlers=[no_nonce_handler],
+        plugins=[inertia_plugin, no_nonce_plugin],
+        template_config=TemplateConfig(engine=JinjaTemplateEngine(directory=tmp_path)),
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        none_response = client.get("/none")
+
+    assert "nonce=" not in none_response.text
+
+
+@pytest.mark.parametrize(
+    ("csrf_token", "expected_value"),
+    [
+        ('tok"><script>', "tok&quot;&gt;&lt;script&gt;"),
+        ("a&b'c<d>e\"f", "a&amp;b&#x27;c&lt;d&gt;e&quot;f"),
+        ("test-token-placeholder", "test-token-placeholder"),
+        ("", ""),
+        (None, ""),
+    ],
+)
+async def test_create_template_context_escapes_csrf_input(
+    csrf_token: str | None, expected_value: str, tmp_path: Path, inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin
+) -> None:
+    """csrf_input escapes HTML attribute special characters and renders empty string when absent."""
+    (tmp_path / "csrf.html.j2").write_text(
+        "<!DOCTYPE html><html><body><form>{{ csrf_input | safe }}</form></body></html>"
+    )
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaResponse[dict[str, Any]]:
+        if csrf_token is not None:
+            ScopeState.from_scope(request.scope).csrf_token = csrf_token
+        return InertiaResponse(content={"ok": True}, template_name="csrf.html.j2")
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=TemplateConfig(engine=JinjaTemplateEngine(directory=tmp_path)),
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert f'<input type="hidden" name="_csrf_token" value="{expected_value}" />' in response.text
+
+
+_UNSAFE_REDIRECT_URLS = [
+    "//example.org",
+    "///example.org",
+    "///example.org/path",
+    "////example.org",
+    "/\\example.org",
+    "\\\\example.org",
+    "\\example.org",
+    "/path\\with\\backslash",
+    "dashboard",
+    "example.org/path",
+    "\t/dashboard",
+    "\t//example.org",
+    "/ok\r\n",
+    "/ok\r\nX-Header: 1",
+    "/a\r\nb",
+    "\x7f/dashboard",
+    "javascript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "ftp://testserver.local/",
+    "http://[::1",
+    "https://example.org/x",
+    "http://testserver.local\\@example.org",
+    "http://testserver.local/path\\with\\backslash",
+    "   ",
+]
+
+
+@pytest.mark.parametrize("unsafe_url", _UNSAFE_REDIRECT_URLS)
+async def test_inertia_redirect_rejects_unsafe_urls(
+    unsafe_url: str,
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig[JinjaTemplateEngine],
+) -> None:
+    """InertiaRedirect falls back to base_url for unsafe, malformed, or cross-origin redirect targets."""
+
+    @get("/redirect", component="Redirect")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaRedirect:
+        return InertiaRedirect(request, redirect_to=unsafe_url)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/redirect", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers.get("location") == "http://testserver.local/"
+
+
+@pytest.mark.parametrize("unsafe_url", _UNSAFE_REDIRECT_URLS)
+async def test_inertia_back_rejects_unsafe_referer_urls(
+    unsafe_url: str,
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig[JinjaTemplateEngine],
+) -> None:
+    """InertiaBack falls back to base_url for unsafe, malformed, or cross-origin Referer headers."""
+
+    @get("/back", component="Back")
+    async def handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get(
+            "/back", headers={InertiaHeaders.ENABLED.value: "true", "Referer": unsafe_url}, follow_redirects=False
+        )
+
+    assert response.status_code == 307
+    assert response.headers.get("location") == "http://testserver.local/"
+
+
+@pytest.mark.parametrize("mode", ["redirect", "back"])
+@pytest.mark.parametrize(
+    ("safe_url", "is_fragment"),
+    [
+        ("/", False),
+        ("/dashboard", False),
+        ("/dashboard?tab=1#details", True),
+        ("http://testserver.local/previous-page", False),
+        ("http://testserver.local/a?b=1", False),
+    ],
+)
+async def test_inertia_redirect_and_back_accept_safe_urls(
+    mode: str,
+    safe_url: str,
+    is_fragment: bool,
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig[JinjaTemplateEngine],
+) -> None:
+    """InertiaRedirect and InertiaBack preserve valid single-slash relative and same-origin URLs."""
+
+    @get("/redirect", component="Redirect")
+    async def redirect_handler(request: Request[Any, Any, Any]) -> InertiaRedirect:
+        return InertiaRedirect(request, redirect_to=safe_url)
+
+    @get("/back", component="Back")
+    async def back_handler(request: Request[Any, Any, Any]) -> InertiaBack:
+        return InertiaBack(request)
+
+    with create_test_client(
+        route_handlers=[redirect_handler, back_handler],
+        template_config=template_config,
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        if mode == "redirect":
+            response = client.get("/redirect", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=False)
+        else:
+            response = client.get(
+                "/back", headers={InertiaHeaders.ENABLED.value: "true", "Referer": safe_url}, follow_redirects=False
+            )
+
+    if is_fragment:
+        assert response.status_code == 409
+        assert response.headers.get("x-inertia-redirect") == safe_url
+        assert "location" not in response.headers
+    else:
+        assert response.status_code == 307
+        assert response.headers.get("location") == safe_url

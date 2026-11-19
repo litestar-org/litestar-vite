@@ -96,8 +96,8 @@ describe("emitSchemasTypes", () => {
     expect(changed).toBe(true)
 
     const content = fs.readFileSync(path.join(outputDir, "schemas.ts"), "utf-8")
-    expect(content).toContain("'api:profile_update': ProfileUpdateData")
-    expect(content).toContain("'api:profile_update': ProfileUpdateResponses")
+    expect(content).toContain('"api:profile_update": ProfileUpdateData')
+    expect(content).toContain('"api:profile_update": ProfileUpdateResponses')
     expect(content).toContain("export type FormInput<T extends OperationName>")
   })
 
@@ -146,10 +146,10 @@ describe("emitSchemasTypes", () => {
     expect(changed).toBe(true)
 
     const content = fs.readFileSync(path.join(outputDir, "schemas.ts"), "utf-8")
-    expect(content).toContain("'api:users_list': UsersListData")
-    expect(content).toContain("'api:users_list': UsersListResponses")
-    expect(content).toContain("'api:users_create': UsersCreateData")
-    expect(content).toContain("'api:users_create': UsersCreateResponses")
+    expect(content).toContain('"api:users_list": UsersListData')
+    expect(content).toContain('"api:users_list": UsersListResponses')
+    expect(content).toContain('"api:users_create": UsersCreateData')
+    expect(content).toContain('"api:users_create": UsersCreateResponses')
   })
 
   it("preserves optional schema types in FormInput and QueryParams without collapsing to never", async () => {
@@ -210,5 +210,73 @@ describe("emitSchemasTypes", () => {
     })
     const diagnostics = ts.getPreEmitDiagnostics(program)
     expect(diagnostics).toHaveLength(0)
+  })
+
+  it("escapes route names and import paths via JSON.stringify and parses cleanly", async () => {
+    const tmpDir = createTmpDir()
+    const outputDir = path.join(tmpDir, "generated")
+    const apiDir = path.join(outputDir, "api")
+    fs.mkdirSync(apiDir, { recursive: true })
+
+    const routeName = "api:user's\"route\n\u2028\u2029"
+    const routesPath = path.join(tmpDir, "routes.json")
+    const routesJson = {
+      routes: {
+        [routeName]: {
+          uri: "/api/user",
+          method: "GET",
+          methods: ["GET"],
+        },
+      },
+    }
+    fs.writeFileSync(routesPath, JSON.stringify(routesJson, null, 2))
+
+    const typesGen = ["export type UserRouteData = { url: '/api/user'; method: 'get' }", "export type UserRouteResponses = { 200: { id: string } }", ""].join("\n")
+    fs.writeFileSync(path.join(apiDir, "types.gen.ts"), typesGen)
+
+    const customOut = path.join(tmpDir, 'custom"dir\u2028', "schemas.ts")
+    const changed = await emitSchemasTypes(routesPath, outputDir, customOut)
+    expect(changed).toBe(true)
+
+    const content = fs.readFileSync(customOut, "utf-8")
+    expect(content).not.toContain("\u2028")
+    expect(content).not.toContain("\u2029")
+    expect(content).toContain('| "api:user\'s\\"route\\n\\u2028\\u2029"')
+    expect(content).toContain('"api:user\'s\\"route\\n\\u2028\\u2029": UserRouteData')
+    expect(content).toContain('"api:user\'s\\"route\\n\\u2028\\u2029": UserRouteResponses')
+
+    const transpiled = ts.transpileModule(content, {
+      reportDiagnostics: true,
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+      },
+    })
+    expect(transpiled.diagnostics ?? []).toHaveLength(0)
+  })
+
+  it("rejects invalid imported type identifiers in generated schema mappings", async () => {
+    const tmpDir = createTmpDir()
+    const outputDir = path.join(tmpDir, "generated")
+    const apiDir = path.join(outputDir, "api")
+    fs.mkdirSync(apiDir, { recursive: true })
+
+    const routesPath = path.join(tmpDir, "routes.json")
+    fs.writeFileSync(
+      routesPath,
+      JSON.stringify({
+        routes: {
+          "api:bad": {
+            uri: "/api/bad",
+            method: "GET",
+            methods: ["GET"],
+          },
+        },
+      }),
+    )
+
+    fs.writeFileSync(path.join(apiDir, "types.gen.ts"), "export type 123BadData = { url: '/api/bad' }\n")
+
+    await expect(emitSchemasTypes(routesPath, outputDir)).rejects.toThrow(/Invalid TypeScript/i)
   })
 })

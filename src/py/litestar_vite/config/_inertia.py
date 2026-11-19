@@ -1,12 +1,51 @@
 """Inertia.js configuration classes."""
 
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from litestar_vite.config._constants import empty_dict_factory, empty_set_factory
 
 __all__ = ("InertiaConfig", "InertiaSSRConfig", "InertiaTypeGenConfig")
+
+
+def _contains_dynamic_prop(
+    value: Any, is_special: Callable[[Any], bool], is_merge: Callable[[Any], bool], seen: set[int]
+) -> bool:
+    """Recursively detect Inertia special or merge prop wrappers inside static prop values.
+
+    Skips ``str`` and ``bytes`` values and inspects nested mappings, lists, and tuples
+    while tracking visited container object IDs to guard against cyclic structures.
+
+    Args:
+        value: Prop value to inspect.
+        is_special: Predicate returning ``True`` for special Inertia prop wrappers.
+        is_merge: Predicate returning ``True`` for Inertia merge prop wrappers.
+        seen: Visited container object IDs in the current validation pass.
+
+    Returns:
+        ``True`` if ``value`` is or contains a special or merge prop wrapper.
+    """
+    if is_special(value) or is_merge(value):
+        return True
+    if isinstance(value, (str, bytes)):
+        return False
+
+    children: Iterable[Any] | None = None
+    if isinstance(value, Mapping):
+        children = cast("Mapping[Any, Any]", value).values()
+    elif isinstance(value, (list, tuple)):
+        children = cast("list[Any] | tuple[Any, ...]", value)
+
+    if children is None:
+        return False
+
+    obj_id = id(cast("object", value))
+    if obj_id in seen:
+        return False
+    seen.add(obj_id)
+    return any(_contains_dynamic_prop(item, is_special, is_merge, seen) for item in children)
 
 
 @dataclass
@@ -68,11 +107,33 @@ class InertiaConfig:
     """Register the Laravel Precognition validation exception handler for `Precognition: true` requests."""
 
     def __post_init__(self) -> None:
-        """Normalize optional sub-configs."""
+        """Normalize optional sub-configs and validate static page props.
+
+        Performs a local import of Inertia prop predicates only when
+        ``extra_static_page_props`` is non-empty to avoid circular imports between
+        the configuration and Inertia runtime modules.
+
+        Raises:
+            ValueError: If ``extra_static_page_props`` contains a special or merge
+                Inertia prop wrapper at the top level or inside nested containers.
+        """
         if self.ssr is True:
             self.ssr = InertiaSSRConfig()
         elif self.ssr is False:
             self.ssr = None
+        if self.extra_static_page_props:
+            from litestar_vite.inertia.helpers import is_merge_prop, is_special_prop
+
+            seen: set[int] = set()
+            for key, value in self.extra_static_page_props.items():
+                if _contains_dynamic_prop(value, is_special_prop, is_merge_prop, seen):
+                    msg = (
+                        f"Invalid InertiaConfig.extra_static_page_props entry {key!r}: "
+                        "special and merge prop wrappers cannot be shared globally in "
+                        "extra_static_page_props. Provide plain static values in "
+                        "extra_static_page_props or stage dynamic props per request with share()."
+                    )
+                    raise ValueError(msg)
 
     @property
     def ssr_config(self) -> InertiaSSRConfig | None:

@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit, urlunsplit
 
 from click import Choice, Context, group, option
 from click import Path as ClickPath
@@ -131,6 +132,10 @@ def _print_recommended_config(template_name: str, resource_dir: str, bundle_dir:
     console.print("\n[bold cyan]Recommended ViteConfig:[/]")
     console.print(Panel(config_snippet, title="app.py", border_style="dim"))
     console.print("[dim]Note: set dev_mode=False in production; set types=False to disable TypeScript generation.[/]")
+    if template_name == "react-tanstack":
+        console.print(
+            "[dim]Note: install @tanstack/router-cli locally so node_modules/.bin/tsr is available for extra_commands.[/]"
+        )
 
 
 def _coerce_option_value(value: str) -> object:
@@ -169,10 +174,66 @@ def _parse_storage_options(values: tuple[str, ...]) -> dict[str, object]:
     return options
 
 
+def _redact_storage_url(url: str | None) -> str:
+    """Mask embedded userinfo credentials in a storage URL before display.
+
+    Args:
+        url: Storage backend URL or remote path to sanitize.
+
+    Returns:
+        Storage URL with embedded credentials replaced by placeholders, or empty string when unset.
+    """
+    if not url:
+        return ""
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        if "://" not in url:
+            return url
+        scheme, rest = url.split("://", 1)
+        end_indices = [idx for sep in ("/", "?", "#") if (idx := rest.find(sep)) != -1]
+        split_at = min(end_indices) if end_indices else len(rest)
+        authority, remainder = rest[:split_at], rest[split_at:]
+        if "@" not in authority:
+            return url
+        userinfo, host_port = authority.rsplit("@", 1)
+        mask = "***:***" if ":" in userinfo else "***"
+        return f"{scheme}://{mask}@{host_port}{remainder}"
+
+    if parsed.username is None and parsed.password is None:
+        return url
+
+    try:
+        port = parsed.port
+    except ValueError:
+        host_port = parsed.netloc.rsplit("@", 1)[-1]
+    else:
+        host = parsed.hostname or ""
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        host_port = f"{host}:{port}" if port is not None else host
+
+    redacted_userinfo = "***:***" if parsed.password is not None else "***"
+    netloc = f"{redacted_userinfo}@{host_port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
+
+
 def _build_deploy_config(
-    base_config: ViteConfig, storage: str | None, storage_options: dict[str, object], no_delete: bool
+    base_config: ViteConfig,
+    storage: str | None,
+    storage_options: dict[str, object],
+    no_delete: bool,
+    *,
+    include_sourcemaps: bool = False,
 ) -> DeployConfig:
     """Resolve deploy configuration from CLI overrides.
+
+    Args:
+        base_config: Application Vite configuration.
+        storage: Optional storage backend URL override.
+        storage_options: Additional fsspec storage options from CLI flags.
+        no_delete: When True, disable orphaned remote file deletion.
+        include_sourcemaps: When True, enable uploading ``.map`` source map files.
 
     Returns:
         Resolved DeployConfig with CLI overrides applied.
@@ -187,7 +248,10 @@ def _build_deploy_config(
 
     merged_options = {**deploy_config.storage_options, **storage_options}
     deploy_config = deploy_config.with_overrides(
-        storage_backend=storage, storage_options=merged_options, delete_orphaned=False if no_delete else None
+        storage_backend=storage,
+        storage_options=merged_options,
+        delete_orphaned=False if no_delete else None,
+        include_sourcemaps=True if include_sourcemaps else None,
     )
 
     if not deploy_config.storage_backend:
@@ -808,6 +872,7 @@ def vite_build(app: "Litestar", verbose: "bool", quiet: "bool") -> None:
     is_flag=True,
     help="Enable verbose output. Install providers separately: gcsfs for gcs://, s3fs for s3://, adlfs for abfs://.",
 )
+@option("--include-sourcemaps", is_flag=True, help="Upload .map source map files alongside built assets.")
 def vite_deploy(
     app: "Litestar",
     storage: "str | None",
@@ -816,6 +881,7 @@ def vite_deploy(
     dry_run: bool,
     no_delete: bool,
     verbose: bool,
+    include_sourcemaps: bool = False,
 ) -> None:
     """Build and deploy assets to CDN-backed storage."""
     if verbose:
@@ -826,7 +892,9 @@ def vite_deploy(
 
     try:
         storage_options = _parse_storage_options(storage_option)
-        deploy_config = _build_deploy_config(config, storage, storage_options, no_delete)
+        deploy_config = _build_deploy_config(
+            config, storage, storage_options, no_delete, include_sourcemaps=include_sourcemaps
+        )
     except ValueError as exc:  # pragma: no cover - CLI validation path
         console.print(f"[red]{exc}[/]")
         sys.exit(1)
@@ -844,7 +912,7 @@ def vite_deploy(
         sys.exit(1)
 
     console.rule("Deploying [blue]Vite[/] assets", align="left")
-    console.print(f"Storage: {deploy_config.storage_backend}")
+    console.print(f"Storage: {_redact_storage_url(deploy_config.storage_backend)}")
     console.print(f"Delete orphaned: {deploy_config.delete_orphaned}")
     if dry_run:
         console.print("[dim]Dry-run enabled. No changes will be made.[/]")
@@ -868,7 +936,7 @@ def vite_deploy(
     console.rule("[yellow]Deploy summary[/]", align="left")
     console.print(f"Uploaded: {len(result.uploaded)} files ({format_bytes(result.uploaded_bytes)})")
     console.print(f"Deleted:  {len(result.deleted)} files ({format_bytes(result.deleted_bytes)})")
-    console.print(f"Remote:   {deployer.remote_path}")
+    console.print(f"Remote:   {_redact_storage_url(deployer.remote_path)}")
     if result.dry_run:
         console.print("[dim]No changes applied (dry-run).[/]")
     else:
@@ -926,6 +994,31 @@ def vite_serve(app: "Litestar", verbose: "bool", quiet: "bool", production: "boo
         console.print("[red]Executor not configured.[/]")
 
 
+def _resolve_route_filters(
+    only: "str | None", exclude: "str | None", config: ViteConfig
+) -> "tuple[list[str] | None, list[str] | None]":
+    """Resolve route include/exclude filters from CLI options and TypeGenConfig.
+
+    Returns:
+        Tuple of resolved (only, exclude) pattern lists or None.
+    """
+    if only is not None:
+        only_list: list[str] | None = [p.strip() for p in only.split(",")] if only else None
+    elif isinstance(config.types, TypeGenConfig) and config.types.only_routes:
+        only_list = list(config.types.only_routes)
+    else:
+        only_list = None
+
+    if exclude is not None:
+        exclude_list: list[str] | None = [p.strip() for p in exclude.split(",")] if exclude else None
+    elif isinstance(config.types, TypeGenConfig) and config.types.exclude_routes:
+        exclude_list = list(config.types.exclude_routes)
+    else:
+        exclude_list = None
+
+    return only_list, exclude_list
+
+
 @vite_group.command(name="export-routes", help="Export route metadata for type-safe routing.")
 @option(
     "--output",
@@ -976,8 +1069,7 @@ def export_routes(
     plugin = app.plugins.get(VitePlugin)
     config = plugin.config
 
-    only_list = [p.strip() for p in only.split(",")] if only else None
-    exclude_list = [p.strip() for p in exclude.split(",")] if exclude else None
+    only_list, exclude_list = _resolve_route_filters(only, exclude, config)
 
     if typescript:
         if output is None:
@@ -1024,50 +1116,35 @@ def export_routes(
             raise LitestarCLIException(msg) from e
 
 
-def _default_bin_name_from_package_spec(package_spec: str) -> str:
-    """Return the default binary name for an npm package spec.
-
-    Returns:
-        The last package-name segment with any version suffix removed.
-    """
-    if package_spec.startswith("@"):
-        slash_index = package_spec.index("/")
-        at_index = package_spec.find("@", slash_index + 1)
-    else:
-        at_index = package_spec.find("@")
-    name = package_spec if at_index == -1 else package_spec[:at_index]
-    return name.rsplit("/", 1)[-1]
+_LOCAL_BINARY_PACKAGES: dict[str, str] = {
+    "tsr": "@tanstack/router-cli",
+    "litestar-vite-typegen": "litestar-vite-plugin",
+}
 
 
-def _get_package_executor_cmd(executor: "str | None", binary: str, *, package_name: "str | None" = None) -> "list[str]":
-    """Build package executor command list.
-
-    Maps executor to its "npx equivalent" and returns a command list
-    suitable for subprocess.run.
+def _format_local_install_hint(executor: "str | None", binary: str, *, package_name: "str | None" = None) -> str:
+    """Format an executor-specific local dev-dependency install command.
 
     Args:
         executor: The JS runtime executor (node, bun, deno, yarn, pnpm).
-        binary: The binary to run.
-        package_name: Optional package that provides ``binary`` when different
-            from the binary name.
+        binary: The missing local binary name.
+        package_name: Optional npm package name overriding the binary lookup.
 
     Returns:
-        Command list for subprocess.run.
+        An install command string for the configured package manager.
     """
-    package = package_name or binary
+    package = package_name or _LOCAL_BINARY_PACKAGES.get(binary, binary)
     match executor:
         case "bun":
-            return ["bunx", "--package", package, binary] if package_name else ["bunx", binary]
+            return f"bun add -d {package}"
         case "deno":
-            default_bin = _default_bin_name_from_package_spec(package)
-            deno_package = package if default_bin == binary else f"{package}/{binary}"
-            return ["deno", "run", "-A", f"npm:{deno_package}"]
+            return f"deno add -d npm:{package}"
         case "yarn":
-            return ["yarn", "dlx", "--package", package, binary] if package_name else ["yarn", "dlx", binary]
+            return f"yarn add -D {package}"
         case "pnpm":
-            return ["pnpm", "--package", package, "dlx", binary] if package_name else ["pnpm", "dlx", binary]
+            return f"pnpm add -D {package}"
         case _:
-            return ["npx", "--package", package, binary] if package_name else ["npx", binary]
+            return f"npm install -D {package}"
 
 
 def _get_local_binary_cmd(root_dir: Path, binary: str) -> "list[str] | None":
@@ -1114,46 +1191,29 @@ def _get_local_js_cli_cmd(root_dir: Path, binary: str) -> "list[str] | None":
 
 def _resolve_js_cli(
     root_dir: Path, executor: "str | None", binary: str, *, package_name: "str | None" = None
-) -> "list[str]":
-    """Resolve a JS CLI command, honoring the configured executor.
+) -> "list[str] | None":
+    """Resolve a locally installed JS CLI command, honoring the configured executor.
 
-    Prefers a locally installed ``node_modules/.bin/<binary>``. When the
-    resolved binary is a direct JS CLI and the executor is ``bun`` or
-    ``deno``, the runtime is prepended explicitly so the shebang does not
-    leak a hard ``node`` dependency into bun- or deno-only environments
-    (e.g., slim CI images that ship only ``bun``).
-
-    Windows ``.cmd``/``.exe`` shims and POSIX shell shims are intentionally
-    not passed into Bun/Deno; those fall back to the runtime's package runner.
-    For ``npm``/``yarn``/``pnpm``/``node`` the bare path is returned and
-    the shebang governs, matching prior behavior.
-
-    Falls back to ``_get_package_executor_cmd`` (``npx`` / ``bunx`` /
-    ``deno run`` / ``yarn dlx`` / ``pnpm dlx``) when the local binary
-    is missing.
+    Resolves ``node_modules/.bin/<binary>`` without falling back to unpinned
+    package runners. When the resolved binary is a direct JS CLI and the
+    executor is ``bun`` or ``deno``, the runtime is prepended explicitly so the
+    shebang does not require ``node`` on PATH.
 
     Returns:
-        A command list suitable for subprocess.run.
+        A command list suitable for subprocess.run, or None if unavailable.
     """
+    del package_name
     local = _get_local_binary_cmd(root_dir, binary)
     if local is None:
-        return _get_package_executor_cmd(executor, binary, package_name=package_name)
+        return None
 
     match executor:
         case "bun":
             js_local = _get_local_js_cli_cmd(root_dir, binary)
-            return (
-                ["bun", "run", *js_local]
-                if js_local is not None
-                else _get_package_executor_cmd(executor, binary, package_name=package_name)
-            )
+            return ["bun", "run", *js_local] if js_local is not None else None
         case "deno":
             js_local = _get_local_js_cli_cmd(root_dir, binary)
-            return (
-                ["deno", "run", "-A", *js_local]
-                if js_local is not None
-                else _get_package_executor_cmd(executor, binary, package_name=package_name)
-            )
+            return ["deno", "run", "-A", *js_local] if js_local is not None else None
         case _:
             return local
 
@@ -1165,10 +1225,8 @@ def _run_extra_commands(config: ViteConfig, verbose: bool) -> bool:
     Vite-plugin code generators (e.g., TanStack Router ``tsr generate``)
     a chance to produce their artifacts so that ``tsc --noEmit`` passes.
 
-    Each command is specified as ``[binary, *args]``.  The *binary* (first
-    element) is resolved through the project's JS executor — first checking
-    ``node_modules/.bin/<binary>``, then falling back to the configured
-    package runner (npx / pnpm dlx / yarn dlx / bunx / deno run).
+    Each command is specified as ``[binary, *args]`` and must resolve to a
+    locally installed executable in ``node_modules/.bin/<binary>``.
 
     Failures are reported as warnings so that independent generators
     (e.g., hey-api typegen) still run even if one extra command fails.
@@ -1190,10 +1248,23 @@ def _run_extra_commands(config: ViteConfig, verbose: bool) -> bool:
 
     for cmd in types_config.extra_commands:
         cmd_list = list(cmd)
+        if not cmd_list:
+            continue
         binary = cmd_list[0]
         args = cmd_list[1:]
 
         resolved = _resolve_js_cli(root_dir, executor, binary)
+        if resolved is None:
+            local_bin_path = root_dir / "node_modules" / ".bin" / binary
+            install_hint = _format_local_install_hint(executor, binary)
+            console.print(
+                f"[yellow]⚠ Local binary not found at {local_bin_path} — install with `{install_hint}` or run `litestar assets install`[/]",
+                soft_wrap=True,
+            )
+            console.print("[dim]  (continuing with remaining type generation)[/]")
+            all_ok = False
+            continue
+
         full_cmd = [*resolved, *args]
         display = " ".join(full_cmd)
 
@@ -1227,12 +1298,26 @@ def _invoke_typegen_cli(config: ViteConfig, verbose: bool) -> None:
         verbose: Whether to show verbose output.
 
     Raises:
-        LitestarCLIException: If type generation fails.
+        LitestarCLIException: If the local typegen binary is missing or fails.
     """
     root_dir = config.root_dir or Path.cwd()
     executor = config.runtime.executor
 
     pkg_cmd = _resolve_js_cli(root_dir, executor, "litestar-vite-typegen", package_name="litestar-vite-plugin")
+    if pkg_cmd is None:
+        local_bin_path = root_dir / "node_modules" / ".bin" / "litestar-vite-typegen"
+        install_hint = _format_local_install_hint(
+            executor, "litestar-vite-typegen", package_name="litestar-vite-plugin"
+        )
+        console.print(
+            f"[yellow]! Local binary not found at {local_bin_path} — install with `{install_hint}` or run `litestar assets install`[/]",
+            soft_wrap=True,
+        )
+        msg = (
+            f"Missing local binary {local_bin_path}. Install it with `{install_hint}` or run `litestar assets install`."
+        )
+        raise LitestarCLIException(msg)
+
     cmd = [*pkg_cmd]
 
     if verbose:

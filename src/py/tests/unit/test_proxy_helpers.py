@@ -771,3 +771,135 @@ def test_create_hmr_target_getter_uses_hotfile_when_sibling_missing(
 
     assert getter() == "https://framework-dev-server:4321"
     read_bridge_config.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "credential_headers",
+    [
+        [(b"Cookie", b"session=test-token-placeholder"), (b"Authorization", b"Bearer test-token-placeholder")],
+        [(b"cookie", b"session=test-token-placeholder"), (b"authorization", b"Bearer test-token-placeholder")],
+    ],
+)
+def test_extract_forward_headers_strips_credentials(credential_headers: list[tuple[bytes, bytes]]) -> None:
+    scope = {"headers": [(b"Host", b"localhost:8000"), *credential_headers, (b"X-Test", b"value")]}
+
+    assert extract_forward_headers(scope) == [("X-Test", "value")]
+
+
+def test_extract_forward_headers_avoids_set_copy_without_connection_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    set_calls = 0
+
+    class _CountingSet(set[object]):
+        def __new__(cls, *args: object, **kwargs: object) -> Self:
+            nonlocal set_calls
+            set_calls += 1
+            return super().__new__(cls)
+
+    monkeypatch.setattr("builtins.set", _CountingSet)
+
+    scope = {
+        "headers": [
+            (b"Host", b"localhost:8000"),
+            (b"Cookie", b"session=test-token-placeholder"),
+            (b"Authorization", b"Bearer test-token-placeholder"),
+            (b"X-Test", b"value"),
+        ]
+    }
+
+    assert extract_forward_headers(scope) == [("X-Test", "value")]
+    assert set_calls == 0
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        [(b"host", b"localhost:8000"), (b"origin", b"https://evil.example.com")],
+        [(b"host", b"localhost:8000"), (b"origin", b"http://localhost:5173")],
+        [(b"host", b"app.example.com"), (b"origin", b"http://app.example.com:443")],
+        [(b"origin", b"http://localhost:8000")],
+        [(b"host", b"localhost:8000"), (b"origin", b"null")],
+        [(b"host", b"localhost:8000"), (b"origin", b"   ")],
+        [(b"host", b"localhost:8000"), (b"origin", b"http://localhost:8000"), (b"origin", b"http://localhost:8000")],
+        [(b"host", b"localhost:8000"), (b"host", b"localhost:8000"), (b"origin", b"http://localhost:8000")],
+        [(b"host", b"localhost:8000"), (b"origin", b"javascript://localhost:8000")],
+        [(b"host", b"localhost:8000"), (b"origin", b"http://localhost:8000/extra")],
+        [(b"host", b"localhost:8000"), (b"origin", b"http://user@localhost:8000")],
+        [(b"host", b"[::1]:8000"), (b"origin", b"http://[::1%25eth0]:8000")],
+        [(b"host", b"localhost:8000"), (b"origin", b"http://localhost:99999")],
+        [(b"host", b"localhost:8000"), (b"origin", b"http://localhost:8000?x=1")],
+        [(b"host", b"localhost:8000"), (b"origin", b"http://localhost:8000#frag")],
+    ],
+)
+async def test_vite_hmr_handler_rejects_disallowed_origin(tmp_path: Path, headers: list[tuple[bytes, bytes]]) -> None:
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://localhost:5173", encoding="utf-8")
+    handler = create_vite_hmr_handler(hotfile)
+
+    socket = MagicMock()
+    socket.scope = {"path": "/vite-hmr", "query_string": b"", "headers": headers}
+    socket.accept = AsyncMock()
+    socket.close = AsyncMock()
+    socket.receive = AsyncMock(side_effect=WebSocketDisconnect(code=1000, detail="Client disconnected"))
+
+    with patch("litestar_vite.plugin._proxy.websockets.connect") as mock_connect:
+        await handler.fn(socket)
+
+        socket.accept.assert_not_awaited()
+        mock_connect.assert_not_called()
+        socket.close.assert_awaited_once_with(code=1008, reason="Origin not allowed")
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        [(b"host", b"localhost:8000"), (b"origin", b"http://localhost:8000")],
+        [(b"host", b"app.example.com"), (b"origin", b"https://app.example.com")],
+        [(b"host", b"app.example.com"), (b"origin", b"https://app.example.com:443")],
+        [(b"host", b"app.example.com:443"), (b"origin", b"https://app.example.com")],
+        [(b"host", b"[::1]:8000"), (b"origin", b"http://[::1]:8000")],
+        [(b"host", b"[0:0::1]:8000"), (b"origin", b"http://[::1]:8000")],
+        [],
+    ],
+)
+async def test_vite_hmr_handler_allows_matching_origin(tmp_path: Path, headers: list[tuple[bytes, bytes]]) -> None:
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://localhost:5173", encoding="utf-8")
+    handler = create_vite_hmr_handler(hotfile)
+
+    socket = MagicMock()
+    socket.scope = {"path": "/vite-hmr", "query_string": b"", "headers": headers}
+    socket.accept = AsyncMock()
+    socket.close = AsyncMock()
+    socket.receive = AsyncMock(side_effect=WebSocketDisconnect(code=1000, detail="Client disconnected"))
+
+    with patch("litestar_vite.plugin._proxy.websockets.connect") as mock_connect:
+        mock_connect.return_value.__aenter__.return_value = AsyncMock()
+
+        await handler.fn(socket)
+
+        socket.accept.assert_awaited_once()
+        mock_connect.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "invalid_content", ["file:///etc/passwd", "http://localhost:5173?q=1", "javascript:alert(1)", "   "]
+)
+def test_hotfile_proxy_getters_reject_invalid_hotfile_content(tmp_path: Path, invalid_content: str) -> None:
+    hotfile = tmp_path / "hot"
+    hotfile.write_text(invalid_content, encoding="utf-8")
+    scope = {"path": "/vite-hmr", "query_string": b""}
+
+    assert build_hmr_target_url(hotfile, scope, "/vite-hmr", "/static/") is None
+    assert create_target_url_getter(None, hotfile, [None])() is None
+    assert create_hmr_target_getter(hotfile, [None])() is None
+
+
+@pytest.mark.parametrize("invalid_hmr_content", ["file:///etc/passwd", "http://localhost:5173?q=1"])
+def test_hmr_target_getter_skips_invalid_sibling_and_falls_back(tmp_path: Path, invalid_hmr_content: str) -> None:
+    hotfile = tmp_path / "hot"
+    hotfile.write_text("http://localhost:5173", encoding="utf-8")
+    (tmp_path / "hot.hmr").write_text(invalid_hmr_content, encoding="utf-8")
+
+    getter = create_hmr_target_getter(hotfile, [None])
+
+    assert getter() == "http://localhost:5173"

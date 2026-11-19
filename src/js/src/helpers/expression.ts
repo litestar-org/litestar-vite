@@ -35,6 +35,35 @@ const BANNED_PROPS = new Set([
   "call",
   "bind",
 ])
+const ALLOWED_STRING_METHODS: ReadonlySet<string> = new Set([
+  "at",
+  "charAt",
+  "charCodeAt",
+  "codePointAt",
+  "concat",
+  "endsWith",
+  "includes",
+  "indexOf",
+  "lastIndexOf",
+  "padEnd",
+  "padStart",
+  "replace",
+  "replaceAll",
+  "slice",
+  "startsWith",
+  "substring",
+  "toLocaleLowerCase",
+  "toLocaleUpperCase",
+  "toLowerCase",
+  "toString",
+  "toUpperCase",
+  "trim",
+  "trimEnd",
+  "trimStart",
+])
+const ALLOWED_ARRAY_METHODS: ReadonlySet<string> = new Set(["at", "concat", "includes", "indexOf", "join", "lastIndexOf", "slice", "toReversed", "toSorted", "toString"])
+const ALLOWED_NUMBER_METHODS: ReadonlySet<string> = new Set(["toExponential", "toFixed", "toLocaleString", "toPrecision", "toString"])
+const ALLOWED_BOOLEAN_METHODS: ReadonlySet<string> = new Set(["toString"])
 const RESERVED = new Set(["function", "this", "new", "import", "delete", "void", "typeof", "instanceof", "in", "class", "return", "var", "let", "const", "async", "await", "yield"])
 const BINARY_PRECEDENCE: Readonly<Record<string, number>> = Object.freeze({
   "??": 1,
@@ -379,11 +408,7 @@ function resolveIdent(name: string, context: ExpressionContext): unknown {
 }
 
 function isPlainReceiver(value: unknown): boolean {
-  const valueType = typeof value
-  if (valueType === "string" || valueType === "number" || valueType === "boolean" || valueType === "function") {
-    return true
-  }
-  if (value === null || valueType !== "object") return false
+  if (value === null || typeof value !== "object") return false
   const firstPrototype = Object.getPrototypeOf(value)
   if (firstPrototype === null || STOP_PROTOS.has(firstPrototype)) return true
   const secondPrototype = Object.getPrototypeOf(firstPrototype)
@@ -391,8 +416,31 @@ function isPlainReceiver(value: unknown): boolean {
 }
 
 function readMember(object: unknown, name: string): unknown {
-  if (object === null || object === undefined || !isPlainReceiver(object)) return undefined
-  return (object as Record<string, unknown>)[name]
+  if (object === null || object === undefined || BANNED_PROPS.has(name)) return undefined
+  if (typeof object === "string") {
+    if (name === "length") return object.length
+    return ALLOWED_STRING_METHODS.has(name) ? (String.prototype as unknown as Record<string, unknown>)[name] : undefined
+  }
+  if (typeof object === "number") {
+    return ALLOWED_NUMBER_METHODS.has(name) ? (Number.prototype as unknown as Record<string, unknown>)[name] : undefined
+  }
+  if (typeof object === "boolean") {
+    return ALLOWED_BOOLEAN_METHODS.has(name) ? (Boolean.prototype as unknown as Record<string, unknown>)[name] : undefined
+  }
+  if (Array.isArray(object)) {
+    if (name === "length") return object.length
+    return ALLOWED_ARRAY_METHODS.has(name) ? (Array.prototype as unknown as Record<string, unknown>)[name] : undefined
+  }
+  if (typeof object === "function") return undefined
+  if (!isPlainReceiver(object)) return undefined
+  let current: unknown = object
+  while (current !== null && current !== undefined && !STOP_PROTOS.has(current)) {
+    if (Object.prototype.hasOwnProperty.call(current, name)) {
+      return (current as Record<string, unknown>)[name]
+    }
+    current = Object.getPrototypeOf(current)
+  }
+  return undefined
 }
 
 function add(left: unknown, right: unknown): unknown {
@@ -445,6 +493,9 @@ function evaluate(node: Node, context: ExpressionContext): unknown {
     const args = node.args.map((argument) => evaluate(argument, context))
     if (node.callee.type === "Member") {
       const receiver = evaluate(node.callee.object, context)
+      if (typeof receiver === "string" && (node.callee.name === "replace" || node.callee.name === "replaceAll") && args[0] instanceof RegExp) {
+        return undefined
+      }
       const callable = readMember(receiver, node.callee.name)
       return typeof callable === "function" ? Reflect.apply(callable, receiver, args) : undefined
     }

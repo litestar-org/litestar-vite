@@ -87,6 +87,65 @@ def test_fragment_engine_dev_mode_omits_non_stylesheet_links(tmp_path: Path) -> 
     assert engine.get_component_css_urls("styles/theme.css") == ["http://127.0.0.1:5173/styles/theme.css"]
 
 
+@pytest.mark.parametrize(
+    ("css_urls", "newline", "expected"),
+    [
+        pytest.param([], "\n", "", id="empty-css-urls"),
+        pytest.param(
+            ["/static/assets/Card.css"],
+            "\n",
+            '<link rel="stylesheet" href="/static/assets/Card.css" />',
+            id="standard-css-path",
+        ),
+        pytest.param(
+            ['/static/assets/a"b<c>.css'],
+            "\n",
+            '<link rel="stylesheet" href="/static/assets/a&quot;b&lt;c&gt;.css" />',
+            id="double-quote-and-angle-brackets",
+        ),
+        pytest.param(
+            ["/static/assets/a.css?v=1&k='x'"],
+            "\n",
+            '<link rel="stylesheet" href="/static/assets/a.css?v=1&amp;k=&#x27;x&#x27;" />',
+            id="ampersand-and-single-quote",
+        ),
+        pytest.param(
+            ['/static/assets/a"b<c>.css', "/static/assets/a.css?v=1&k='x'"],
+            "\r\n",
+            (
+                '<link rel="stylesheet" href="/static/assets/a&quot;b&lt;c&gt;.css" />\r\n'
+                '<link rel="stylesheet" href="/static/assets/a.css?v=1&amp;k=&#x27;x&#x27;" />'
+            ),
+            id="multiple-urls-with-crlf",
+        ),
+    ],
+)
+def test_fragment_engine_generate_component_css_tags_escapes_urls(
+    tmp_path: Path, css_urls: list[str], newline: str, expected: str
+) -> None:
+    """Verify generate_component_css_tags escapes HTML attribute characters in stylesheet URLs."""
+    config = ViteConfig(paths=PathConfig(root=tmp_path, asset_url="/static/"))
+    loader = MagicMock()
+    loader.get_component_css_urls.return_value = css_urls
+    del loader.generate_component_css_tags
+
+    engine = FragmentEngine(config=config, asset_loader=loader, transport=_StubFragmentTransport())
+    assert engine.generate_component_css_tags("components/Card.vue", newline=newline) == expected
+
+
+def test_fragment_engine_generate_component_css_tags_delegates_to_loader(tmp_path: Path) -> None:
+    """Verify generate_component_css_tags delegates when the asset loader defines the method."""
+    config = ViteConfig(paths=PathConfig(root=tmp_path, asset_url="/static/"))
+    loader = MagicMock()
+    loader.generate_component_css_tags.return_value = '<link rel="stylesheet" href="/delegated.css" />'
+
+    engine = FragmentEngine(config=config, asset_loader=loader, transport=_StubFragmentTransport())
+    assert (
+        engine.generate_component_css_tags("components/Card.vue") == '<link rel="stylesheet" href="/delegated.css" />'
+    )
+    loader.generate_component_css_tags.assert_called_once_with("components/Card.vue")
+
+
 @pytest.mark.anyio
 async def test_fragment_engine_render_async_and_crlf_preservation(tmp_path: Path) -> None:
     """Verify render_fragment prepends scoped CSS and preserves CRLF line endings."""

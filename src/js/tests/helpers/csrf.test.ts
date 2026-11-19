@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { csrfFetch, csrfHeaders, getCsrfHeaderName, getCsrfToken } from "../../src/helpers/csrf"
+import type { CsrfFetchOptions } from "../../src/helpers/index"
 
 function getHeaderValue(headers: HeadersInit | undefined, header: string): string | null | undefined {
   if (!headers) {
@@ -33,6 +34,7 @@ describe("csrf helpers", () => {
     // Reset window to a clean state
     globalThis.window = {
       __LITESTAR_CSRF__: undefined,
+      location: { origin: "https://example.com" } as Location,
     } as unknown as Window & typeof globalThis
     globalThis.document = {
       querySelector: vi.fn(() => null),
@@ -554,6 +556,156 @@ describe("csrf helpers", () => {
       const headers = callArgs[1].headers as Headers
       expect(headers.get("Authorization")).toBe("Bearer xyz")
       expect(headers.get("X-CSRFToken")).toBe("fetch-token")
+    })
+
+    it("preserves existing headers on a same-origin Request when attaching CSRF header", async () => {
+      globalThis.window.__LITESTAR_CSRF__ = "fetch-token"
+      const mockResponse = new Response("OK", { status: 200 })
+      ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse)
+
+      const request = new Request("https://example.com/api/submit", {
+        method: "POST",
+        headers: { "X-Custom": "1" },
+      })
+      await csrfFetch(request)
+
+      const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+      expect(callArgs[0]).toBe(request)
+      const headers = callArgs[1].headers as Headers
+      expect(headers).toBeInstanceOf(Headers)
+      expect(headers.get("X-Custom")).toBe("1")
+      expect(headers.get("X-CSRFToken")).toBe("fetch-token")
+      expect(request.headers.get("X-CSRFToken")).toBeNull()
+    })
+
+    it("does not overwrite a pre-set CSRF header on a same-origin Request", async () => {
+      globalThis.window.__LITESTAR_CSRF__ = "auto-token"
+      const mockResponse = new Response("OK", { status: 200 })
+      ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse)
+
+      const request = new Request("https://example.com/api/submit", {
+        method: "POST",
+        headers: { "X-Custom": "1", "X-CSRFToken": "manual-token" },
+      })
+      await csrfFetch(request)
+
+      const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+      expect(callArgs[0]).toBe(request)
+      expect(callArgs[1]).toBeUndefined()
+      expect(request.headers.get("X-Custom")).toBe("1")
+      expect(request.headers.get("X-CSRFToken")).toBe("manual-token")
+    })
+
+    it.each<[string, () => RequestInfo | URL]>([
+      ["cross-origin string", () => "https://other.example/api"],
+      ["leading-whitespace cross-origin string", () => " https://other.example/api"],
+      ["different scheme", () => "http://example.com/api"],
+      ["different port", () => "https://example.com:8443/api"],
+      ["cross-origin URL", () => new URL("https://other.example/api")],
+      ["cross-origin Request", () => new Request("https://other.example/api", { method: "POST", headers: { "X-Custom": "1" } })],
+      ["protocol-relative cross-origin", () => "//other.example/api"],
+      ["protocol-relative same-host", () => "//example.com/api"],
+      ["slash-backslash protocol-relative", () => "/\\other.example/api"],
+      ["backslash-slash protocol-relative", () => "\\/other.example/api"],
+      ["double-backslash protocol-relative", () => "\\\\other.example/api"],
+      ["tab-obfuscated protocol-relative", () => "/\t/other.example/api"],
+      ["invalid URL", () => "http://[::1"],
+      ["javascript URL", () => "javascript:alert(1)"],
+      ["data URL", () => "data:text/plain,hello"],
+    ])("omits CSRF header for %s", async (_label, makeTarget) => {
+      globalThis.window.__LITESTAR_CSRF__ = "fetch-token"
+      const mockResponse = new Response("OK", { status: 200 })
+      ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse)
+
+      const target = makeTarget()
+      const init: RequestInit = { method: "POST" }
+      await csrfFetch(target, init)
+
+      const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+      expect(callArgs[0]).toBe(target)
+      expect(callArgs[1]).toBe(init)
+      expect(getHeaderValue(callArgs[1]?.headers, "X-CSRFToken")).toBeUndefined()
+    })
+
+    it("omits CSRF header for relative URLs when document.baseURI points cross-origin", async () => {
+      globalThis.window.__LITESTAR_CSRF__ = "fetch-token"
+      globalThis.window.location = { origin: "https://example.com", href: "https://example.com/page" } as Location
+      ;(globalThis.document as unknown as { baseURI: string }).baseURI = "https://other.example/"
+      const mockResponse = new Response("OK", { status: 200 })
+      ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse)
+
+      await csrfFetch("/api/submit", { method: "POST" })
+      await csrfFetch("api/submit", { method: "POST" })
+      await csrfFetch("/api/submit", { method: "POST" }, { trustedOrigins: ["https://other.example"] })
+
+      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls
+      expect(getHeaderValue(calls[0][1]?.headers, "X-CSRFToken")).toBeUndefined()
+      expect(getHeaderValue(calls[1][1]?.headers, "X-CSRFToken")).toBeUndefined()
+      expect(getHeaderValue(calls[2][1]?.headers, "X-CSRFToken")).toBe("fetch-token")
+    })
+
+    it("attaches CSRF header to explicitly configured trustedOrigins only", async () => {
+      globalThis.window.__LITESTAR_CSRF__ = "fetch-token"
+      const mockResponse = new Response("OK", { status: 200 })
+      ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse)
+
+      const options: CsrfFetchOptions = {
+        trustedOrigins: ["https://api.example.com/", "not-a-valid-url", "data:text/plain,ignored", "file:///etc/passwd"],
+      }
+
+      await csrfFetch("https://api.example.com/v1", { method: "POST" }, options)
+      await csrfFetch("https://untrusted.example/v1", { method: "POST" }, options)
+      await csrfFetch("data:text/plain,ignored", { method: "POST" }, options)
+      await csrfFetch("file:///etc/passwd", { method: "POST" }, options)
+
+      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls
+      expect(getHeaderValue(calls[0][1]?.headers, "X-CSRFToken")).toBe("fetch-token")
+      expect(getHeaderValue(calls[1][1]?.headers, "X-CSRFToken")).toBeUndefined()
+      expect(getHeaderValue(calls[2][1]?.headers, "X-CSRFToken")).toBeUndefined()
+      expect(getHeaderValue(calls[3][1]?.headers, "X-CSRFToken")).toBeUndefined()
+    })
+
+    it.each<[string, string | undefined]>([
+      ["missing location", undefined],
+      ["opaque null origin", "null"],
+    ])("guards relative and cross-origin targets when origin is %s", async (_label, origin) => {
+      globalThis.window = {
+        __LITESTAR_CSRF__: "fetch-token",
+        ...(origin !== undefined ? { location: { origin } as Location } : {}),
+      } as unknown as Window & typeof globalThis
+      const mockResponse = new Response("OK", { status: 200 })
+      ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse)
+
+      await csrfFetch("/api/submit", { method: "POST" })
+      await csrfFetch("https://other.example/api", { method: "POST" })
+      await csrfFetch("//other.example/api", { method: "POST" })
+      await csrfFetch("/\\other.example/api", { method: "POST" })
+      await csrfFetch("http://[::1", { method: "POST" })
+      await csrfFetch("https://api.example.com/v1", { method: "POST" }, { trustedOrigins: ["https://api.example.com"] })
+
+      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls
+      expect(getHeaderValue(calls[0][1]?.headers, "X-CSRFToken")).toBe("fetch-token")
+      expect(getHeaderValue(calls[1][1]?.headers, "X-CSRFToken")).toBeUndefined()
+      expect(getHeaderValue(calls[2][1]?.headers, "X-CSRFToken")).toBeUndefined()
+      expect(getHeaderValue(calls[3][1]?.headers, "X-CSRFToken")).toBeUndefined()
+      expect(getHeaderValue(calls[4][1]?.headers, "X-CSRFToken")).toBeUndefined()
+      expect(getHeaderValue(calls[5][1]?.headers, "X-CSRFToken")).toBe("fetch-token")
+    })
+
+    it("omits CSRF header on relative URLs when window is undefined unless trustedOrigins matches", async () => {
+      // @ts-expect-error Testing SSR/non-browser environment without window
+      globalThis.window = undefined
+      const mockMeta = { getAttribute: vi.fn(() => "meta-token") }
+      ;(globalThis.document.querySelector as ReturnType<typeof vi.fn>).mockReturnValue(mockMeta)
+      const mockResponse = new Response("OK", { status: 200 })
+      ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse)
+
+      await csrfFetch("/api/submit", { method: "POST" })
+      await csrfFetch("https://api.example.com/v1", { method: "POST" }, { trustedOrigins: ["https://api.example.com"] })
+
+      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls
+      expect(getHeaderValue(calls[0][1]?.headers, "X-CSRFToken")).toBeUndefined()
+      expect(getHeaderValue(calls[1][1]?.headers, "X-CSRFToken")).toBe("meta-token")
     })
   })
 

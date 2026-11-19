@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Any
 from litestar import Litestar, WebSocket, get, post, websocket
 from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
+from litestar.config.csrf import CSRFConfig
 from litestar.di import NamedDependency
 from litestar.plugins.jinja import JinjaTemplateEngine
 from litestar.response import ServerSentEvent, Template
@@ -88,6 +90,15 @@ async def queue_sse() -> ServerSentEvent:
     return ServerSentEvent(queue_sse_frames())
 
 
+def _resolve_csrf_secret() -> str:
+    """Resolve the CSRF secret from the environment or generate an ephemeral key."""
+    raw_secret = os.getenv("SESSION_SECRET")
+    if raw_secret:
+        return raw_secret
+    logging.getLogger(__name__).info("SESSION_SECRET is not set; using an ephemeral CSRF secret for this process.")
+    return os.urandom(32).hex()
+
+
 channels = ChannelsPlugin(
     backend=MemoryChannelsBackend(history=200),
     channels=["demo"],
@@ -109,5 +120,6 @@ app = Litestar(
     route_handlers=[index, summary, publish_channel, queue_websocket, queue_sse],
     plugins=[channels, vite],
     template_config=templates,
-    debug=True,
+    csrf_config=CSRFConfig(secret=_resolve_csrf_secret()),
+    debug=os.getenv("LITESTAR_DEBUG", "0") == "1",
 )

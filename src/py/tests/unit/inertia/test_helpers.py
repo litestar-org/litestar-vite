@@ -1504,3 +1504,465 @@ def test_declaring_shared_prop_types_does_not_change_the_wire(
     assert props["auth"] == {"isAuthenticated": True}, "declared prop must still be sent"
     assert props["locale"] == "en", "undeclared prop must still be sent"
     assert props["featureFlags"] == {"beta": True}, "undeclared prop must still be sent"
+
+
+@pytest.mark.parametrize("container", [list, tuple])
+def test_lazy_render_preserves_plain_dicts_in_sequences_under_partial_data(
+    container: type[list[Any]] | type[tuple[Any, ...]],
+) -> None:
+    """Plain dicts inside list or tuple props retain all keys during partial_data reloads."""
+    from litestar_vite.inertia.helpers import lazy_render
+
+    payload = {"users": container([{"id": 1, "name": "Ada"}, {"id": 2, "name": "Grace"}]), "stats": 42}
+
+    result = lazy_render(payload, partial_data={"users"})
+
+    assert result == {"users": container([{"id": 1, "name": "Ada"}, {"id": 2, "name": "Grace"}])}
+
+
+@pytest.mark.parametrize("container", [list, tuple])
+def test_lazy_render_preserves_plain_dicts_in_sequences_under_partial_except(
+    container: type[list[Any]] | type[tuple[Any, ...]],
+) -> None:
+    """Top-level partial_except excludes root keys without stripping matching keys inside sequences."""
+    from litestar_vite.inertia.helpers import lazy_render
+
+    payload = {"id": "page-1", "users": container([{"id": 1, "name": "Ada"}])}
+
+    result = lazy_render(payload, partial_except={"id"})
+
+    assert result == {"users": container([{"id": 1, "name": "Ada"}])}
+
+
+@pytest.mark.parametrize(
+    ("partial_data", "partial_except", "expected"),
+    [
+        (None, None, {"items": [{"id": 1, "meta": {}}]}),
+        ({"items"}, None, {"items": [{"id": 1, "meta": {}}]}),
+        ({"items", "item_lazy", "extra"}, None, {"items": ["v", {"id": 1, "meta": {}, "extra": 2}]}),
+        (None, {"id"}, {"items": ["v", {"id": 1, "meta": {}, "extra": 2}]}),
+        (None, {"extra"}, {"items": ["v", {"id": 1, "meta": {}}]}),
+    ],
+)
+def test_lazy_render_sequence_special_props_and_mixed_dicts(
+    partial_data: set[str] | None, partial_except: set[str] | None, expected: dict[str, Any]
+) -> None:
+    """Sequences preserve plain keys and empty nested dicts while filtering special props."""
+    from litestar_vite.inertia.helpers import lazy_render, optional
+
+    payload = {"items": [lazy("item_lazy", "v"), {"id": 1, "meta": {}, "extra": optional("extra", lambda: 2)}]}
+
+    result = lazy_render(payload, partial_data=partial_data, partial_except=partial_except)
+
+    assert result == expected
+
+
+@pytest.mark.parametrize(
+    ("partial_data", "expected"), [(None, {"list": []}), ({"list", "list_deferred"}, {"list": ["val"]})]
+)
+def test_lazy_render_sequence_with_only_special_prop(partial_data: set[str] | None, expected: dict[str, Any]) -> None:
+    """Lists containing direct lazy props keep existing inclusion and omission semantics."""
+    from litestar_vite.inertia.helpers import lazy_render
+
+    payload = {"list": [lazy("list_deferred", "val")]}
+
+    assert lazy_render(payload, partial_data=partial_data) == expected
+
+
+def test_lazy_render_sequence_nested_dict_retains_empty_mapping_after_special_prop_omission() -> None:
+    """Nested mappings inside sequence elements are preserved even if all nested special props are omitted."""
+    from litestar_vite.inertia.helpers import lazy_render, optional
+
+    payload = {"items": [{"id": 1, "details": {"extra": optional("extra", lambda: 2)}}]}
+
+    assert lazy_render(payload, partial_data={"items"}) == {"items": [{"id": 1, "details": {}}]}
+    assert lazy_render(payload, partial_data={"items", "extra"}) == {"items": [{"id": 1, "details": {"extra": 2}}]}
+
+
+def test_lazy_render_nested_mapping_tree_preserves_dot_path_filtering() -> None:
+    """Pure mapping trees keep dot-path partial_data inclusion and partial_except ancestor exclusion."""
+    from litestar_vite.inertia.helpers import lazy_render, optional
+
+    payload = {
+        "profile": {"name": "Ada", "permissions": optional("permissions", lambda: ["read"])},
+        "profile_extra": {"label": "keep"},
+    }
+
+    assert lazy_render(payload, partial_data={"profile.permissions"}) == {"profile": {"permissions": ["read"]}}
+    assert lazy_render(payload, partial_except={"profile"}) == {"profile_extra": {"label": "keep"}}
+    assert lazy_render(payload, partial_except={"prof"}) == {
+        "profile": {"name": "Ada", "permissions": ["read"]},
+        "profile_extra": {"label": "keep"},
+    }
+
+
+def test_should_render_uses_precomputed_partial_data_ancestors() -> None:
+    """Precomputed ancestor sets match dot-path prefixes without recomputing prefixes per call."""
+    from litestar_vite.inertia.helpers import lazy_render
+    from litestar_vite.inertia.request import build_partial_ancestors
+
+    partial_data = {"a.b.c", "x"}
+    ancestors = build_partial_ancestors(partial_data)
+
+    assert ancestors == frozenset({"a", "a.b"})
+    assert should_render({}, partial_data=partial_data, key="a", _partial_data_ancestors=ancestors) is True
+    assert should_render({}, partial_data=partial_data, key="a.b", _partial_data_ancestors=ancestors) is True
+    assert should_render({}, partial_data=partial_data, key="a.b.c", _partial_data_ancestors=ancestors) is True
+    assert should_render({}, partial_data=partial_data, key="a.other", _partial_data_ancestors=ancestors) is False
+    assert should_render({}, partial_data=partial_data, key="ab", _partial_data_ancestors=ancestors) is False
+
+    nested_payload = {"a": {"b": {"c": 1, "d": 2}, "other": 3}, "x": 4, "y": 5}
+    with patch("litestar_vite.inertia.helpers.build_partial_ancestors", wraps=build_partial_ancestors) as spy:
+        assert lazy_render(nested_payload, partial_data=partial_data) == {"a": {"b": {"c": 1}}, "x": 4}
+        assert spy.call_count == 1
+
+    with patch("litestar_vite.inertia.helpers.build_partial_ancestors", wraps=build_partial_ancestors) as spy:
+        assert lazy_render(nested_payload, partial_data=partial_data, _partial_data_ancestors=ancestors) == {
+            "a": {"b": {"c": 1}},
+            "x": 4,
+        }
+        assert spy.call_count == 0
+
+
+@pytest.mark.anyio
+async def test_async_props_in_sequences_resolve_only_when_in_scope() -> None:
+    """has_unresolved_async_props and resolve_async_props mirror sequence filtering semantics."""
+    from litestar_vite.inertia.helpers import (
+        OptionalProp,
+        has_unresolved_async_props,
+        lazy_render,
+        optional,
+        resolve_async_props,
+    )
+
+    calls = 0
+
+    async def load_extra() -> str:
+        nonlocal calls
+        calls += 1
+        return "resolved"
+
+    extra_prop: OptionalProp[str, str] = optional("extra", load_extra)
+    payload: dict[str, Any] = {"items": [{"id": 1, "extra": extra_prop}, {"id": 2, "name": "Ada"}]}
+
+    assert has_unresolved_async_props(payload, partial_data={"other"}) is False
+    await resolve_async_props(payload, partial_data={"other"})
+    assert calls == 0
+
+    assert has_unresolved_async_props(payload, partial_data={"items"}) is False
+    await resolve_async_props(payload, partial_data={"items"})
+    assert calls == 0
+    assert lazy_render(payload, partial_data={"items"}) == {"items": [{"id": 1}, {"id": 2, "name": "Ada"}]}
+
+    assert has_unresolved_async_props(payload, partial_data={"items", "extra"}) is True
+    await resolve_async_props(payload, partial_data={"items", "extra"})
+    assert calls == 1
+    assert has_unresolved_async_props(payload, partial_data={"items", "extra"}) is False
+    assert lazy_render(payload, partial_data={"items", "extra"}) == {
+        "items": [{"id": 1, "extra": "resolved"}, {"id": 2, "name": "Ada"}]
+    }
+
+
+@pytest.mark.parametrize(
+    ("prop_kind", "headers"),
+    [
+        pytest.param("once", {InertiaHeaders.ENABLED.value: "true"}, id="once"),
+        pytest.param(
+            "defer",
+            {
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_DATA.value: "val",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+            },
+            id="defer",
+        ),
+        pytest.param(
+            "optional",
+            {
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_DATA.value: "val",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+            },
+            id="optional",
+        ),
+    ],
+)
+def test_shared_sync_prop_isolated_across_requests(
+    prop_kind: str,
+    headers: dict[str, str],
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,
+) -> None:
+    """Reusing a sync special prop instance across HTTP requests evaluates fresh per request without mutation."""
+    from litestar_vite.inertia.helpers import defer, once, optional
+
+    counter = 0
+
+    def next_value() -> int:
+        nonlocal counter
+        counter += 1
+        return counter
+
+    shared_prop: Any = (
+        once("val", next_value)
+        if prop_kind == "once"
+        else defer("val", next_value)
+        if prop_kind == "defer"
+        else optional("val", next_value)
+    )
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"val": shared_prop}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        resp1 = client.get("/", headers=headers)
+        resp2 = client.get("/", headers=headers)
+
+    assert resp1.status_code == 200
+    assert resp2.status_code == 200
+    assert resp1.json()["props"]["val"] == 1
+    assert resp2.json()["props"]["val"] == 2
+    assert counter == 2
+    assert shared_prop._evaluated is False
+
+
+@pytest.mark.parametrize("redirect_kind", ["redirect", "back"])
+@pytest.mark.parametrize("prop_kind", ["once", "defer", "optional"])
+def test_shared_sync_prop_materialized_across_inertia_redirect_and_back(
+    redirect_kind: str,
+    prop_kind: str,
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,
+) -> None:
+    """Sharing a reusable sync prop across InertiaRedirect or InertiaBack evaluates fresh per request."""
+    from litestar import post
+
+    from litestar_vite.inertia import InertiaBack, InertiaRedirect
+    from litestar_vite.inertia.helpers import defer, once, optional, share
+
+    counter = 0
+
+    def next_value() -> int:
+        nonlocal counter
+        counter += 1
+        return counter
+
+    shared_prop: Any = (
+        once("k", next_value)
+        if prop_kind == "once"
+        else defer("k", next_value)
+        if prop_kind == "defer"
+        else optional("k", next_value)
+    )
+
+    @post("/trigger")
+    async def trigger(request: Request[Any, Any, Any]) -> InertiaRedirect:
+        share(request, "k", shared_prop)
+        if redirect_kind == "back":
+            return InertiaBack(request)
+        return InertiaRedirect(request, redirect_to="/target")
+
+    @get("/target", component="Target")
+    async def target(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"page": "target"}
+
+    with create_test_client(
+        route_handlers=[trigger, target],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        req_headers = {"Referer": "/target"} if redirect_kind == "back" else {}
+        r1 = client.post("/trigger", headers=req_headers, follow_redirects=False)
+        assert r1.status_code == 303
+        page1 = client.get("/target", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert page1.status_code == 200
+        assert page1.json()["props"]["k"] == 1
+        assert shared_prop._evaluated is False
+
+        r2 = client.post("/trigger", headers=req_headers, follow_redirects=False)
+        assert r2.status_code == 303
+        page2 = client.get("/target", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert page2.status_code == 200
+        assert page2.json()["props"]["k"] == 2
+        assert shared_prop._evaluated is False
+
+
+def test_shared_sync_prop_returning_none_cached_within_single_request(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+) -> None:
+    """A shared sync prop returning None is evaluated once per request and preserves None."""
+    from litestar_vite.inertia.helpers import OnceProp, once, share
+
+    calls = 0
+
+    def compute_none() -> None:
+        nonlocal calls
+        calls += 1
+        return
+
+    shared_prop: OnceProp[str, None] = once("empty", compute_none)
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        share(request, "shared_empty", shared_prop)
+        return {"route_empty": shared_prop}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        resp1 = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert resp1.status_code == 200
+        assert resp1.json()["props"]["shared_empty"] is None
+        assert resp1.json()["props"]["route_empty"] is None
+        assert calls == 1
+        assert shared_prop._evaluated is False
+
+        resp2 = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert resp2.status_code == 200
+        assert resp2.json()["props"]["shared_empty"] is None
+        assert resp2.json()["props"]["route_empty"] is None
+        assert calls == 2
+        assert shared_prop._evaluated is False
+
+
+def test_runtime_mutated_extra_static_page_props_resolves_special_props(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+) -> None:
+    """Special props mutated into extra_static_page_props after init resolve cleanly per request."""
+    from litestar_vite.inertia.helpers import OnceProp, StaticProp, always, once
+
+    counter = 0
+
+    def next_value() -> int:
+        nonlocal counter
+        counter += 1
+        return counter
+
+    shared_once: OnceProp[str, int] = once("dynamic_once", next_value)
+    inertia_plugin.config.extra_static_page_props["dynamic_once"] = shared_once
+    inertia_plugin.config.extra_static_page_props["lazy_static"] = StaticProp("lazy_static", "static-val")
+    inertia_plugin.config.extra_static_page_props["always_key"] = always("always_key", "always-val")
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"ok": True}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        resp1 = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert resp1.status_code == 200
+        props1 = resp1.json()["props"]
+        assert props1["dynamic_once"] == 1
+        assert props1["always_key"] == "always-val"
+        assert "lazy_static" not in props1
+        assert shared_once._evaluated is False
+
+        resp2 = client.get("/", headers={InertiaHeaders.ENABLED.value: "true"})
+        assert resp2.status_code == 200
+        assert resp2.json()["props"]["dynamic_once"] == 2
+        assert shared_once._evaluated is False
+
+        resp_cached = client.get(
+            "/", headers={InertiaHeaders.ENABLED.value: "true", InertiaHeaders.EXCEPT_ONCE_PROPS.value: "dynamic_once"}
+        )
+        assert resp_cached.status_code == 200
+        assert "dynamic_once" not in resp_cached.json()["props"]
+        assert counter == 2
+
+        resp_partial = client.get(
+            "/",
+            headers={
+                InertiaHeaders.ENABLED.value: "true",
+                InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+                InertiaHeaders.PARTIAL_DATA.value: "lazy_static",
+            },
+        )
+        assert resp_partial.status_code == 200
+        assert resp_partial.json()["props"]["lazy_static"] == "static-val"
+        assert resp_partial.json()["props"]["always_key"] == "always-val"
+
+
+def test_inertia_response_threads_precomputed_partial_data_ancestors(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+) -> None:
+    """InertiaResponse reuses InertiaDetails.partial_data_ancestors without recomputing prefixes in helpers."""
+    from litestar_vite.inertia.request import build_partial_ancestors
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return {"profile": {"details": {"name": "Ada", "bio": "Math"}, "extra": 1}, "other": 2}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        with patch("litestar_vite.inertia.helpers.build_partial_ancestors", wraps=build_partial_ancestors) as spy:
+            resp = client.get(
+                "/",
+                headers={
+                    InertiaHeaders.ENABLED.value: "true",
+                    InertiaHeaders.PARTIAL_COMPONENT.value: "Home",
+                    InertiaHeaders.PARTIAL_DATA.value: "profile.details.name",
+                },
+            )
+            assert resp.status_code == 200
+            assert resp.json()["props"]["profile"] == {"details": {"name": "Ada"}}
+            assert spy.call_count == 0
+
+
+def test_deferred_prop_type_encoder_does_not_mutate_shared_instance(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+) -> None:
+    """InertiaPlugin DeferredProp type encoder renders into a fresh cache without mutating the prop."""
+    from litestar_vite.inertia.helpers import defer
+
+    counter = 0
+
+    def next_value() -> int:
+        nonlocal counter
+        counter += 1
+        return counter
+
+    shared_prop = defer("metric", next_value)
+
+    @get("/plain")
+    async def plain() -> dict[str, Any]:
+        return {"metric": shared_prop}
+
+    with create_test_client(
+        route_handlers=[plain],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        resp1 = client.get("/plain")
+        resp2 = client.get("/plain")
+        assert resp1.status_code == 200
+        assert resp2.status_code == 200
+        assert resp1.json() == {"metric": 1}
+        assert resp2.json() == {"metric": 2}
+        assert shared_prop._evaluated is False

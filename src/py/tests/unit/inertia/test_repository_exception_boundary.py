@@ -1,6 +1,7 @@
 """Repository exception boundary tests."""
 
 import importlib
+import logging
 import sys
 import warnings
 from types import ModuleType
@@ -145,8 +146,14 @@ def test_repository_exception_handlers_are_not_registered_without_supported_libr
         ("sqlspec", "RepositoryError", HTTP_500_INTERNAL_SERVER_ERROR),
     ],
 )
+@pytest.mark.parametrize("debug", [False, True])
 def test_litestar_org_repository_exception_handlers_delegate_to_inertia_response(
-    monkeypatch: pytest.MonkeyPatch, package_name: str, exception_name: str, expected_status: int
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    package_name: str,
+    exception_name: str,
+    expected_status: int,
+    debug: bool,
 ) -> None:
     """Supported repository exceptions are converted by plugin-registered handlers."""
 
@@ -162,18 +169,76 @@ def test_litestar_org_repository_exception_handlers_delegate_to_inertia_response
     def handler() -> dict[str, str]:
         raise exception_type("repository failure")
 
-    with create_test_client(
-        [handler],
-        middleware=[ServerSideSessionConfig().middleware],
-        plugins=[VitePlugin(config=ViteConfig(mode="template", inertia=InertiaConfig()))],
-        raise_server_exceptions=False,
-        stores={"sessions": MemoryStore()},
-    ) as client:
+    with (
+        caplog.at_level(logging.ERROR, logger="litestar_vite.inertia"),
+        create_test_client(
+            [handler],
+            debug=debug,
+            logging_config=None,
+            middleware=[ServerSideSessionConfig().middleware],
+            plugins=[VitePlugin(config=ViteConfig(mode="template", inertia=InertiaConfig()))],
+            raise_server_exceptions=False,
+            stores={"sessions": MemoryStore()},
+        ) as client,
+    ):
         response = client.get("/repository", headers={InertiaHeaders.ENABLED.value: "true"})
 
     assert response.status_code == expected_status
-    assert response.json()["props"]["status_code"] == expected_status
-    assert response.json()["props"]["message"] == "repository failure"
+    body = response.json()
+    assert body["props"]["status_code"] == expected_status
+    if expected_status >= HTTP_500_INTERNAL_SERVER_ERROR and not debug:
+        assert body["props"]["message"] == "Internal Server Error"
+        assert "repository failure" not in response.text
+        assert len(caplog.records) == 1
+        assert "repository failure" in caplog.text
+    else:
+        assert body["props"]["message"] == "repository failure"
+        assert caplog.records == []
+
+
+@pytest.mark.parametrize("package_name", ["advanced_alchemy", "sqlspec"])
+@pytest.mark.parametrize("debug", [False, True])
+def test_repository_500_on_non_component_route_masks_and_logs_once(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, package_name: str, debug: bool
+) -> None:
+    """Non-component routes delegate repository 500 errors to Litestar JSON and log once in production."""
+
+    from litestar_vite.inertia import InertiaHeaders
+    from litestar_vite.plugin import VitePlugin
+
+    advanced_alchemy_exceptions = _install_advanced_alchemy_exceptions(monkeypatch)
+    sqlspec_exceptions = _install_sqlspec_exceptions(monkeypatch)
+    exception_module = advanced_alchemy_exceptions if package_name == "advanced_alchemy" else sqlspec_exceptions
+    exception_type = getattr(exception_module, "RepositoryError")
+
+    @get("/api/repository", sync_to_thread=False)
+    def handler() -> dict[str, str]:
+        raise exception_type("repository failure")
+
+    with (
+        caplog.at_level(logging.ERROR, logger="litestar_vite.inertia"),
+        create_test_client(
+            [handler],
+            debug=debug,
+            logging_config=None,
+            middleware=[ServerSideSessionConfig().middleware],
+            plugins=[VitePlugin(config=ViteConfig(mode="template", inertia=InertiaConfig()))],
+            raise_server_exceptions=False,
+            stores={"sessions": MemoryStore()},
+        ) as client,
+    ):
+        response = client.get("/api/repository", headers={InertiaHeaders.ENABLED.value: "true"})
+
+    assert response.status_code == HTTP_500_INTERNAL_SERVER_ERROR
+    body = response.json()
+    assert "component" not in body
+    assert body == {"status_code": HTTP_500_INTERNAL_SERVER_ERROR, "detail": "Internal Server Error"}
+    if debug:
+        assert caplog.records == []
+    else:
+        assert "repository failure" not in response.text
+        assert len(caplog.records) == 1
+        assert "repository failure" in caplog.text
 
 
 def test_user_repository_exception_handler_can_delegate_to_inertia_response() -> None:

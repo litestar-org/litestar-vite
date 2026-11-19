@@ -3,6 +3,85 @@ import path from "node:path"
 
 import { writeIfChanged } from "./write-if-changed.js"
 
+const TS_IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/
+
+const TS_RESERVED_WORDS = new Set([
+  "any",
+  "as",
+  "await",
+  "boolean",
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "declare",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "implements",
+  "import",
+  "in",
+  "instanceof",
+  "interface",
+  "let",
+  "never",
+  "new",
+  "null",
+  "number",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "return",
+  "static",
+  "string",
+  "super",
+  "switch",
+  "symbol",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "type",
+  "typeof",
+  "unknown",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+])
+
+function escapeJsonLineSeparators(jsonText: string): string {
+  return jsonText.replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029")
+}
+
+function stringifyTsLiteral(value: string): string {
+  return escapeJsonLineSeparators(JSON.stringify(value))
+}
+
+function formatPropertyKey(key: string): string {
+  return TS_IDENTIFIER_RE.test(key) ? key : stringifyTsLiteral(key)
+}
+
+function assertValidTypeIdentifier(name: string, source: string): void {
+  if (!TS_IDENTIFIER_RE.test(name) || TS_RESERVED_WORDS.has(name)) {
+    throw new Error(`litestar-vite: Invalid TypeScript type identifier ${stringifyTsLiteral(name)} in ${source}`)
+  }
+}
+
 interface InertiaPagePropsJson {
   pages: Record<
     string,
@@ -157,7 +236,7 @@ export interface FlashMessages {}
     .toSorted(([a], [b]) => a.localeCompare(b))
     .map(([key, def]) => {
       const optional = def.optional ? "?" : ""
-      const safeKey = /^[$A-Z_][0-9A-Z_$]*$/i.test(key) ? key : JSON.stringify(key)
+      const safeKey = formatPropertyKey(key)
       return `  ${safeKey}${optional}: ${def.type}`
     })
 
@@ -247,6 +326,9 @@ export interface FlashMessages {}
   }
 
   const apiImports = [...allCustomTypes].filter((t) => availableApiTypes.has(t)).toSorted()
+  for (const t of apiImports) {
+    assertValidTypeIdentifier(t, "API type imports")
+  }
   const remainingTypes = [...allCustomTypes].filter((t) => !availableApiTypes.has(t)).toSorted()
 
   const importsByPath = new Map<string, string[]>()
@@ -254,6 +336,7 @@ export interface FlashMessages {}
   for (const t of remainingTypes) {
     const importPath = typeImportPaths[t]
     if (importPath) {
+      assertValidTypeIdentifier(t, "typeImportPaths")
       const list = importsByPath.get(importPath) ?? []
       list.push(t)
       importsByPath.set(importPath, list)
@@ -281,7 +364,7 @@ export interface FlashMessages {}
   for (const p of sortedImportPaths) {
     const names = (importsByPath.get(p) ?? []).toSorted()
     if (names.length > 0) {
-      importStatement += `import type { ${names.join(", ")} } from "${p}"\n`
+      importStatement += `import type { ${names.join(", ")} } from ${stringifyTsLiteral(p)}\n`
     }
   }
   if (importStatement) {
@@ -293,12 +376,13 @@ export interface FlashMessages {}
   const pageEntries: string[] = []
   for (const [component, data] of Object.entries(json.pages)) {
     const rawType = data.tsType || data.propsType || defaultFallback
+    const componentKey = stringifyTsLiteral(component)
     if (data.wrapWithContent) {
-      pageEntries.push(`  "${component}": { content: ${rawType} } & FullSharedProps`)
+      pageEntries.push(`  ${componentKey}: { content: ${rawType} } & FullSharedProps`)
       continue
     }
     const propsType = rawType.includes("|") ? `(${rawType})` : rawType
-    pageEntries.push(`  "${component}": ${propsType} & FullSharedProps`)
+    pageEntries.push(`  ${componentKey}: ${propsType} & FullSharedProps`)
   }
 
   // Inertia carries flash on the page object (`page.flash`), typed by its own

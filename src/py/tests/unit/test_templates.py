@@ -1,6 +1,11 @@
+import re
 from pathlib import Path
 
 import pytest
+from jinja2 import Environment
+
+from litestar_vite.scaffolding.generator import TemplateContext, render_template
+from litestar_vite.scaffolding.templates import get_template
 
 ROOT = Path(__file__).resolve().parents[4]
 TEMPLATE_ROOT = ROOT / "src" / "py" / "litestar_vite" / "templates"
@@ -133,6 +138,9 @@ def test_vue_inertia_ssr_example_invokes_ssr_endpoint() -> None:
         mock_ssr.assert_awaited_once()
         assert "SSR_BODY_VUE" in response.text
         assert "SSR_TITLE_VUE" in response.text
+        assert "{{ inertia" not in response.text
+        assert "{{" not in response.text
+        assert response.text.count('id="app_page"') == 1
     finally:
         sys.modules.pop("_vue_inertia_ssr_example", None)
 
@@ -167,6 +175,10 @@ def test_vue_inertia_jinja_ssr_example_invokes_ssr_endpoint() -> None:
         mock_ssr.assert_awaited_once()
         assert "SSR_BODY_JINJA" in response.text
         assert "SSR_TITLE_JINJA" in response.text
+        assert '<script type="application/json" id="app_page" data-page="app">' in response.text
+        assert response.text.count('id="app_page"') == 1
+        assert "{{ inertia" not in response.text
+        assert "{{" not in response.text
     finally:
         sys.modules.pop("_vue_inertia_jinja_ssr_example", None)
 
@@ -339,13 +351,230 @@ def test_v3_inertia_shells_use_plain_title_tag() -> None:
         assert "<title>" in text, f"{path} is missing a plain <title> tag"
 
 
-def test_inertia_jinja_templates_include_script_element_target() -> None:
-    """Ensure manual Jinja script-element templates point back at the app root."""
-    react_template = (EXAMPLES_ROOT / "react-inertia-jinja" / "templates" / "index.html").read_text()
-    vue_template = (EXAMPLES_ROOT / "vue-inertia-jinja" / "templates" / "index.html").read_text()
+@pytest.mark.parametrize(
+    ("relative_path", "required_markers", "forbidden_markers"),
+    [
+        (
+            Path("react-inertia-jinja") / "templates" / "index.html",
+            (
+                '<div id="app"></div>',
+                "{{ inertia_page }}",
+                "{{ vite_hmr() }}",
+                "{{ vite('resources/main.tsx') }}",
+                "<title>react-inertia</title>",
+            ),
+            ("| safe", "|safe", "inertia | safe", "inertia|safe", 'id="app_page"'),
+        ),
+        (
+            Path("vue-inertia-jinja") / "templates" / "index.html",
+            (
+                '<div id="app"></div>',
+                "{{ inertia_page }}",
+                "{{ vite_hmr() }}",
+                "{{ vite('resources/main.ts') }}",
+                "<title>vue-inertia</title>",
+            ),
+            ("| safe", "|safe", "inertia | safe", "inertia|safe", 'id="app_page"'),
+        ),
+        (
+            Path("react-inertia-jinja") / "index.html",
+            (
+                '<div id="app"></div>',
+                "<title>react-inertia</title>",
+                '<script type="module" src="/resources/main.tsx"></script>',
+            ),
+            ("| safe", "|safe", "{{ inertia", 'id="app_page"', "data-page="),
+        ),
+        (
+            Path("vue-inertia-jinja-ssr") / "templates" / "index.html",
+            (
+                '<div id="app"></div>',
+                "{{ inertia_page }}",
+                "{{ vite_hmr() }}",
+                "{{ vite('resources/main.ts') }}",
+                "<title>vue-inertia-jinja-ssr</title>",
+            ),
+            ("| safe", "|safe", "inertia | safe", "inertia|safe", 'id="app_page"'),
+        ),
+        (
+            Path("svelte-inertia-jinja") / "templates" / "index.html",
+            (
+                '<div id="app"></div>',
+                "{{ inertia_page }}",
+                "{{ vite_hmr() }}",
+                "{{ vite('resources/main.ts') }}",
+                "<title>svelte-inertia-jinja</title>",
+            ),
+            ("| safe", "|safe", "inertia | safe", "inertia|safe", 'id="app_page"'),
+        ),
+    ],
+    ids=[
+        "react-inertia-jinja-template",
+        "vue-inertia-jinja-template",
+        "react-inertia-jinja-shell",
+        "vue-inertia-jinja-ssr-template",
+        "svelte-inertia-jinja-template",
+    ],
+)
+def test_inertia_jinja_templates_include_script_element_target(
+    relative_path: Path, required_markers: tuple[str, ...], forbidden_markers: tuple[str, ...]
+) -> None:
+    """Ensure Jinja Inertia examples use inertia_page and omit raw |safe output."""
+    text = (EXAMPLES_ROOT / relative_path).read_text()
 
-    assert 'id="app_page" data-page="app"' in react_template
-    assert 'id="app_page" data-page="app"' in vue_template
+    if relative_path.parent.name == "templates":
+        Environment(autoescape=True).parse(text)
+
+    for marker in required_markers:
+        assert marker in text, f"{relative_path} is missing expected marker: {marker}"
+    for marker in forbidden_markers:
+        assert marker not in text, f"{relative_path} still contains forbidden marker: {marker}"
+
+
+@pytest.mark.parametrize(
+    ("doc_path", "required_markers", "forbidden_markers"),
+    [
+        (
+            ROOT / "docs" / "frameworks" / "inertia" / "configuration-and-templates.md",
+            (
+                '<div id="app"></div>',
+                "{{ inertia_page }}",
+                "inertia_page",
+                'data-page="{{ inertia }}"',
+                "useScriptElementForInitialPage: true",
+            ),
+            ("| safe", "|safe", "inertia | safe", "inertia|safe"),
+        )
+    ],
+    ids=["inertia-configuration-and-templates"],
+)
+def test_inertia_template_docs_use_inertia_page_without_raw_safe_filter(
+    doc_path: Path, required_markers: tuple[str, ...], forbidden_markers: tuple[str, ...]
+) -> None:
+    """Ensure Inertia template documentation teaches inertia_page without raw |safe output."""
+    text = doc_path.read_text()
+
+    for marker in required_markers:
+        assert marker in text, f"{doc_path} is missing expected marker: {marker}"
+    for marker in forbidden_markers:
+        assert marker not in text, f"{doc_path} still contains forbidden marker: {marker}"
+
+
+@pytest.mark.parametrize(
+    ("surface_name", "paths"),
+    [
+        (
+            "inertia-scaffolds",
+            tuple(sorted(path for d in TEMPLATE_ROOT.glob("*-inertia") for path in d.rglob("*.html.j2"))),
+        ),
+        (
+            "inertia-examples",
+            tuple(
+                sorted(
+                    path
+                    for d in EXAMPLES_ROOT.glob("*-inertia*")
+                    for path in (d / "index.html", d / "resources" / "index.html", d / "templates" / "index.html")
+                    if path.exists()
+                )
+            ),
+        ),
+        (
+            "inertia-docs",
+            tuple(
+                sorted([
+                    *(ROOT / "docs" / "frameworks" / "inertia").glob("*.md"),
+                    ROOT / "docs" / "getting-started" / "quick-start-inertia.md",
+                ])
+            ),
+        ),
+    ],
+    ids=["inertia-scaffolds", "inertia-examples", "inertia-docs"],
+)
+def test_inertia_surfaces_omit_raw_inertia_safe_filter(surface_name: str, paths: tuple[Path, ...]) -> None:
+    """Verify zero raw {{ inertia | safe }} or {{ inertia|safe }} patterns remain across Inertia surfaces."""
+    assert paths, f"Expected at least one file for {surface_name}"
+    raw_safe_pattern = re.compile(r"\{\{\s*inertia\s*\|\s*safe\s*\}\}")
+    for path in paths:
+        text = path.read_text()
+        assert not raw_safe_pattern.search(text), f"{path} still uses raw inertia | safe output"
+
+
+@pytest.mark.parametrize(
+    ("framework_name", "entry_asset"),
+    [
+        ("react-inertia", "resources/main.tsx"),
+        ("vue-inertia", "resources/main.ts"),
+        ("svelte-inertia", "resources/main.ts"),
+    ],
+)
+def test_inertia_jinja_scaffold_templates_render_inertia_page_without_safe_filter(
+    framework_name: str, entry_asset: str
+) -> None:
+    """Ensure Jinja Inertia scaffold templates render #app and inertia_page without |safe."""
+    framework = get_template(framework_name)
+    assert framework is not None
+
+    template_path = TEMPLATE_ROOT / framework_name / "templates" / "index.html.j2"
+    context = TemplateContext(project_name="demo-app", framework=framework).to_dict()
+    rendered = render_template(template_path, context)
+
+    Environment(autoescape=True).parse(rendered)
+
+    assert "<title>demo-app</title>" in rendered
+    assert "{{ vite_hmr() }}" in rendered
+    assert f"{{{{ vite_asset('{entry_asset}') }}}}" in rendered
+    assert '<div id="app"></div>' in rendered
+    assert "{{ inertia_page }}" in rendered
+    assert "inertia|safe" not in rendered
+    assert "inertia | safe" not in rendered
+    assert "|safe" not in rendered
+    assert "| safe" not in rendered
+
+
+@pytest.mark.parametrize(
+    "shell_path",
+    [
+        TEMPLATE_ROOT / "svelte-inertia" / "index.html.j2",
+        EXAMPLES_ROOT / "svelte-inertia" / "index.html",
+        EXAMPLES_ROOT / "vue-inertia-ssr" / "index.html",
+    ],
+    ids=["svelte-inertia-template", "svelte-inertia-example", "vue-inertia-ssr-example"],
+)
+def test_hybrid_inertia_shells_omit_jinja_data_page_placeholders(shell_path: Path) -> None:
+    """Ensure hybrid Inertia scaffold and example shells omit raw Jinja page placeholders."""
+    text = shell_path.read_text()
+
+    assert '<div id="app"></div>' in text
+    assert '<script type="module"' in text
+    assert "inertia | safe" not in text
+    assert "inertia|safe" not in text
+    assert "data-page=" not in text
+
+
+@pytest.mark.parametrize(
+    ("framework_name", "entry_asset"),
+    [
+        ("react-inertia", "resources/main.tsx"),
+        ("vue-inertia", "resources/main.ts"),
+        ("svelte-inertia", "resources/main.ts"),
+    ],
+)
+def test_hybrid_inertia_scaffold_templates_render_plain_spa_shell(framework_name: str, entry_asset: str) -> None:
+    """Ensure hybrid Inertia scaffold shells render clean SPA markup without Jinja tags."""
+    framework = get_template(framework_name)
+    assert framework is not None
+
+    template_path = TEMPLATE_ROOT / framework_name / "index.html.j2"
+    context = TemplateContext(project_name="demo-app", framework=framework).to_dict()
+    rendered = render_template(template_path, context)
+
+    assert "<title>demo-app</title>" in rendered
+    assert '<div id="app"></div>' in rendered
+    assert f'<script type="module" src="/{entry_asset}"></script>' in rendered
+    assert "{{" not in rendered
+    assert "data-page=" not in rendered
+    assert "inertia | safe" not in rendered
+    assert "inertia|safe" not in rendered
 
 
 def test_inertia_docs_use_stable_script_element_bootstrap_path() -> None:

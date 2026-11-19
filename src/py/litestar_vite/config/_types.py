@@ -50,6 +50,10 @@ class TypeGenConfig:
     """Map of schema/type names to custom TypeScript import paths for types excluded from OpenAPI."""
     page_props_path: "Path | None" = field(default=None)
     """Path to export Inertia page metadata JSON (`output / 'inertia-pages.json'` when `None`)."""
+    exclude_routes: "Sequence[str]" = ()
+    """Route name or path substrings excluded from `routes.json`, `routes.ts`, and `inertia-pages.json` exports."""
+    only_routes: "Sequence[str]" = ()
+    """Route name or path substrings restricting `routes.json`, `routes.ts`, and `inertia-pages.json` exports."""
     extra_commands: "Sequence[Sequence[str]]" = field(default_factory=lambda: cast("list[Sequence[str]]", []))
     """Additional CLI commands (`[binary, *args]`) executed via the JS runtime during type generation."""
 

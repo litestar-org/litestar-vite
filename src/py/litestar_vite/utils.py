@@ -6,6 +6,7 @@ import os
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 from litestar.exceptions import SerializationException
 from litestar.serialization import decode_json
@@ -52,12 +53,49 @@ def read_text_file(path: Path, *, encoding: str = "utf-8") -> str:
 
 
 def read_hotfile_url(hotfile_path: Path) -> str:
-    """Read and normalize the Vite hotfile URL.
+    """Read, validate, and normalize the Vite hotfile URL.
+
+    Validates that the hotfile contains a single ``http`` or ``https`` origin
+    without whitespace, control characters, userinfo, path, query, or fragment
+    components. Corrupted non-UTF-8 bytes or invalid URL content return an empty
+    string while filesystem errors such as ``FileNotFoundError`` propagate.
+
+    Args:
+        hotfile_path: Path to the Vite hotfile.
 
     Returns:
-        The Vite server URL from the hotfile, stripped of surrounding whitespace.
+        The validated Vite server URL without trailing slashes, or ``""`` when
+        the file content is empty or invalid.
     """
-    return hotfile_path.read_text(encoding="utf-8").strip()
+    try:
+        raw = hotfile_path.read_text(encoding="utf-8").strip()
+    except UnicodeDecodeError:
+        return ""
+
+    if not raw or any(ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F for ch in raw) or "?" in raw or "#" in raw:
+        return ""
+
+    try:
+        parsed = urlsplit(raw)
+        hostname = parsed.hostname
+        _ = parsed.port
+    except ValueError:
+        return ""
+
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.netloc.endswith(":")
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        return ""
+
+    return raw.rstrip("/")
 
 
 _BRIDGE_CACHE: dict[str, tuple[int, dict[str, Any]]] = {}

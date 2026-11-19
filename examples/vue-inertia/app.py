@@ -4,10 +4,13 @@ This example demonstrates Inertia.js without Jinja templates.
 Page data is injected into index.html at runtime via HTML transformation.
 """
 
+import hashlib
+import logging
 import os
 from pathlib import Path
 
 from litestar import Controller, Litestar, get
+from litestar.config.csrf import CSRFConfig
 from litestar.exceptions import NotFoundException
 from litestar.middleware.session.client_side import CookieBackendConfig
 from litestar.params import FromPath
@@ -17,8 +20,23 @@ from litestar_vite import InertiaConfig, PathConfig, RuntimeConfig, TypeGenConfi
 
 here = Path(__file__).parent
 DEV_MODE = os.getenv("VITE_DEV_MODE", "true").lower() in {"true", "1", "yes"}
-SECRET_KEY = os.environ.get("SECRET_KEY", "development-only-secret-32-chars")
-session_backend = CookieBackendConfig(secret=SECRET_KEY.encode("utf-8"))
+
+
+def _resolve_session_secret() -> bytes:
+    """Resolve the session secret from the environment or generate an ephemeral key."""
+    raw_secret = os.getenv("SESSION_SECRET") or os.getenv("SECRET_KEY")
+    if raw_secret:
+        encoded = raw_secret.encode("utf-8")
+        if len(encoded) in {16, 24, 32}:
+            return encoded
+        return hashlib.sha256(encoded).digest()
+    logging.getLogger(__name__).info("SESSION_SECRET is not set; using an ephemeral secret for this process.")
+    return os.urandom(32)
+
+
+SESSION_SECRET = _resolve_session_secret()
+session_backend = CookieBackendConfig(secret=SESSION_SECRET)
+csrf_config = CSRFConfig(secret=SESSION_SECRET.hex())
 
 
 class Message(Struct):
@@ -117,7 +135,8 @@ vite = VitePlugin(
 
 app = Litestar(
     route_handlers=[LibraryController],
-    plugins=[vite],  # Single plugin - Inertia auto-configured
+    plugins=[vite],
     middleware=[session_backend.middleware],
-    debug=True,
+    csrf_config=csrf_config,
+    debug=os.getenv("LITESTAR_DEBUG", "0") == "1",
 )

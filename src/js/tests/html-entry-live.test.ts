@@ -1,3 +1,4 @@
+// @vitest-environment node
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -10,14 +11,22 @@ import litestar from "../src"
 describe("secondary HTML entry transformation", () => {
   let server: ViteDevServer | undefined
   let root: string | undefined
+  let previousConfigPath: string | undefined
 
   afterEach(async () => {
+    if (previousConfigPath === undefined) {
+      delete process.env.LITESTAR_VITE_CONFIG_PATH
+    } else {
+      process.env.LITESTAR_VITE_CONFIG_PATH = previousConfigPath
+    }
     await server?.close()
     if (root) fs.rmSync(root, { recursive: true, force: true })
   })
 
   it("transforms an exact secondary document from the configured Vite root", async () => {
+    previousConfigPath = process.env.LITESTAR_VITE_CONFIG_PATH
     root = fs.mkdtempSync(path.join(os.tmpdir(), "litestar-vite-html-entry-"))
+    process.env.LITESTAR_VITE_CONFIG_PATH = path.join(root, ".litestar.json")
     fs.writeFileSync(path.join(root, "offline.html"), '<html><head></head><body><script type="module" src="/offline.ts"></script></body></html>')
     fs.writeFileSync(path.join(root, "offline.ts"), "console.log('offline')")
     server = await createServer({

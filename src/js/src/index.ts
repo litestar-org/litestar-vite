@@ -8,7 +8,7 @@ import fullReload, { type Config as FullReloadConfig } from "vite-plugin-full-re
 
 import { litestarViteSsrPlugin } from "./dev-ssr.js"
 import { checkBackendAvailability, type LitestarMeta, loadLitestarMeta } from "./litestar-meta.js"
-import { type BridgeSchema, readBridgeConfig } from "./shared/bridge-schema.js"
+import { type BridgeSchema, readBridgeConfig, verifyBridgeRequest } from "./shared/bridge-schema.js"
 import { createLogger } from "./shared/logger.js"
 import { installManagedShutdown } from "./shared/managed-shutdown.js"
 import { resolveHotFilePath } from "./shared/network.js"
@@ -186,6 +186,12 @@ export interface PluginConfig {
    * @default undefined (uses LITESTAR_VITE_RUNTIME env or 'node')
    */
   executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
+  /**
+   * Hostname or IP address for the Vite development server.
+   *
+   * @default undefined (uses VITE_HOST, .litestar.json host, or '127.0.0.1')
+   */
+  host?: string
 }
 
 interface RefreshConfig {
@@ -199,9 +205,10 @@ interface RefreshConfig {
  * Note: `executor` remains optional - undefined means auto-detect from env
  * Note: `inertiaMode` is resolved to boolean (auto-detected from .litestar.json Inertia metadata)
  */
-interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor" | "inertiaMode" | "deployAssetUrl"> {
+interface ResolvedPluginConfig extends Omit<Required<PluginConfig>, "types" | "executor" | "inertiaMode" | "deployAssetUrl" | "host"> {
   types: RequiredTypeGenConfig | false
   executor?: "node" | "bun" | "deno" | "yarn" | "pnpm"
+  host?: string
   /** Optional asset URL to use for production builds (overrides assetUrl during build) */
   deployAssetUrl?: string
   /** Whether in Inertia mode (backend serves HTML, not Vite) */
@@ -223,6 +230,427 @@ let exitHandlersBound = false
 let warnedMissingRuntimeConfig = false
 
 const MAX_TRANSFORM_PAYLOAD_BYTES = 1_000_000
+const REMOTE_ACCESS_TRUE_VALUES: ReadonlySet<string> = new Set(["1", "true", "yes", "y", "t"])
+const VITE_DEFAULT_FS_DENY: readonly string[] = [".env", ".env.*", "*.{crt,pem}", "**/.git/**"]
+
+const HTML_NAMED_ENTITIES = new Map<string, string>([
+  ["amp", "&"],
+  ["lt", "<"],
+  ["gt", ">"],
+  ["quot", '"'],
+  ["apos", "'"],
+  ["commat", "@"],
+  ["sol", "/"],
+  ["bsol", "\\"],
+  ["colon", ":"],
+  ["semi", ";"],
+  ["lpar", "("],
+  ["rpar", ")"],
+  ["lcub", "{"],
+  ["rcub", "}"],
+  ["lsqb", "["],
+  ["rsqb", "]"],
+  ["Tab", "\t"],
+  ["NewLine", "\n"],
+  ["nbsp", "\u00a0"],
+  ["equals", "="],
+  ["plus", "+"],
+  ["minus", "-"],
+  ["lowbar", "_"],
+  ["period", "."],
+  ["comma", ","],
+  ["excl", "!"],
+  ["num", "#"],
+  ["dollar", "$"],
+  ["percnt", "%"],
+  ["ast", "*"],
+  ["hat", "^"],
+  ["grave", "`"],
+  ["verbar", "|"],
+  ["tilde", "~"],
+  ["quest", "?"],
+  ["AMP", "&"],
+  ["LT", "<"],
+  ["GT", ">"],
+  ["QUOT", '"'],
+])
+
+function isRemoteAccessEnabled(raw = process.env.VITE_ALLOW_REMOTE): boolean {
+  return raw !== undefined && REMOTE_ACCESS_TRUE_VALUES.has(raw.trim().toLowerCase())
+}
+
+function isSafeTransformUrl(url: string): boolean {
+  return url.startsWith("/") && !url.startsWith("//") && !url.startsWith("/\\") && !url.includes("\0") && !/^[a-z][a-z\d+.-]*:/i.test(url)
+}
+
+function isLitestarBridgeConfigRequest(requestUrl: string): boolean {
+  let decoded = requestUrl.split(/[?#]/)[0] ?? ""
+  for (let i = 0; i < 10; i += 1) {
+    try {
+      const nextDecoded = decodeURIComponent(decoded)
+      if (nextDecoded === decoded) {
+        break
+      }
+      decoded = nextDecoded
+    } catch {
+      break
+    }
+  }
+  const normalized = decoded.replace(/\\/g, "/")
+  return normalized.split("/").some((segment) => segment.toLowerCase() === ".litestar.json")
+}
+
+function decodeHtmlCodePoint(codePoint: number): string {
+  if (!Number.isFinite(codePoint) || codePoint <= 0 || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+    return "\ufffd"
+  }
+  return String.fromCodePoint(codePoint)
+}
+
+function decodeHtmlEntities(value: string): string {
+  if (!value.includes("&")) {
+    return value
+  }
+  return value.replace(/&(?:#([0-9]+);?|#[xX]([0-9a-fA-F]+);?|([a-zA-Z][a-zA-Z0-9]*);)/g, (full, dec?: string, hex?: string, named?: string) => {
+    if (dec !== undefined) {
+      return decodeHtmlCodePoint(Number.parseInt(dec, 10))
+    }
+    if (hex !== undefined) {
+      return decodeHtmlCodePoint(Number.parseInt(hex, 16))
+    }
+    if (named !== undefined) {
+      return HTML_NAMED_ENTITIES.get(named) ?? full
+    }
+    return full
+  })
+}
+
+function isHtmlWhitespace(code: number): boolean {
+  return code === 0x09 || code === 0x0a || code === 0x0c || code === 0x0d || code === 0x20
+}
+
+function isAsciiAlpha(code: number): boolean {
+  return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a)
+}
+
+type ParsedHtmlTag = {
+  tagName: string
+  isEndTag: boolean
+  selfClosing: boolean
+  attrs: Map<string, string>
+  nextPos: number
+}
+
+function parseHtmlTag(html: string, ltIndex: number): ParsedHtmlTag {
+  const len = html.length
+  const isEndTag = html[ltIndex + 1] === "/"
+  let pos = isEndTag ? ltIndex + 2 : ltIndex + 1
+  const nameStart = pos
+  while (pos < len) {
+    const code = html.charCodeAt(pos)
+    if (isHtmlWhitespace(code) || code === 0x2f || code === 0x3e) {
+      break
+    }
+    pos += 1
+  }
+  const tagName = html.slice(nameStart, pos).toLowerCase()
+  const attrs = new Map<string, string>()
+  let selfClosing = false
+
+  while (pos < len) {
+    while (pos < len && isHtmlWhitespace(html.charCodeAt(pos))) {
+      pos += 1
+    }
+    if (pos >= len) {
+      break
+    }
+    const ch = html[pos]
+    if (ch === ">") {
+      pos += 1
+      break
+    }
+    if (ch === "/") {
+      selfClosing = true
+      pos += 1
+      continue
+    }
+
+    selfClosing = false
+    const attrNameStart = pos
+    while (pos < len) {
+      const code = html.charCodeAt(pos)
+      if (isHtmlWhitespace(code) || code === 0x3d || code === 0x3e || code === 0x2f) {
+        break
+      }
+      pos += 1
+    }
+    const attrName = html.slice(attrNameStart, pos).toLowerCase()
+
+    while (pos < len && isHtmlWhitespace(html.charCodeAt(pos))) {
+      pos += 1
+    }
+
+    let rawValue = ""
+    if (pos < len && html[pos] === "=") {
+      pos += 1
+      while (pos < len && isHtmlWhitespace(html.charCodeAt(pos))) {
+        pos += 1
+      }
+      if (pos < len) {
+        const quote = html[pos]
+        if (quote === '"' || quote === "'") {
+          pos += 1
+          const valStart = pos
+          const closeIdx = html.indexOf(quote, pos)
+          if (closeIdx === -1) {
+            rawValue = html.slice(valStart)
+            pos = len
+          } else {
+            rawValue = html.slice(valStart, closeIdx)
+            pos = closeIdx + 1
+          }
+        } else {
+          const valStart = pos
+          while (pos < len) {
+            const code = html.charCodeAt(pos)
+            if (isHtmlWhitespace(code) || code === 0x3e) {
+              break
+            }
+            pos += 1
+          }
+          rawValue = html.slice(valStart, pos)
+        }
+      }
+    }
+
+    if (!isEndTag && attrName.length > 0 && !attrs.has(attrName)) {
+      attrs.set(attrName, decodeHtmlEntities(rawValue))
+    }
+  }
+
+  return { tagName, isEndTag, selfClosing, attrs, nextPos: pos }
+}
+
+function matchesRawEndTag(html: string, ltIndex: number, targetTag: string): boolean {
+  if (!html.startsWith("</", ltIndex)) {
+    return false
+  }
+  const end = ltIndex + 2 + targetTag.length
+  if (end >= html.length) {
+    return false
+  }
+  if (html.slice(ltIndex + 2, end).toLowerCase() !== targetTag) {
+    return false
+  }
+  const nextCode = html.charCodeAt(end)
+  return isHtmlWhitespace(nextCode) || nextCode === 0x2f || nextCode === 0x3e
+}
+
+function matchesRawStartTag(html: string, ltIndex: number, targetTag: string): boolean {
+  const end = ltIndex + 1 + targetTag.length
+  if (end >= html.length) {
+    return false
+  }
+  if (html.slice(ltIndex + 1, end).toLowerCase() !== targetTag) {
+    return false
+  }
+  const nextCode = html.charCodeAt(end)
+  return isHtmlWhitespace(nextCode) || nextCode === 0x2f || nextCode === 0x3e
+}
+
+function findRawTextElementEnd(html: string, startPos: number, targetTag: string): { body: string; nextPos: number } {
+  let cursor = startPos
+  while (cursor < html.length) {
+    const lt = html.indexOf("</", cursor)
+    if (lt === -1) {
+      break
+    }
+    if (matchesRawEndTag(html, lt, targetTag)) {
+      const endTag = parseHtmlTag(html, lt)
+      return { body: html.slice(startPos, lt), nextPos: endTag.nextPos }
+    }
+    cursor = lt + 2
+  }
+  return { body: html.slice(startPos), nextPos: html.length }
+}
+
+function findScriptElementEnd(html: string, startPos: number): { body: string; nextPos: number } {
+  let state: "data" | "escaped" | "double_escaped" = "data"
+  let cursor = startPos
+
+  while (cursor < html.length) {
+    const lt = html.indexOf("<", cursor)
+    if (state !== "data") {
+      const arrow = html.indexOf("-->", cursor)
+      if (arrow !== -1 && (lt === -1 || arrow < lt)) {
+        state = "data"
+        cursor = arrow + 3
+        continue
+      }
+    }
+    if (lt === -1) {
+      break
+    }
+    if (state === "data") {
+      if (html.startsWith("<!--", lt)) {
+        state = "escaped"
+        cursor = lt + 4
+        continue
+      }
+      if (matchesRawEndTag(html, lt, "script")) {
+        const endTag = parseHtmlTag(html, lt)
+        return { body: html.slice(startPos, lt), nextPos: endTag.nextPos }
+      }
+      cursor = lt + 1
+      continue
+    }
+    if (state === "escaped") {
+      if (matchesRawStartTag(html, lt, "script")) {
+        state = "double_escaped"
+        cursor = lt + 7
+        continue
+      }
+      if (matchesRawEndTag(html, lt, "script")) {
+        const endTag = parseHtmlTag(html, lt)
+        return { body: html.slice(startPos, lt), nextPos: endTag.nextPos }
+      }
+      cursor = lt + 1
+      continue
+    }
+    if (matchesRawEndTag(html, lt, "script")) {
+      state = "escaped"
+      cursor = lt + 8
+      continue
+    }
+    cursor = lt + 1
+  }
+
+  return { body: html.slice(startPos), nextPos: html.length }
+}
+
+function decodeForeignStyleText(rawBody: string): string {
+  return rawBody.replace(/<!\[CDATA\[([\s\S]*?)(?:\]\]>|$)|([^<]+|<)/g, (_m, cdata?: string, text?: string) => {
+    if (cdata !== undefined) {
+      return cdata
+    }
+    return decodeHtmlEntities(text ?? "")
+  })
+}
+
+function hasCssImport(rawCss: string): boolean {
+  const normalizedCss = rawCss
+    .replace(/\/\*[\s\S]*?(?:\*\/|$)/g, "")
+    .replace(/\\(?:\r\n|[\r\n\f])/g, "")
+    .replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_m, hex: string) => decodeHtmlCodePoint(Number.parseInt(hex, 16)))
+    .replace(/\\([^\r\n\f0-9a-fA-F])/g, "$1")
+  return /@import\b/i.test(normalizedCss)
+}
+
+function validateTransformHtmlPayload(html: string): boolean {
+  const foreignStack: string[] = []
+  let pos = 0
+  const len = html.length
+
+  while (pos < len) {
+    const lt = html.indexOf("<", pos)
+    if (lt === -1) {
+      break
+    }
+
+    if (html.startsWith("<!--", lt)) {
+      if (html.startsWith(">", lt + 4)) {
+        pos = lt + 5
+      } else if (html.startsWith("->", lt + 4)) {
+        pos = lt + 6
+      } else {
+        const commentEnd = html.indexOf("-->", lt + 4)
+        pos = commentEnd === -1 ? len : commentEnd + 3
+      }
+      continue
+    }
+
+    if (html.startsWith("<![CDATA[", lt)) {
+      const cdataEnd = html.indexOf("]]>", lt + 9)
+      pos = cdataEnd === -1 ? len : cdataEnd + 3
+      continue
+    }
+
+    if (html.startsWith("<!", lt) || html.startsWith("<?", lt)) {
+      const gt = html.indexOf(">", lt + 2)
+      pos = gt === -1 ? len : gt + 1
+      continue
+    }
+
+    if (html.startsWith("</", lt)) {
+      if (lt + 2 < len && isAsciiAlpha(html.charCodeAt(lt + 2))) {
+        const endTag = parseHtmlTag(html, lt)
+        if (endTag.tagName === "svg" || endTag.tagName === "math") {
+          const stackIdx = foreignStack.lastIndexOf(endTag.tagName)
+          if (stackIdx !== -1) {
+            foreignStack.length = stackIdx
+          }
+        }
+        pos = endTag.nextPos
+      } else {
+        const gt = html.indexOf(">", lt + 2)
+        pos = gt === -1 ? len : gt + 1
+      }
+      continue
+    }
+
+    if (lt + 1 >= len || !isAsciiAlpha(html.charCodeAt(lt + 1))) {
+      pos = lt + 1
+      continue
+    }
+
+    const tag = parseHtmlTag(html, lt)
+    const inForeignContent = foreignStack.length > 0
+
+    if (tag.tagName === "svg" || tag.tagName === "math") {
+      if (!tag.selfClosing) {
+        foreignStack.push(tag.tagName)
+      }
+      pos = tag.nextPos
+      continue
+    }
+
+    if (tag.tagName === "style") {
+      if (inForeignContent && tag.selfClosing) {
+        pos = tag.nextPos
+        continue
+      }
+      const { body, nextPos } = findRawTextElementEnd(html, tag.nextPos, "style")
+      const cssBody = inForeignContent ? decodeForeignStyleText(body) : body
+      if (hasCssImport(cssBody)) {
+        return false
+      }
+      pos = nextPos
+      continue
+    }
+
+    if (tag.tagName === "script") {
+      const { body, nextPos } = inForeignContent && tag.selfClosing ? { body: "", nextPos: tag.nextPos } : findScriptElementEnd(html, tag.nextPos)
+      const scriptType = (tag.attrs.get("type") ?? "").trim().toLowerCase()
+      const srcAttr = tag.attrs.get("src")
+      const hasSrc = typeof srcAttr === "string" && srcAttr.trim().length > 0
+      if (scriptType === "module" && !hasSrc && body.trim().length > 0) {
+        return false
+      }
+      pos = nextPos
+      continue
+    }
+
+    if (!inForeignContent && (tag.tagName === "textarea" || tag.tagName === "title")) {
+      const { nextPos } = findRawTextElementEnd(html, tag.nextPos, tag.tagName)
+      pos = nextPos
+      continue
+    }
+
+    pos = tag.nextPos
+  }
+
+  return true
+}
 
 const refreshPaths = ["src/**", "resources/**", "assets/**"].filter((p) => fs.existsSync(p.replace(/\*\*$/, "")))
 
@@ -380,6 +808,18 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig, rawConfig?: s
       const proxyOriginDefault = !explicitServerOrigin && pythonDefaults?.proxyMode === "vite" ? effectiveAppUrl : undefined
       const devBase = pluginConfig.assetUrl.startsWith("/") ? pluginConfig.assetUrl : pluginConfig.assetUrl.replace(/\/+$/, "")
 
+      const hotFileDenyEntries: string[] = []
+      if (pluginConfig.hotFile) {
+        const rootDir = userConfig.root ? path.resolve(process.cwd(), userConfig.root) : process.cwd()
+        const resolvedHotFile = resolveHotFilePath(pluginConfig.bundleDir, pluginConfig.hotFile, rootDir).replace(/\\/g, "/")
+        hotFileDenyEntries.push(resolvedHotFile)
+        const hotFileBasename = path.basename(resolvedHotFile)
+        if (hotFileBasename && hotFileBasename !== "." && hotFileBasename !== "..") {
+          hotFileDenyEntries.push(hotFileBasename)
+        }
+      }
+      const fsDeny = [...new Set([...VITE_DEFAULT_FS_DENY, ...(userConfig.server?.fs?.deny ?? []), "**/.litestar.json", ...hotFileDenyEntries])]
+
       ensureCommandShouldRunInEnvironment(command, env, mode)
 
       return {
@@ -394,6 +834,10 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig, rawConfig?: s
           assetsInlineLimit: userConfig.build?.assetsInlineLimit ?? 0,
         },
         server: {
+          fs: {
+            ...userConfig.server?.fs,
+            deny: fsDeny,
+          },
           origin: shouldForceDirectServerOrigin ? (explicitServerOrigin ?? "__litestar_vite_placeholder__") : proxyOriginDefault,
           // Auto-configure the HMR WebSocket to use a path that routes through the Litestar proxy.
           // Auto-configure the HMR WebSocket to route through the Litestar proxy.
@@ -439,7 +883,7 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig, rawConfig?: s
             : undefined),
           // VITE_ALLOW_REMOTE controls host binding (0.0.0.0 for remote access)
           // Also sets port/strictPort for backwards compatibility when VITE_PORT not set
-          ...(process.env.VITE_ALLOW_REMOTE
+          ...(isRemoteAccessEnabled()
             ? {
                 host: userConfig.server?.host ?? "0.0.0.0",
                 ...(process.env.VITE_PORT
@@ -449,7 +893,9 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig, rawConfig?: s
                       strictPort: userConfig.server?.strictPort ?? true,
                     }),
               }
-            : undefined),
+            : {
+                host: userConfig.server?.host ?? (process.env.VITE_HOST || undefined) ?? pluginConfig.host ?? "127.0.0.1",
+              }),
           ...(serverConfig
             ? {
                 host: userConfig.server?.host ?? serverConfig.host,
@@ -656,17 +1102,14 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig, rawConfig?: s
       // This allows serving index.html (or placeholder) at "/" while using a different base for assets.
       server.middlewares.use(async (req, res, next) => {
         const requestUrl = req.originalUrl ?? req.url ?? "/"
+        if (isLitestarBridgeConfigRequest(requestUrl)) {
+          res.statusCode = 404
+          res.setHeader("Content-Type", "text/plain")
+          res.end("Not Found")
+          return
+        }
         const requestPath = requestUrl.split("?")[0]
         const isRootRequest = requestPath === "/" || requestPath === "/index.html"
-
-        const isJsonContentType = (value: string | string[] | undefined): boolean => {
-          if (!value) {
-            return false
-          }
-
-          const normalized = Array.isArray(value) ? value[0] : value
-          return normalized.toLowerCase().split(";")[0].trim() === "application/json"
-        }
 
         const readBody = async (): Promise<string> =>
           new Promise((resolve, reject) => {
@@ -697,6 +1140,15 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig, rawConfig?: s
             return
           }
 
+          const expectedToken = readBridgeConfig()?.proxyToken ?? null
+          const auth = verifyBridgeRequest(req, expectedToken)
+          if (!auth.ok) {
+            res.statusCode = auth.statusCode
+            res.setHeader("Content-Type", "text/plain")
+            res.end(auth.message)
+            return
+          }
+
           const contentLengthHeader = reqHeaders["content-length"]
           const contentLengthHeaderValue = Array.isArray(contentLengthHeader) ? contentLengthHeader[0] : contentLengthHeader
           const contentLength = typeof contentLengthHeaderValue === "string" ? Number(contentLengthHeaderValue) : Number.NaN
@@ -707,19 +1159,18 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig, rawConfig?: s
             return
           }
 
-          const contentType = reqHeaders["content-type"]
-          if (contentType !== undefined && !isJsonContentType(contentType)) {
-            res.statusCode = 415
-            res.setHeader("Content-Type", "text/plain")
-            res.end("Unsupported content type")
-            return
-          }
-
           try {
             const body = await readBody()
             let payload: { entry?: string; html?: string; url?: string }
             try {
-              payload = JSON.parse(body) as { entry?: string; html?: string; url?: string }
+              const parsed = JSON.parse(body) as unknown
+              if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+                res.statusCode = 400
+                res.setHeader("Content-Type", "text/plain")
+                res.end("Invalid payload")
+                return
+              }
+              payload = parsed as { entry?: string; html?: string; url?: string }
             } catch {
               res.statusCode = 400
               res.setHeader("Content-Type", "text/plain")
@@ -781,17 +1232,44 @@ function resolveLitestarPlugin(pluginConfig: ResolvedPluginConfig, rawConfig?: s
               }
               url = `/${parsedEntry.split(path.sep).join("/")}`
               try {
-                html = await fs.promises.readFile(entryPath, "utf-8")
+                const realRoot = await fs.promises.realpath(root)
+                const realEntry = await fs.promises.realpath(entryPath)
+                if (realEntry !== realRoot && !realEntry.startsWith(`${realRoot}${path.sep}`)) {
+                  res.statusCode = 400
+                  res.setHeader("Content-Type", "text/plain")
+                  res.end("Invalid entry")
+                  return
+                }
+                html = await fs.promises.readFile(realEntry, "utf-8")
               } catch (error) {
                 const code = error instanceof Error && "code" in error ? (error as NodeJS.ErrnoException).code : undefined
+                resolvedConfig.logger.error(`Error reading HTML entry: ${error instanceof Error ? error.message : String(error)}`)
                 res.statusCode = code === "ENOENT" ? 404 : 500
                 res.setHeader("Content-Type", "text/plain")
                 res.end(code === "ENOENT" ? "Not Found" : "Error reading HTML entry")
                 return
               }
             } else {
-              url = typeof payload.url === "string" && payload.url ? payload.url : "/"
+              if (payload.url !== undefined && payload.url !== null && typeof payload.url !== "string") {
+                res.statusCode = 400
+                res.setHeader("Content-Type", "text/plain")
+                res.end("Invalid payload")
+                return
+              }
+              if (typeof payload.url === "string" && payload.url.length > 0 && !isSafeTransformUrl(payload.url)) {
+                res.statusCode = 400
+                res.setHeader("Content-Type", "text/plain")
+                res.end("Invalid payload")
+                return
+              }
+              url = typeof payload.url === "string" && payload.url.length > 0 ? payload.url : "/"
               html = payload.html as string
+              if (!validateTransformHtmlPayload(html)) {
+                res.statusCode = 400
+                res.setHeader("Content-Type", "text/plain")
+                res.end("Unsupported HTML transform payload")
+                return
+              }
             }
             const transformedHtml = await server.transformIndexHtml(url, html, url)
             res.statusCode = 200
@@ -1069,6 +1547,7 @@ function resolvePluginConfig(config: string | string[] | PluginConfig): Resolved
     transformOnServe: resolvedConfig.transformOnServe ?? ((code) => code),
     types: typesConfig,
     executor: resolvedConfig.executor ?? pythonDefaults?.executor,
+    host: resolvedConfig.host ?? pythonDefaults?.host,
     hasPythonConfig: pythonDefaults !== null,
   }
 
@@ -1303,7 +1782,7 @@ function resolveDevServerUrl(address: AddressInfo, config: ResolvedConfig, userC
   const configWsHost = configHmrNet?.host ?? null
   const userHost = typeof userConfig.server?.host === "string" ? userConfig.server.host : null
   const configHost = typeof config.server.host === "string" ? config.server.host : null
-  const remoteHost = process.env.VITE_ALLOW_REMOTE && !userConfig.server?.host ? (isIpv6(address) ? "[::1]" : "127.0.0.1") : null
+  const remoteHost = isRemoteAccessEnabled() && !userConfig.server?.host ? (isIpv6(address) ? "[::1]" : "127.0.0.1") : null
   const serverAddress = isIpv6(address) ? `[${address.address}]` : address.address
   let host = configWsHost ?? userHost ?? remoteHost ?? configHost ?? serverAddress
 

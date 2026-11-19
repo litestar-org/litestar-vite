@@ -53,7 +53,7 @@ export {
   type TypedChannelOptions,
 } from "./channels.js"
 // HTMX utilities
-export { addDirective, registerHtmxExtension, setDebug as setHtmxDebug, swapJson } from "./htmx.js"
+export { addDirective, registerHtmxExtension, setDebug as setHtmxDebug, swapJson, type HtmxExtensionOptions } from "./htmx.js"
 // Litestar Queues utilities
 export { createQueueEventStream, QUEUE_SSE_EVENTS, type QueueEventStreamOptions, type QueueStreamTarget, type QueueStreamValue } from "./queues.js"
 // Route matching utilities

@@ -5,3 +5,9 @@
 
 # Global Assignment
 *      @litestar-org/maintainers @litestar-org/members
+
+# Workflow, build, and dependency manifests
+/.github/              @litestar-org/maintainers
+/tools/hatch_build.py  @litestar-org/maintainers
+/pyproject.toml        @litestar-org/maintainers
+/package.json          @litestar-org/maintainers

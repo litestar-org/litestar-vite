@@ -4,13 +4,25 @@ Notable changes to this project are documented in this file.
 
 ## 0.33.1 - 2026-11-16
 
+### Added
+
+- Added `escape_json_for_html()` in `litestar_vite.html_transform`, the `inertia_page` `Markup` template context variable in `InertiaResponse.create_template_context()`, `TypeGenConfig.only_routes` and `TypeGenConfig.exclude_routes` for filtering exported routes and Inertia pages, `DeployConfig.include_sourcemaps` (`--include-sourcemaps` CLI flag), and configurable QuickJS memory and stack limits on `RuntimeConfig` / `WasmIPCTransport`.
+- Added `SECURITY.md` and maintainer-scoped `.github/CODEOWNERS` rules for workflow and package manifests.
+
 ### Fixed
 
 - Fixed AsyncAPI normalization in `normalize_asyncapi_document()` and `_rewrite_operation_references()` so `operation.reply.channel.$ref` and `operation.reply.messages[].$ref` rewrite to re-keyed channel keys alongside `operation.channel` and `operation.messages`, while keeping component-level `$ref` replies intact. ([#395](https://github.com/litestar-org/litestar-vite/issues/395))
+- Standardized HTML-safe JSON serialization across `inject_page_script()`, `ViteAssetLoader.render_routes()`, `AppHandler._transform_html()`, and `InertiaResponse.create_template_context()`, escaped fragment CSS links and Jinja CSRF inputs, replaced regex string interpolation in `set_data_attribute()`, and moved SPA HTML shell caching ahead of per-request CSRF injection.
+- Scoped Inertia prop evaluation caches (`DeferredProp`, `OnceProp`, `OptionalProp`) to the active request instead of mutating shared prop instances, bounded partial-reload headers and unconsumed session flash queues, masked 5xx exception details when `app.debug` is `False`, scoped Inertia exception handling to Inertia-enabled routes, and tightened `_get_redirect_url()` to leading-slash relative paths or same-origin HTTP(S) URLs.
+- Replaced regex tag stripping in `sanitizeHtml()` with an element and attribute allowlist, isolated `ls-html`/`ls-text` swaps from nested directive execution, restricted `expression.ts` primitive calls to an explicit allowlist, encoded path parameters and rejected `.`/`..` segments in `formatRouteUrl()` and generated `routes.ts`, and restricted `csrfFetch()` and HTMX CSRF headers to same-origin or explicit `trustedOrigins` targets.
+- Aligned `ProxyHeadersMiddleware` with RFC 9110 repeated forwarded headers and strict authority validation, validated development WebSocket `Origin` headers and hotfile URLs, normalized static metadata filtering with automatic `<asset_url>/assets` native submounts for Granian when `bundle_dir` contains build metadata, preserved explicit `dev_mode=False`, and excluded `resource_dir` from Litestar's `/static/` router.
+- Standardized TypeScript and Python codegen literal escaping and identifier validation, excluded `include_in_schema=False` routes from codegen exports, aligned scaffold and example defaults to loopback dev servers and environment-driven debug/session settings, resolved local `node_modules/.bin` executables in CLI commands, and isolated and SHA-pinned GitHub Actions workflows.
 
 ### Changed
 
 - Updated `litestar-vite-plugin` optional peer dependency `@hey-api/openapi-ts` to `^0.99.0` with `typescript` pinned below `7.0.0` in Dependabot, updated `sveltekit` scaffolding templates to SvelteKit 3 / `@sveltejs/adapter-node` 6 (`#lib/*` imports and inline `sveltekit()` options in `vite.config.ts` without `svelte.config.js`), updated `astro` scaffolding templates to Astro 7 (`@tailwindcss/vite`), and aligned all example `package.json` manifests.
+- Raised the `jinja` extra floor to `jinja2>=3.1.6` and updated the `vite` peer dependency range in `package.json` to `^7.3.7 || >=8.3.3`.
+- Defaulted `VITE_AUTO_DEV_MODE`, `DeployConfig.delete_orphaned`, and `DeployConfig.include_sourcemaps` to `False`, moved Nuxt `apiProxy` into server-only `runtimeConfig.litestar`, and defaulted Vite development server binding to `127.0.0.1` with per-run bridge token verification on internal dev endpoints.
 - Updated `.github/workflows/e2e-examples.yml` to run on Node 24 for Astro 7 compatibility and refreshed Python, JavaScript, and pre-commit dependencies (`uv.lock`, `package-lock.json`, `.pre-commit-config.yaml`).
 
 ## 0.33.0 - 2026-11-03

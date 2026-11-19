@@ -16,6 +16,21 @@ __all__ = ("ExternalDevServer", "RuntimeConfig", "detect_runtime", "detect_runti
 
 ExecutorType = Literal["node", "bun", "deno", "yarn", "pnpm"]
 
+
+class _UnsetDevMode:
+    """Sentinel type distinguishing omitted dev_mode from explicit False."""
+
+    __slots__ = ()
+
+
+_UNSET_DEV_MODE: Any = _UnsetDevMode()
+
+
+def _unset_dev_mode() -> bool:
+    """Return the internal unset dev_mode sentinel typed as bool for dataclass defaults."""
+    return cast("bool", _UNSET_DEV_MODE)
+
+
 _EXECUTOR_COMMANDS: dict[str, dict[str, tuple[str, ...]]] = {
     "node": {
         "run": ("npm", "run", "dev"),
@@ -107,10 +122,11 @@ def _cached_resolve_proxy_mode(env_value: str | None) -> "Literal['vite', 'proxy
 def resolve_trusted_proxies() -> "list[str] | str | None":
     """Resolve trusted_proxies from environment variable.
 
-    Reads LITESTAR_TRUSTED_PROXIES env var. Examples:
-        - "*" -> Trust all proxies (for container environments)
+    Reads ``LITESTAR_TRUSTED_PROXIES`` env var. Prefer explicit loopback or CIDR
+    ranges over wildcard trust. Examples:
         - "127.0.0.1" -> Trust localhost only
-        - "10.0.0.0/8,172.16.0.0/12" -> Trust private networks
+        - "127.0.0.1,10.0.0.0/8" -> Trust localhost and private proxy networks
+        - "*" -> Trust all proxies (limit to isolated container networks)
 
     Returns:
         The trusted proxies configuration, or None if not set.
@@ -167,7 +183,7 @@ class ExternalDevServer:
 class RuntimeConfig:
     """Runtime process management, dev proxy, and JavaScript executor settings."""
 
-    dev_mode: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
+    dev_mode: bool = field(default_factory=_unset_dev_mode)
     """Enable development mode with Vite HMR and watch processes."""
     proxy_mode: "Literal['vite', 'proxy'] | None" = field(default_factory=resolve_proxy_mode)
     """Dev proxy routing mode (`'vite'` allowlist, `'proxy'` denylist for framework mode, or `None` in production)."""
@@ -201,6 +217,12 @@ class RuntimeConfig:
     """How runtime binaries are located (`'auto'`, `'wheel'`, `'nodeenv'`, or `'system'`)."""
     ssr_transport: Literal["stdio", "wasm", "auto"] = "auto"
     """Production SSR IPC transport selection (`'auto'`, `'stdio'`, or `'wasm'`)."""
+    wasm_memory_limit: int = 128 * 1024 * 1024
+    """Maximum heap memory in bytes allocated to the embedded QuickJS WASM SSR context (defaults to 128 MiB)."""
+    wasm_max_stack_size: int = 1024 * 1024
+    """Maximum call stack size in bytes for the embedded QuickJS WASM SSR context (defaults to 1 MiB)."""
+    wasm_time_limit: "float | None" = None
+    """Optional CPU time budget in seconds for embedded QuickJS WASM SSR execution (falls back to `InertiaSSRConfig.timeout` or 10.0s when `None`)."""
     set_environment: bool = True
     """Export resolved Vite settings (`VITE_PORT`, `VITE_HOST`, `ASSET_URL`) into process environment variables."""
     set_static_folders: bool = True
@@ -220,12 +242,22 @@ class RuntimeConfig:
     start_dev_server: bool = True
     """Automatically spawn and manage the Vite dev server subprocess during Litestar lifespan."""
     trusted_proxies: "list[str] | str | None" = field(default_factory=resolve_trusted_proxies)
-    """Trusted proxy hosts/CIDRs (`'*'` or IP list) for `X-Forwarded-*` header processing (`LITESTAR_TRUSTED_PROXIES`)."""
+    """Trusted proxy hosts or CIDRs (for example, `'127.0.0.1,10.0.0.0/8'`; limit `'*'` to isolated container networks) for `X-Forwarded-*` header processing (`LITESTAR_TRUSTED_PROXIES`)."""
     extra_route_prefixes: tuple[str, ...] = ()
     """Additional backend route prefixes excluded from dev proxy forwarding and SPA catch-all routing."""
 
+    _dev_mode_explicit: bool = field(default=False, init=False, repr=False)
     _executor_explicit: bool = field(default=False, init=False, repr=False)
     _explicit_commands: frozenset[str] = field(default=frozenset(), init=False, repr=False)
+
+    @property
+    def has_explicit_dev_mode(self) -> bool:
+        """Return whether development mode was explicitly configured via args or env.
+
+        Returns:
+            True when ``dev_mode`` was explicitly passed or configured via ``VITE_DEV_MODE``.
+        """
+        return self._dev_mode_explicit
 
     @property
     def has_explicit_executor(self) -> bool:
@@ -234,6 +266,18 @@ class RuntimeConfig:
 
     def __post_init__(self) -> None:
         """Normalize runtime settings and apply derived defaults."""
+        if self.dev_mode is _UNSET_DEV_MODE:
+            env_dev_mode = os.getenv("VITE_DEV_MODE")
+            if env_dev_mode is not None:
+                self.dev_mode = env_dev_mode.strip() in TRUE_VALUES
+                self._dev_mode_explicit = True
+            else:
+                self.dev_mode = False
+                self._dev_mode_explicit = False
+        else:
+            self.dev_mode = bool(self.dev_mode)
+            self._dev_mode_explicit = True
+
         if self.provisioning_mode == "nodeenv":
             self.detect_nodeenv = True
 
@@ -265,6 +309,16 @@ class RuntimeConfig:
                 self.executor = "node"
                 self._executor_explicit = False
 
+        if self.wasm_memory_limit <= 0:
+            msg = "wasm_memory_limit must be positive."
+            raise ValueError(msg)
+        if self.wasm_max_stack_size <= 0:
+            msg = "wasm_max_stack_size must be positive."
+            raise ValueError(msg)
+        if self.wasm_time_limit is not None and self.wasm_time_limit <= 0:
+            msg = "wasm_time_limit must be positive."
+            raise ValueError(msg)
+
         self._populate_default_commands()
 
     def _populate_default_commands(self) -> None:
@@ -290,6 +344,15 @@ class RuntimeConfig:
         """
         self.executor = executor
         self._populate_default_commands()
+
+    def apply_explicit_dev_mode(self, dev_mode: bool) -> None:
+        """Apply an explicit development mode override from a parent configuration.
+
+        Args:
+            dev_mode: Explicit development mode value to set on this runtime configuration.
+        """
+        self.dev_mode = dev_mode
+        self._dev_mode_explicit = True
 
 
 _LOCKFILE_EXECUTORS: tuple[tuple[str, ExecutorType], ...] = (

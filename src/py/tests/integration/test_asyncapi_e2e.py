@@ -119,8 +119,8 @@ def test_asyncapi_and_websocket_routes_end_to_end(tmp_path: Path) -> None:
         assert not route_entry["uri"].startswith("/channels")
 
     assert "export const WS_SERVER_URL =" in routes_ts
-    assert "|| 'ws://localhost:8000';" in routes_ts
-    assert "export type WebSocketRouteName =\n  | 'chat_room';" in routes_ts
+    assert '|| "ws://localhost:8000";' in routes_ts
+    assert 'export type WebSocketRouteName =\n  | "chat_room";' in routes_ts
     assert "export function wsRoute<" in routes_ts
     assert "route.ws = wsRoute;" in routes_ts
 

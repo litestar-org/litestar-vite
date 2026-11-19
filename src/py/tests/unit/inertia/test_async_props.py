@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from litestar import Request, get
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.stores.memory import MemoryStore
@@ -465,3 +466,161 @@ async def test_ssr_with_async_prop_resolves_on_request_loop(tmp_path: Path) -> N
     # The Inertia partial-reload request previously returned JSON with the
     # resolved data; verify the loop-id assertion holds for that path too.
     assert response.json()["props"]["data"]["loop_id"] == response.json()["props"]["data"]["handler_loop_id"]
+
+
+@pytest.mark.parametrize(
+    ("prop_kind", "partial_data"),
+    [
+        pytest.param("once", None, id="once"),
+        pytest.param("defer", ["val"], id="defer"),
+        pytest.param("optional", ["val"], id="optional"),
+    ],
+)
+async def test_shared_async_prop_isolated_across_requests(
+    prop_kind: str,
+    partial_data: "list[str] | None",
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig,
+) -> None:
+    """Reusing an async special prop across HTTP requests evaluates once per request without leaking."""
+    counter = 0
+
+    async def next_value() -> int:
+        nonlocal counter
+        counter += 1
+        return counter
+
+    shared_prop: Any = (
+        once("val", next_value)
+        if prop_kind == "once"
+        else defer("val", next_value)
+        if prop_kind == "defer"
+        else optional("val", next_value)
+    )
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> "dict[str, Any]":
+        return {"val": shared_prop}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        headers = _inertia_headers(partial_data=partial_data)
+        resp1 = client.get("/", headers=headers)
+        resp2 = client.get("/", headers=headers)
+
+    assert resp1.status_code == 200
+    assert resp2.status_code == 200
+    assert resp1.json()["props"]["val"] == 1
+    assert resp2.json()["props"]["val"] == 2
+    assert counter == 2
+    assert shared_prop._evaluated is False
+
+
+async def test_shared_async_prop_returning_none_cached_within_single_request(
+    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig
+) -> None:
+    """An async prop returning None is cached in the request scope and not re-evaluated mid-request."""
+    from litestar_vite.inertia.helpers import OnceProp, share
+
+    calls = 0
+
+    async def load_none() -> None:
+        nonlocal calls
+        calls += 1
+        return
+
+    shared_prop: OnceProp[str, None] = once("nullable", load_none)
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> "dict[str, Any]":
+        share(request, "shared_nullable", shared_prop)
+        return {"route_nullable": shared_prop}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        resp1 = client.get("/", headers=_inertia_headers())
+        assert resp1.status_code == 200
+        assert resp1.json()["props"]["shared_nullable"] is None
+        assert resp1.json()["props"]["route_nullable"] is None
+        assert calls == 1
+        assert shared_prop._evaluated is False
+
+        resp2 = client.get("/", headers=_inertia_headers())
+        assert resp2.status_code == 200
+        assert resp2.json()["props"]["shared_nullable"] is None
+        assert resp2.json()["props"]["route_nullable"] is None
+        assert calls == 2
+        assert shared_prop._evaluated is False
+
+
+async def test_shared_async_prop_evaluated_once_per_request_with_ssr_prefetch(tmp_path: Path) -> None:
+    """Async pre-pass, SSR prefetch, and response build share one per-request eval cache."""
+    from litestar_vite.config import InertiaConfig, InertiaSSRConfig, PathConfig, RuntimeConfig, SPAConfig, ViteConfig
+    from litestar_vite.inertia.response import _InertiaSSRResult
+    from litestar_vite.plugin import VitePlugin as VitePluginCls
+
+    resource_dir = tmp_path / "resources"
+    resource_dir.mkdir()
+    (resource_dir / "index.html").write_text(
+        '<!DOCTYPE html><html><head></head><body><div id="app"></div></body></html>'
+    )
+
+    inertia_cfg = InertiaConfig(root_template="index.html", ssr=InertiaSSRConfig())
+    inertia_plug = InertiaPlugin(config=inertia_cfg)
+    vite_plug = VitePluginCls(
+        config=ViteConfig(
+            mode="hybrid",
+            paths=PathConfig(resource_dir=resource_dir),
+            runtime=RuntimeConfig(dev_mode=False),
+            spa=SPAConfig(app_selector="#app"),
+            inertia=inertia_cfg,
+        )
+    )
+
+    from litestar_vite.inertia.helpers import OnceProp
+
+    counter = 0
+
+    async def load_counter() -> int:
+        nonlocal counter
+        counter += 1
+        return counter
+
+    shared_once: OnceProp[str, int] = once("counter", load_counter)
+
+    @get("/", component="Home")
+    async def handler(request: Request[Any, Any, Any]) -> "dict[str, Any]":
+        return {"counter": shared_once}
+
+    captured_pages: "list[dict[str, Any]]" = []
+
+    async def fake_ssr(page: "dict[str, Any]", *_: Any, **__: Any) -> _InertiaSSRResult:
+        captured_pages.append(page)
+        return _InertiaSSRResult(head=[], body='<div id="app">SSR</div>')
+
+    with patch("litestar_vite.inertia.response._render_inertia_ssr", new_callable=AsyncMock, side_effect=fake_ssr):
+        with create_test_client(
+            route_handlers=[handler],
+            plugins=[inertia_plug, vite_plug],
+            middleware=[ServerSideSessionConfig().middleware],
+            stores={"sessions": MemoryStore()},
+        ) as client:
+            resp1 = client.get("/")
+            resp2 = client.get("/")
+
+    assert resp1.status_code == 200
+    assert resp2.status_code == 200
+    assert [page["props"]["counter"] for page in captured_pages] == [1, 2]
+    assert counter == 2
+    assert shared_once._evaluated is False

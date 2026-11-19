@@ -142,6 +142,7 @@ litestar assets deploy [OPTIONS]
 | `--dry-run` | `bool` | `False` | Preview upload/delete plan without making changes. |
 | `--no-delete` | `bool` | `False` | Do not delete orphaned remote files. |
 | `--verbose` | `bool` | `False` | Enable verbose output. Install providers separately: gcsfs for gcs://, s3fs for s3://, adlfs for abfs://. |
+| `--include-sourcemaps` | `bool` | `False` | Upload .map source map files alongside built assets. |
 
 ## Type Generation & Diagnostics
 

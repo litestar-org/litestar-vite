@@ -572,3 +572,149 @@ async def test_page_with_special_characters(
         response = client.get("/special", headers={InertiaHeaders.ENABLED.value: "true"})
         data = decode_json(response.text)
         assert data["component"] == "Admin/Users/Index"
+
+
+@pytest.mark.parametrize(
+    ("header", "attr"),
+    [(InertiaHeaders.PARTIAL_DATA, "partial_keys"), (InertiaHeaders.PARTIAL_EXCEPT, "partial_except_keys")],
+)
+async def test_partial_header_key_count_is_bounded(
+    header: InertiaHeaders,
+    attr: str,
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: "TemplateConfig[Any]",
+) -> None:
+    """Partial reload headers cap parsed keys to the first 128 segments."""
+
+    @get("/", component="Home")
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> dict[str, Any]:
+        return {"parsed": list(getattr(request.inertia, attr)), "count": len(getattr(request, attr))}
+
+    raw_keys = ",".join(f"k{i}" for i in range(200))
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        template_config=template_config,
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true", header.value: raw_keys})
+        props = response.json()["props"]
+        assert props["count"] == 128
+        assert props["parsed"] == [f"k{i}" for i in range(128)]
+        assert "k128" not in props["parsed"]
+        assert "k199" not in props["parsed"]
+
+
+@pytest.mark.parametrize(
+    ("header", "attr"),
+    [(InertiaHeaders.PARTIAL_DATA, "partial_keys"), (InertiaHeaders.PARTIAL_EXCEPT, "partial_except_keys")],
+)
+@pytest.mark.parametrize(("key_len", "expected_present"), [(256, True), (257, False)])
+async def test_partial_header_key_length_boundary(
+    header: InertiaHeaders,
+    attr: str,
+    key_len: int,
+    expected_present: bool,
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: "TemplateConfig[Any]",
+) -> None:
+    """Partial reload keys up to 256 chars are kept while longer keys are skipped without truncation."""
+
+    @get("/", component="Home")
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> dict[str, Any]:
+        return {"parsed": list(getattr(request.inertia, attr))}
+
+    candidate = "k" * key_len
+    raw_value = f"{candidate},valid"
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        template_config=template_config,
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true", header.value: raw_value})
+        parsed = response.json()["props"]["parsed"]
+        expected = [candidate, "valid"] if expected_present else ["valid"]
+        assert parsed == expected
+
+
+@pytest.mark.parametrize(
+    ("header", "attr"),
+    [(InertiaHeaders.PARTIAL_DATA, "partial_keys"), (InertiaHeaders.PARTIAL_EXCEPT, "partial_except_keys")],
+)
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [(" user , , profile.name ", ["user", "profile.name"]), ("a,, ,b", ["a", "b"]), ("", []), (" , , ", [])],
+)
+async def test_partial_header_blank_and_padded_tokens(
+    header: InertiaHeaders,
+    attr: str,
+    raw_value: str,
+    expected: list[str],
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: "TemplateConfig[Any]",
+) -> None:
+    """Whitespace is stripped and empty tokens are dropped when parsing partial headers."""
+
+    @get("/", component="Home")
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> dict[str, Any]:
+        return {"parsed": list(getattr(request.inertia, attr))}
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        template_config=template_config,
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers={InertiaHeaders.ENABLED.value: "true", header.value: raw_value})
+        assert response.json()["props"]["parsed"] == expected
+
+
+@pytest.mark.parametrize(
+    ("header_value", "expected_ancestors"),
+    [
+        ("a.b.c,x", ["a", "a.b"]),
+        ("profile.permissions,settings.theme.dark", ["profile", "settings", "settings.theme"]),
+        ("users", []),
+        ("", []),
+        (None, []),
+    ],
+)
+async def test_partial_data_ancestors_precomputation(
+    header_value: str | None,
+    expected_ancestors: list[str],
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: "TemplateConfig[Any]",
+) -> None:
+    """InertiaDetails.partial_data_ancestors precomputes and caches dot-path ancestor prefixes."""
+
+    @get("/", component="Home")
+    async def handler(request: InertiaRequest[Any, Any, Any]) -> dict[str, Any]:
+        first = request.inertia.partial_data_ancestors
+        second = request.inertia.partial_data_ancestors
+        return {"ancestors": sorted(first), "cached": first is second}
+
+    headers: dict[str, str] = {InertiaHeaders.ENABLED.value: "true"}
+    if header_value is not None:
+        headers[InertiaHeaders.PARTIAL_DATA.value] = header_value
+
+    with create_test_client(
+        route_handlers=[handler],
+        plugins=[inertia_plugin, vite_plugin],
+        middleware=[ServerSideSessionConfig().middleware],
+        template_config=template_config,
+        stores={"sessions": MemoryStore()},
+    ) as client:
+        response = client.get("/", headers=headers)
+        props = response.json()["props"]
+        assert props["ancestors"] == expected_ancestors
+        assert props["cached"] is True

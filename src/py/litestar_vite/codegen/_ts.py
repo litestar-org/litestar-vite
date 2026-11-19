@@ -9,6 +9,23 @@ from litestar_vite.codegen._refs import extract_schema_ref_name as _extract_sche
 from litestar_vite.codegen._refs import resolve_component_schema_name as _resolve_component_schema_name
 
 _PATH_PARAM_TYPE_PATTERN = re.compile(r"\{([^:}]+):[^}]+\}")
+_VALID_TS_IDENTIFIER_RE = re.compile(r"\A[A-Za-z_$][A-Za-z0-9_$]*\Z")
+
+
+def ts_string_literal(value: str) -> str:
+    """Serialize a Python string as a double-quoted JSON literal safe for TypeScript source."""
+    return json.dumps(value).replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+
+
+def is_valid_ts_identifier(name: str) -> bool:
+    """Return True when ``name`` is a valid unquoted TypeScript identifier."""
+    return _VALID_TS_IDENTIFIER_RE.fullmatch(name) is not None
+
+
+def format_ts_property_key(name: str) -> str:
+    """Format an object property key as an identifier or a quoted TypeScript string literal."""
+    return name if is_valid_ts_identifier(name) else ts_string_literal(name)
+
 
 _OPENAPI_STRING_FORMAT_TO_TS_ALIAS: dict[str, str] = {
     "uuid": "UUID",
@@ -40,6 +57,38 @@ def normalize_path(path: str) -> str:
     return _PATH_PARAM_TYPE_PATTERN.sub(r"{\1}", str(PurePosixPath(path)))
 
 
+def _resolve_ref_ts_type(ref: str, components_schemas: dict[str, Any] | None) -> str:
+    """Resolve an OpenAPI ``$ref`` string to a validated TypeScript type or enum literal union."""
+    ref_name = _extract_schema_ref_name(ref)
+    if ref_name is None:
+        fallback_name = ref.rsplit("/", maxsplit=1)[-1]
+        if not is_valid_ts_identifier(fallback_name):
+            msg = f"Invalid TypeScript identifier in $ref: {ref!r}"
+            raise ValueError(msg)
+        return fallback_name
+
+    resolved_type = ref_name
+    is_enum_literal_union = False
+    if components_schemas:
+        resolved_name = _resolve_component_schema_name(ref_name, components_schemas) or ref_name
+        resolved_schema = components_schemas.get(resolved_name)
+        if isinstance(resolved_schema, dict):
+            resolved_schema_t = cast("dict[str, Any]", resolved_schema)
+            enum_values = resolved_schema_t.get("enum")
+            if isinstance(enum_values, list) and enum_values:
+                enum_values_t = cast("list[Any]", enum_values)
+                resolved_type = " | ".join(ts_literal(v) for v in enum_values_t)
+                is_enum_literal_union = True
+            else:
+                resolved_type = resolved_name
+        else:
+            resolved_type = resolved_name
+    if not is_enum_literal_union and not is_valid_ts_identifier(resolved_type):
+        msg = f"Invalid TypeScript identifier in $ref: {ref!r}"
+        raise ValueError(msg)
+    return resolved_type
+
+
 def ts_type_from_openapi(schema_dict: dict[str, Any], components_schemas: dict[str, Any] | None = None) -> str:
     """Convert an OpenAPI schema dict to a TypeScript type string.
 
@@ -63,25 +112,7 @@ def ts_type_from_openapi(schema_dict: dict[str, Any], components_schemas: dict[s
 
     ref = schema_dict.get("$ref")
     if isinstance(ref, str) and ref:
-        ref_name = _extract_schema_ref_name(ref)
-        if ref_name is None:
-            return ref.split("/")[-1]
-
-        resolved_type = ref_name
-        if components_schemas:
-            resolved_name = _resolve_component_schema_name(ref_name, components_schemas) or ref_name
-            resolved_schema = components_schemas.get(resolved_name)
-            if isinstance(resolved_schema, dict):
-                resolved_schema_t = cast("dict[str, Any]", resolved_schema)
-                enum_values = resolved_schema_t.get("enum")
-                if isinstance(enum_values, list) and enum_values:
-                    enum_values_t = cast("list[Any]", enum_values)
-                    resolved_type = " | ".join(ts_literal(v) for v in enum_values_t)
-                else:
-                    resolved_type = resolved_name
-            else:
-                resolved_type = resolved_name
-        return resolved_type
+        return _resolve_ref_ts_type(ref, components_schemas)
 
     if "anyOf" in schema_dict and isinstance(schema_dict["anyOf"], list) and schema_dict["anyOf"]:
         schemas = cast("list[Any]", schema_dict["anyOf"])
@@ -232,7 +263,7 @@ def ts_type_from_openapi_type_entry(
             for name, prop_schema in cast("dict[str, Any]", properties).items():
                 ts_type = ts_type_from_subschema(prop_schema, components_schemas=components_schemas)
                 optional = "" if name in required else "?"
-                lines.append(f"  {name}{optional}: {ts_type};")
+                lines.append(f"  {format_ts_property_key(name)}{optional}: {ts_type};")
             lines.append("}")
             result = "\n".join(lines)
 
@@ -277,5 +308,5 @@ def ts_literal(value: Any) -> str:
     if isinstance(value, int | float):
         return str(value)
     if isinstance(value, str):
-        return json.dumps(value)
+        return ts_string_literal(value)
     return "any"

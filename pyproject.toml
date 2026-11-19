@@ -43,7 +43,7 @@ Issue = "https://github.com/litestar-org/litestar-vite/issues/"
 Source = "https://github.com/litestar-org/litestar-vite"
 
 [project.optional-dependencies]
-jinja = [ "jinja2"]
+jinja = ["jinja2>=3.1.6"]
 nodeenv = ["nodeenv"]
 node = ["nodejs-wheel>=22.0.0"]
 deno = ["deno>=2.0.0"]

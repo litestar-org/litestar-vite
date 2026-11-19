@@ -1,5 +1,9 @@
 """Tests for HTML transformation utilities."""
 
+import json
+import re
+from html import unescape
+
 import pytest
 
 from litestar_vite.html_transform import (
@@ -139,6 +143,28 @@ def test_set_data_attribute_replace_existing() -> None:
     assert 'data-page="old"' not in result
 
 
+@pytest.mark.parametrize(
+    ("payload", "expected_escaped"),
+    [
+        (r'{"value":"\n"}', r"{&quot;value&quot;:&quot;\n&quot;}"),
+        (r'{"value":"\1"}', r"{&quot;value&quot;:&quot;\1&quot;}"),
+        (r'{"value":"\g<0>"}', r"{&quot;value&quot;:&quot;\g&lt;0&gt;&quot;}"),
+        (r'{"value":"\u0001"}', r"{&quot;value&quot;:&quot;\u0001&quot;}"),
+        (r'{"value":"\\"}', r"{&quot;value&quot;:&quot;\\&quot;}"),
+    ],
+)
+def test_set_data_attribute_replace_existing_preserves_backslashes(payload: str, expected_escaped: str) -> None:
+    """Test replacing an existing attribute preserves literal backslash sequences without regex expansion."""
+    html = '<html><body><div id="app" data-page="old">content</div></body></html>'
+    result = set_data_attribute(html, "#app", "data-page", payload)
+
+    assert 'data-page="old"' not in result
+    assert f'data-page="{expected_escaped}"' in result
+    match = re.search(r'data-page="([^"]*)"', result)
+    assert match is not None
+    assert unescape(match.group(1)) == payload
+
+
 def test_set_data_attribute_escapes_value() -> None:
     """Test that attribute values are properly escaped."""
     html = '<html><body><div id="app"></div></body></html>'
@@ -274,17 +300,47 @@ def test_inject_page_script_with_nonce() -> None:
 
 
 def test_inject_page_script_escapes_closing_tags() -> None:
-    """Test that </script> sequences in JSON are escaped to prevent XSS."""
+    """Test that </script> sequences in JSON are unicode-escaped for HTML5 safety."""
     html = "<html><head></head><body></body></html>"
-    # Malicious JSON that tries to break out of script tag
     json_data = '{"content":"</script><script>alert(1)</script>"}'
     result = inject_page_script(html, json_data)
 
-    # Should escape </ to <\/ to prevent premature tag closure
-    assert r"<\/script>" in result
-    # Should NOT have unescaped </script> in the JSON content
-    # (other than the closing tag of our script element)
-    assert result.count("</script>") == 1  # Only the legitimate closing tag
+    assert r"\u003c/script\u003e" in result
+    assert r"\u003cscript\u003e" in result
+    assert r"<\/script>" not in result
+    assert result.count("</script>") == 1
+    match = re.search(r'<script type="application/json"[^>]*>(.*)</script>', result, re.DOTALL)
+    assert match is not None
+    assert json.loads(match.group(1)) == json.loads(json_data)
+
+
+def test_inject_page_script_escapes_html5_script_boundaries() -> None:
+    """Test that HTML comment and script openers cannot enter double-escaped script state."""
+    html = "<html><head></head><body></body></html>"
+    json_data = '{"content":"<!--<script></script>"}'
+    result = inject_page_script(html, json_data)
+
+    assert result.count("</script>") == 1
+    match = re.search(r'<script type="application/json"[^>]*>(.*)</script>', result, re.DOTALL)
+    assert match is not None
+    payload = match.group(1)
+    assert "<!--" not in payload
+    assert "<script>" not in payload
+    assert "</script>" not in payload
+    assert r"\u003c!--\u003cscript\u003e\u003c/script\u003e" in payload
+    assert json.loads(payload) == json.loads(json_data)
+
+
+@pytest.mark.parametrize(
+    ("script_id", "expected_id_attr"),
+    [('app"id', 'id="app&quot;id"'), ("app<id>", 'id="app&lt;id&gt;"'), ("app'id&x", 'id="app&#39;id&amp;x"')],
+)
+def test_inject_page_script_escapes_script_id(script_id: str, expected_id_attr: str) -> None:
+    """Test that script_id is HTML-attribute-escaped when injecting the page script."""
+    html = "<html><head></head><body></body></html>"
+    result = inject_page_script(html, '{"data":"test"}', script_id=script_id)
+
+    assert expected_id_attr in result
 
 
 def test_inject_page_script_empty_json() -> None:
@@ -350,30 +406,28 @@ def test_inject_page_script_large_payload() -> None:
 
 
 def test_inject_page_script_vs_data_attribute_escaping() -> None:
-    """Test that script element avoids the heavy escaping needed for data attributes.
-
-    This is the key performance benefit - script elements don't need HTML entity escaping.
-    """
+    """Test that script elements use JSON unicode escapes instead of HTML entity escaping."""
     html_with_script = "<html><body></body></html>"
     html_with_attr = '<html><body><div id="app"></div></body></html>'
     json_data = '{"message":"Hello <World> & \\"Friends\\""}'
 
-    # Script element: JSON is mostly unchanged (only </ escaping)
     script_result = inject_page_script(html_with_script, json_data)
-
-    # Data attribute: requires full HTML entity escaping
     attr_result = set_data_attribute(html_with_attr, "#app", "data-page", json_data)
 
-    # Script element preserves quotes and angle brackets
-    assert '"Hello <World>' in script_result or r'"Hello <World>' in script_result
+    assert r"\u003cWorld\u003e" in script_result
+    assert r"\u0026" in script_result
     assert "&quot;" not in script_result
     assert "&lt;" not in script_result
     assert "&gt;" not in script_result
+    assert "&amp;" not in script_result
+    match = re.search(r'<script type="application/json"[^>]*>(.*)</script>', script_result, re.DOTALL)
+    assert match is not None
+    assert json.loads(match.group(1)) == json.loads(json_data)
 
-    # Data attribute must escape everything
     assert "&quot;" in attr_result
     assert "&lt;" in attr_result
     assert "&gt;" in attr_result
+    assert "&amp;" in attr_result
 
 
 def test_inject_vite_dev_scripts_basic() -> None:

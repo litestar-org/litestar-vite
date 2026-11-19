@@ -77,8 +77,10 @@ def test_nuxt_example_uses_current_manifest_and_app_directory() -> None:
     assert "<style" not in app_text
     assert '@import "tailwindcss";' in css_text
     assert "import.meta.client" in composable_text
-    assert "config.public.apiProxy" in composable_text
+    assert "config.litestar" in composable_text
     assert "config.public.apiPrefix" in composable_text
+    assert "config.public.apiProxy" not in composable_text
+    assert composable_text.index("import.meta.client") < composable_text.index("config.litestar")
 
 
 def test_meta_framework_templates_override_stale_base_files() -> None:
@@ -114,8 +116,11 @@ def test_meta_framework_templates_override_stale_base_files() -> None:
     assert 'output: "./app/generated/api"' in nuxt_openapi_config
     assert nuxt_app.exists()
     assert nuxt_page.exists()
-    assert "config.public.apiProxy" in nuxt_composable
+    assert "import.meta.client" in nuxt_composable
+    assert "config.litestar" in nuxt_composable
     assert "config.public.apiPrefix" in nuxt_composable
+    assert "config.public.apiProxy" not in nuxt_composable
+    assert nuxt_composable.index("import.meta.client") < nuxt_composable.index("config.litestar")
     assert '@import "tailwindcss";' in nuxt_css
     assert "@hey-api/client-fetch" in react_inertia_openapi
     assert "@hey-api/client-axios" not in react_inertia_openapi

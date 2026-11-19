@@ -217,7 +217,13 @@ def export_integration_assets(
 
     export_openapi(schema_dict=schema_dict, types_config=types_config, serializer=serializer, result=result)
 
-    routes_metadata = extract_route_metadata(app, openapi_schema=schema_dict, asyncapi_schema=asyncapi_schema)
+    routes_metadata = extract_route_metadata(
+        app,
+        only=types_config.only_routes or None,
+        exclude=types_config.exclude_routes or None,
+        openapi_schema=schema_dict,
+        asyncapi_schema=asyncapi_schema,
+    )
 
     export_routes_json(
         app=app,
@@ -281,8 +287,8 @@ def export_routes_json(
     app: "Litestar",
     types_config: "TypeGenConfig",
     openapi_schema: "dict[str, Any]",
-    routes_metadata: "list[Any]",
     result: ExportResult,
+    routes_metadata: "list[Any] | None" = None,
     asyncapi_schema: "dict[str, Any] | None" = None,
 ) -> None:
     """Export routes metadata to JSON file."""
@@ -298,8 +304,12 @@ def export_routes_json(
     if routes_path is None:
         routes_path = types_config.output / "routes.json"
 
+    only_routes = types_config.only_routes or None if routes_metadata is None else None
+    exclude_routes = types_config.exclude_routes or None if routes_metadata is None else None
     routes_data = generate_routes_json(
         app,
+        only=only_routes,
+        exclude=exclude_routes,
         include_components=True,
         openapi_schema=openapi_schema,
         asyncapi_schema=asyncapi_schema,
@@ -320,8 +330,8 @@ def export_routes_ts(
     app: "Litestar",
     types_config: "TypeGenConfig",
     openapi_schema: "dict[str, Any]",
-    routes_metadata: "list[Any]",
     result: ExportResult,
+    routes_metadata: "list[Any] | None" = None,
     asyncapi_schema: "dict[str, Any] | None" = None,
 ) -> None:
     """Export typed routes TypeScript file."""
@@ -332,8 +342,12 @@ def export_routes_ts(
     if routes_ts_path is None:
         routes_ts_path = types_config.output / "routes.ts"
 
+    only_routes = types_config.only_routes or None if routes_metadata is None else None
+    exclude_routes = types_config.exclude_routes or None if routes_metadata is None else None
     routes_ts_content = generate_routes_ts(
         app,
+        only=only_routes,
+        exclude=exclude_routes,
         openapi_schema=openapi_schema,
         asyncapi_schema=asyncapi_schema,
         global_route=types_config.global_route,

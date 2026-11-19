@@ -20,7 +20,18 @@ from litestar_vite.executor import JSExecutor, resolve_ssr_command
 from litestar_vite.ipc._base import BaseIPCTransport, IPCError, IPCTimeoutError, IPCWorkerCrashError
 from litestar_vite.ipc._stdio import StdioIPCTransport
 
-__all__ = ("WasmIPCTransport", "is_wasm_available", "resolve_ssr_transport")
+__all__ = (
+    "DEFAULT_WASM_MAX_STACK_SIZE",
+    "DEFAULT_WASM_MEMORY_LIMIT",
+    "DEFAULT_WASM_TIME_LIMIT",
+    "WasmIPCTransport",
+    "is_wasm_available",
+    "resolve_ssr_transport",
+)
+
+DEFAULT_WASM_MEMORY_LIMIT = 128 * 1024 * 1024
+DEFAULT_WASM_MAX_STACK_SIZE = 1024 * 1024
+DEFAULT_WASM_TIME_LIMIT = 10.0
 
 _ESM_SYNTAX_RE = re.compile(
     r"^\s*(?:import(?:\s+[\w$]|\s*[{*'\"])|export\s+(?:default|const|let|var|function|class|async|\{|\*))", re.MULTILINE
@@ -150,17 +161,55 @@ def is_wasm_available() -> bool:
 class WasmIPCTransport(BaseIPCTransport):
     """In-process SSR transport executing self-contained SSR bundles via QuickJS."""
 
-    __slots__ = ("_bundle_path", "_context", "_engine", "_executor", "_is_running", "_lock", "_request_id")
+    __slots__ = (
+        "_bundle_path",
+        "_context",
+        "_engine",
+        "_executor",
+        "_is_running",
+        "_lock",
+        "_max_stack_size",
+        "_memory_limit",
+        "_request_id",
+        "_time_limit",
+    )
 
-    def __init__(self, bundle_path: Path, *, engine: Callable[[str], str] | None = None) -> None:
+    def __init__(
+        self,
+        bundle_path: Path,
+        *,
+        engine: Callable[[str], str] | None = None,
+        memory_limit: int = DEFAULT_WASM_MEMORY_LIMIT,
+        max_stack_size: int = DEFAULT_WASM_MAX_STACK_SIZE,
+        time_limit: float | None = DEFAULT_WASM_TIME_LIMIT,
+    ) -> None:
         """Initialize the in-process WASM/QuickJS SSR transport.
 
         Args:
             bundle_path: Path to the self-contained SSR JavaScript bundle.
             engine: Optional synchronous callable ``(line: str) -> str`` override for testing.
+            memory_limit: Maximum QuickJS heap memory in bytes (must be positive).
+            max_stack_size: Maximum QuickJS call stack size in bytes (must be positive).
+            time_limit: Optional CPU time limit in seconds for QuickJS evaluation and dispatch (must be positive when set).
+
+        Raises:
+            ValueError: If `memory_limit`, `max_stack_size`, or a non-`None` `time_limit` is not positive.
         """
+        if memory_limit <= 0:
+            msg = "memory_limit must be positive."
+            raise ValueError(msg)
+        if max_stack_size <= 0:
+            msg = "max_stack_size must be positive."
+            raise ValueError(msg)
+        if time_limit is not None and time_limit <= 0:
+            msg = "time_limit must be positive."
+            raise ValueError(msg)
+
         self._bundle_path = bundle_path
         self._engine = engine
+        self._memory_limit = memory_limit
+        self._max_stack_size = max_stack_size
+        self._time_limit = time_limit
         self._context: Any = None
         self._executor: ThreadPoolExecutor | None = None
         self._is_running = False
@@ -176,6 +225,21 @@ class WasmIPCTransport(BaseIPCTransport):
     def is_running(self) -> bool:
         """Return True if the in-process SSR context is initialized and ready."""
         return self._is_running
+
+    @property
+    def memory_limit(self) -> int:
+        """Return the configured QuickJS heap memory limit in bytes."""
+        return self._memory_limit
+
+    @property
+    def max_stack_size(self) -> int:
+        """Return the configured QuickJS maximum call stack size in bytes."""
+        return self._max_stack_size
+
+    @property
+    def time_limit(self) -> float | None:
+        """Return the configured QuickJS CPU time limit in seconds, or `None` when unbounded."""
+        return self._time_limit
 
     def _init_context_sync(self) -> None:
         """Initialize the QuickJS context and evaluate the SSR bundle on the worker thread."""
@@ -196,6 +260,15 @@ class WasmIPCTransport(BaseIPCTransport):
             msg = f"Failed to read SSR bundle at {self._bundle_path}: {exc}"
             raise IPCWorkerCrashError(msg) from exc
         ctx: Any = context_cls()
+        set_memory_limit = getattr(ctx, "set_memory_limit", None)
+        if callable(set_memory_limit):
+            set_memory_limit(self._memory_limit)
+        set_max_stack_size = getattr(ctx, "set_max_stack_size", None)
+        if callable(set_max_stack_size):
+            set_max_stack_size(self._max_stack_size)
+        set_time_limit = getattr(ctx, "set_time_limit", None)
+        if self._time_limit is not None and callable(set_time_limit):
+            set_time_limit(self._time_limit)
         try:
             ctx.eval(_QUICKJS_GLOBALS_SHIM)
             self._evaluate_bundle(ctx, bundle_source)
@@ -229,6 +302,12 @@ class WasmIPCTransport(BaseIPCTransport):
     def _is_interrupt_error(exc: BaseException) -> bool:
         """Return True when a QuickJS exception denotes the engine's time-limit interrupt."""
         return "interrupted" in str(exc).lower()
+
+    @staticmethod
+    def _is_resource_limit_error(message: str) -> bool:
+        """Return True when a QuickJS error message indicates memory or stack exhaustion."""
+        lowered = message.lower()
+        return "out of memory" in lowered or "stack overflow" in lowered
 
     def _drain_jobs(self, ctx: Any, deadline: float | None) -> None:
         """Run pending Promise jobs and shimmed timers until the dispatch settles or no work remains.
@@ -303,7 +382,10 @@ class WasmIPCTransport(BaseIPCTransport):
 
         error_val = ctx.get("__litestar_wasm_error__")
         if error_val:
-            raise IPCError(str(error_val))
+            error_msg = str(error_val)
+            if self._is_resource_limit_error(error_msg):
+                raise IPCWorkerCrashError(error_msg)
+            raise IPCError(error_msg)
 
         settled = ctx.get("__litestar_wasm_settled__")
         if not settled:
@@ -345,10 +427,10 @@ class WasmIPCTransport(BaseIPCTransport):
     def _teardown(self) -> None:
         """Discard the context and executor so the next request rebuilds a fresh engine.
 
-        Used by `close` and after a timeout: a timed-out dispatch may still
-        be executing on the worker thread until the engine's interrupt fires, and
-        abandoning the executor guarantees that subsequent requests never queue
-        behind it.
+        Used by `close`, after a timeout, and after an engine crash: a timed-out
+        or crashed dispatch may leave the QuickJS runtime unusable or still running
+        on the worker thread until the interrupt fires, and abandoning the executor
+        guarantees that subsequent requests rebuild a clean engine.
         """
         self._is_running = False
         self._context = None
@@ -370,6 +452,7 @@ class WasmIPCTransport(BaseIPCTransport):
         Returns:
             Decoded response dictionary from the SSR worker.
         """
+        effective_timeout = min(timeout, self._time_limit) if self._time_limit is not None else timeout
         self._request_id += 1
         req_id = payload.get("id", self._request_id)
         outbound = {**payload, "id": req_id}
@@ -382,19 +465,23 @@ class WasmIPCTransport(BaseIPCTransport):
                 msg = "WASM SSR executor is not running."
                 raise IPCWorkerCrashError(msg)
             loop = asyncio.get_running_loop()
-            dispatch = loop.run_in_executor(self._executor, self._dispatch_sync, request_line, timeout)
+            dispatch = loop.run_in_executor(self._executor, self._dispatch_sync, request_line, effective_timeout)
             try:
-                raw_response = await asyncio.wait_for(dispatch, timeout=timeout)
+                raw_response = await asyncio.wait_for(dispatch, timeout=effective_timeout)
             except asyncio.TimeoutError as exc:
                 self._teardown()
-                msg = f"WASM SSR request {req_id} timed out after {timeout}s"
+                msg = f"WASM SSR request {req_id} timed out after {effective_timeout}s"
                 raise IPCTimeoutError(msg) from exc
             except IPCTimeoutError:
+                self._teardown()
+                raise
+            except IPCWorkerCrashError:
                 self._teardown()
                 raise
             except IPCError:
                 raise
             except Exception as exc:
+                self._teardown()
                 msg = f"WASM SSR execution failed: {exc}"
                 raise IPCWorkerCrashError(msg) from exc
 
@@ -460,8 +547,19 @@ def resolve_ssr_transport(
         bundle_path = resolve_ssr_bundle_path(fallback_config.paths)
         mode = "auto"
 
+    memory_limit = config.runtime.wasm_memory_limit if config is not None else DEFAULT_WASM_MEMORY_LIMIT
+    max_stack_size = config.runtime.wasm_max_stack_size if config is not None else DEFAULT_WASM_MAX_STACK_SIZE
+    if config is not None and config.runtime.wasm_time_limit is not None:
+        time_limit = float(config.runtime.wasm_time_limit)
+    elif ssr_config is not None:
+        time_limit = float(ssr_config.timeout)
+    else:
+        time_limit = DEFAULT_WASM_TIME_LIMIT
+
     if mode == "wasm":
-        return WasmIPCTransport(bundle_path=bundle_path)
+        return WasmIPCTransport(
+            bundle_path=bundle_path, memory_limit=memory_limit, max_stack_size=max_stack_size, time_limit=time_limit
+        )
 
     if mode == "auto" and not (ssr_config is not None and ssr_config.command):
         provisioning_mode = config.runtime.provisioning_mode if config is not None else "auto"
@@ -469,6 +567,8 @@ def resolve_ssr_transport(
             JSExecutor.which(_resolve_ssr_runtime_binary_name(config), provisioning_mode) is None
             and is_wasm_available()
         ):
-            return WasmIPCTransport(bundle_path=bundle_path)
+            return WasmIPCTransport(
+                bundle_path=bundle_path, memory_limit=memory_limit, max_stack_size=max_stack_size, time_limit=time_limit
+            )
 
     return StdioIPCTransport(command=resolve_ssr_command(config, ssr_config), cwd=cwd)

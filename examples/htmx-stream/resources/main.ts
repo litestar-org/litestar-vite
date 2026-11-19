@@ -1,4 +1,4 @@
-import { createChannelsStream, defineStreamElement, type StreamGap } from "litestar-vite-plugin/helpers"
+import { createChannelsStream, csrfFetch, defineStreamElement, type StreamGap } from "litestar-vite-plugin/helpers"
 import "./styles.css"
 
 defineStreamElement()
@@ -13,7 +13,7 @@ const channelStream = createChannelsStream({
 })
 channelStream.connect()
 
-setTimeout(() => void fetch("/api/channels/publish", { method: "POST" }), 100)
+setTimeout(() => void csrfFetch("/api/channels/publish", { method: "POST" }), 100)
 
 for (const stream of document.querySelectorAll("litestar-stream")) {
   stream.addEventListener("litestar:stream-health", (event) => {

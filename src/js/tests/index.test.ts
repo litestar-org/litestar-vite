@@ -41,6 +41,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.spyOn(fs.promises, "access").mockRestore()
   vi.spyOn(fs.promises, "readFile").mockRestore()
+  vi.spyOn(fs.promises, "realpath").mockRestore()
 })
 
 afterEach(() => {
@@ -1334,6 +1335,77 @@ describe("litestar-vite-plugin", () => {
     expect(config.server?.strictPort).toBe(false)
   })
 
+  it.each([undefined, "", "0", "false", "False", "no", "undefined"])("defaults server.host to 127.0.0.1 when VITE_ALLOW_REMOTE is %s", (rawValue) => {
+    if (rawValue === undefined) {
+      delete process.env.VITE_ALLOW_REMOTE
+    } else {
+      process.env.VITE_ALLOW_REMOTE = rawValue
+    }
+    delete process.env.VITE_HOST
+
+    const plugin = litestar("resources/js/app.js")[0]
+    const config = plugin.config({}, { command: "serve", mode: "development" })
+    expect(config.server?.host).toBe("127.0.0.1")
+  })
+
+  it.each(["1", "true", "TRUE", "yes", "YES", "y", "Y", "t", "T"])("binds server.host to 0.0.0.0 when VITE_ALLOW_REMOTE is %s", (rawValue) => {
+    process.env.VITE_ALLOW_REMOTE = rawValue
+    const plugin = litestar("resources/js/app.js")[0]
+    const config = plugin.config({}, { command: "serve", mode: "development" })
+    expect(config.server?.host).toBe("0.0.0.0")
+  })
+
+  it("denies .litestar.json and resolved hotFile in server.fs.deny while preserving Vite defaults and user entries", () => {
+    const plugin = litestar({
+      input: "resources/js/app.js",
+      bundleDir: "public/build",
+      hotFile: "custom.hot",
+      types: false,
+    })[0]
+
+    const userConfig = {
+      server: {
+        fs: {
+          strict: true,
+          allow: ["/custom/allow"],
+          deny: ["secrets/**", "*.secret"],
+        },
+      },
+    }
+
+    const config = plugin.config(userConfig, { command: "serve", mode: "development" })
+    const resolvedHotFile = path.resolve(process.cwd(), "public/build", "custom.hot").replace(/\\/g, "/")
+
+    expect(config.server?.fs?.strict).toBe(true)
+    expect(config.server?.fs?.allow).toEqual(["/custom/allow"])
+    expect(config.server?.fs?.deny).toEqual(
+      expect.arrayContaining([".env", ".env.*", "*.{crt,pem}", "**/.git/**", "secrets/**", "*.secret", "**/.litestar.json", resolvedHotFile, "custom.hot"]),
+    )
+  })
+
+  it("applies host precedence userConfig.server.host > VITE_HOST > pluginConfig.host > 127.0.0.1", () => {
+    delete process.env.VITE_ALLOW_REMOTE
+    const configPath = createRuntimeConfig({ host: "bridge.local" })
+
+    try {
+      delete process.env.VITE_HOST
+      const fromBridge = litestar({ input: "resources/js/app.js" })[0].config({}, { command: "serve", mode: "development" })
+      expect(fromBridge.server?.host).toBe("bridge.local")
+
+      const fromPlugin = litestar({ input: "resources/js/app.js", host: "plugin.local" })[0].config({}, { command: "serve", mode: "development" })
+      expect(fromPlugin.server?.host).toBe("plugin.local")
+
+      process.env.VITE_HOST = "env.local"
+      const fromEnv = litestar({ input: "resources/js/app.js", host: "plugin.local" })[0].config({}, { command: "serve", mode: "development" })
+      expect(fromEnv.server?.host).toBe("env.local")
+
+      const fromUser = litestar({ input: "resources/js/app.js", host: "plugin.local" })[0].config({ server: { host: "user.local" } }, { command: "serve", mode: "development" })
+      expect(fromUser.server?.host).toBe("user.local")
+    } finally {
+      cleanupRuntimeConfig(configPath)
+    }
+  })
+
   it("prevents the Inertia helpers from being externalized and defaults ssr.noExternal to true on build", () => {
     /* eslint-disable @typescript-eslint/ban-ts-comment */
     const plugin = litestar("resources/js/app.js")[0]
@@ -1629,12 +1701,14 @@ describe("litestar-vite-plugin", () => {
     const createTransformRequest = (
       method: string,
       body?: object | string,
-      headers?: Record<string, string>,
+      headers: Record<string, string> = { "content-type": "application/json" },
+      socket: { remoteAddress?: string } | null = { remoteAddress: "127.0.0.1" },
     ): {
       method: string
       originalUrl: string
       url: string
       headers?: Record<string, string>
+      socket?: { remoteAddress?: string } | null
       on: (event: string, handler: (chunk?: unknown) => void) => void
     } => {
       const payload = typeof body === "string" ? body : body === undefined ? undefined : JSON.stringify(body)
@@ -1643,6 +1717,7 @@ describe("litestar-vite-plugin", () => {
         originalUrl: "/__litestar__/transform-index",
         url: "/__litestar__/transform-index",
         headers,
+        socket,
         on: (event, handler) => {
           if (event === "data" && payload !== undefined) {
             handler(payload)
@@ -1961,6 +2036,7 @@ describe("litestar-vite-plugin", () => {
     it("reads and transforms an exact secondary HTML entry", async () => {
       await setupServer()
       const entryPath = path.join(testRootDir, "pages", "offline.html")
+      vi.spyOn(fs.promises, "realpath").mockImplementation(async (p) => String(p))
       vi.spyOn(fs.promises, "readFile").mockImplementation(async (filePath) => {
         if (filePath === entryPath) return "<html>offline</html>"
         throw Object.assign(new Error("missing"), { code: "ENOENT" })
@@ -1982,16 +2058,21 @@ describe("litestar-vite-plugin", () => {
 
     it("returns not found for a missing secondary HTML entry", async () => {
       await setupServer()
+      vi.spyOn(fs.promises, "realpath").mockImplementation(async (p) => String(p))
       vi.spyOn(fs.promises, "readFile").mockRejectedValue(Object.assign(new Error("missing"), { code: "ENOENT" }))
       await mockMiddleware(createTransformRequest("POST", { entry: "offline.html" }), mockRes, mockNext)
       expect(mockRes.statusCode).toBe(404)
+      expect(mockServer.config.logger.error).toHaveBeenCalled()
     })
 
     it("returns server error when a secondary HTML entry cannot be read", async () => {
       await setupServer()
-      vi.spyOn(fs.promises, "readFile").mockRejectedValue(Object.assign(new Error("denied"), { code: "EACCES" }))
+      vi.spyOn(fs.promises, "realpath").mockImplementation(async (p) => String(p))
+      vi.spyOn(fs.promises, "readFile").mockRejectedValue(Object.assign(new Error("denied /secret/path"), { code: "EACCES" }))
       await mockMiddleware(createTransformRequest("POST", { entry: "offline.html" }), mockRes, mockNext)
       expect(mockRes.statusCode).toBe(500)
+      expect(mockRes.end).toHaveBeenCalledWith("Error reading HTML entry")
+      expect(mockServer.config.logger.error).toHaveBeenCalledWith(expect.stringContaining("denied /secret/path"))
     })
 
     it("rejects payloads containing both raw HTML and an entry", async () => {
@@ -2054,6 +2135,155 @@ describe("litestar-vite-plugin", () => {
       expect(mockRes.end).toHaveBeenCalledWith("Payload too large")
       expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
       expect(mockNext).not.toHaveBeenCalled()
+    })
+
+    it("rejects transform-index requests missing a Content-Type header", async () => {
+      await setupServer()
+      await mockMiddleware(createTransformRequest("POST", { html: "<html><body>ok</body></html>" }, {}), mockRes, mockNext)
+
+      expect(mockRes.statusCode).toBe(415)
+      expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/plain")
+      expect(mockRes.end).toHaveBeenCalledWith("Unsupported content type")
+      expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+    })
+
+    it.each([{ origin: "https://other.example" }, { "sec-fetch-site": "cross-site" }])("rejects transform-index requests with browser headers %o", async (extraHeaders) => {
+      await setupServer()
+      await mockMiddleware(createTransformRequest("POST", { html: "<html><body>ok</body></html>" }, { "content-type": "application/json", ...extraHeaders }), mockRes, mockNext)
+
+      expect(mockRes.statusCode).toBe(403)
+      expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+    })
+
+    it("enforces X-Litestar-Proxy-Token when bridge config defines proxyToken", async () => {
+      const configPath = createRuntimeConfig({ proxyToken: "secret-bridge-token" })
+
+      try {
+        await setupServer()
+
+        await mockMiddleware(createTransformRequest("POST", { html: "<html><body>ok</body></html>" }), mockRes, mockNext)
+        expect(mockRes.statusCode).toBe(403)
+        expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+
+        await mockMiddleware(
+          createTransformRequest("POST", { html: "<html><body>ok</body></html>" }, { "content-type": "application/json", "x-litestar-proxy-token": "wrong-token" }),
+          mockRes,
+          mockNext,
+        )
+        expect(mockRes.statusCode).toBe(403)
+        expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+
+        await mockMiddleware(
+          createTransformRequest("POST", { html: "<html><body>ok</body></html>" }, { "content-type": "application/json", "x-litestar-proxy-token": "secret-bridge-token" }),
+          mockRes,
+          mockNext,
+        )
+        expect(mockRes.statusCode).toBe(200)
+        expect(mockServer.transformIndexHtml).toHaveBeenCalledOnce()
+      } finally {
+        cleanupRuntimeConfig(configPath)
+      }
+    })
+
+    it("enforces loopback remoteAddress when standalone without proxyToken", async () => {
+      await setupServer()
+
+      await mockMiddleware(
+        createTransformRequest("POST", { html: "<html><body>ok</body></html>" }, { "content-type": "application/json" }, { remoteAddress: "192.168.1.10" }),
+        mockRes,
+        mockNext,
+      )
+      expect(mockRes.statusCode).toBe(403)
+      expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+
+      await mockMiddleware(
+        createTransformRequest("POST", { html: "<html><body>ok</body></html>" }, { "content-type": "application/json" }, { remoteAddress: "127.0.0.1" }),
+        mockRes,
+        mockNext,
+      )
+      expect(mockRes.statusCode).toBe(200)
+      expect(mockServer.transformIndexHtml).toHaveBeenCalledOnce()
+    })
+
+    it("rejects secondary HTML entry symlinks pointing outside root", async () => {
+      const tempParent = fs.mkdtempSync(path.join(os.tmpdir(), "litestar-vite-symlink-"))
+      const tempRoot = path.join(tempParent, "root")
+      const outsideDir = path.join(tempParent, "outside")
+      fs.mkdirSync(tempRoot, { recursive: true })
+      fs.mkdirSync(outsideDir, { recursive: true })
+      const outsideFile = path.join(outsideDir, "secret.html")
+      fs.writeFileSync(outsideFile, "<html>outside</html>")
+      fs.symlinkSync(outsideFile, path.join(tempRoot, "escape.html"))
+
+      try {
+        await setupServer({}, { root: tempRoot })
+        await mockMiddleware(createTransformRequest("POST", { entry: "escape.html" }), mockRes, mockNext)
+        expect(mockRes.statusCode).toBe(400)
+        expect(mockRes.end).toHaveBeenCalledWith("Invalid entry")
+        expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+      } finally {
+        fs.rmSync(tempParent, { recursive: true, force: true })
+      }
+    })
+
+    it.each(["/.litestar.json", "/.litestar.json?import", "/@fs/app/project/.litestar.json", "/@fs/app/project/.litestar.json?raw", "/%2elitestar.json"])(
+      "returns 404 for requests targeting .litestar.json (%s)",
+      async (requestUrl) => {
+        await setupServer()
+        await mockMiddleware({ url: requestUrl, originalUrl: requestUrl }, mockRes, mockNext)
+
+        expect(mockRes.statusCode).toBe(404)
+        expect(mockRes.setHeader).toHaveBeenCalledWith("Content-Type", "text/plain")
+        expect(mockRes.end).toHaveBeenCalledWith("Not Found")
+        expect(mockNext).not.toHaveBeenCalled()
+      },
+    )
+
+    it.each([
+      '<style>@import "/etc/passwd";</style>',
+      '<style>@i\\mport "/etc/passwd";</style>',
+      "<style>/*x*/@import url(a);</style>",
+      '<style>@\\69 mport "/etc/passwd";</style>',
+      '<svg><style>&#64;import "/etc/passwd";</style></svg>',
+      '<svg><style>&#x40;import "/etc/passwd";</style></svg>',
+      '<svg><style>&commat;import "/etc/passwd";</style></svg>',
+      '<script type="module">import "/x"</script>',
+      '<script type="module" data-src="x">import "/x"</script>',
+      '<script/type=module>import "/x"</script>',
+      '<script data-x="a>b" type="module">import "/x"</script>',
+      '<script type="module" data-note=" src=1 ">import "/x"</script>',
+      '<script src="/ok.js" type="module"></script ><script type="module">import "/x"</script>',
+      '<script type="mod&#117;le">import "/x"</script>',
+    ])("rejects unsupported HTML transform payload %s", async (html) => {
+      await setupServer()
+      await mockMiddleware(createTransformRequest("POST", { html, url: "/" }), mockRes, mockNext)
+      expect(mockRes.statusCode).toBe(400)
+      expect(mockRes.end).toHaveBeenCalledWith("Unsupported HTML transform payload")
+      expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      '<script type="module" src="/src/main.ts"></script>',
+      '<script src="/ok.js" type="module"></script >',
+      '<script type="application/json" id="app_page">{}</script>',
+      "<style>body{color:red}</style>",
+      "<style>\\ffffff</style>",
+      "<script>window.__BOOT__ = true</script>",
+      '<!-- <script type="module">import "/x"</script> -->',
+      '<div data-x="<script type=module>import 1</script>"></div>',
+    ])("accepts legitimate HTML transform payload %s", async (html) => {
+      await setupServer()
+      await mockMiddleware(createTransformRequest("POST", { html, url: "/" }), mockRes, mockNext)
+      expect(mockRes.statusCode).toBe(200)
+      expect(mockServer.transformIndexHtml).toHaveBeenCalledWith("/", html, "/")
+    })
+
+    it.each(["https://evil.example/", "//evil.example/", "/\\evil.example/", "relative", "/bad\0url"])("rejects unsafe transform-index url %s", async (badUrl) => {
+      await setupServer()
+      await mockMiddleware(createTransformRequest("POST", { html: "<html></html>", url: badUrl }), mockRes, mockNext)
+      expect(mockRes.statusCode).toBe(400)
+      expect(mockRes.end).toHaveBeenCalledWith("Invalid payload")
+      expect(mockServer.transformIndexHtml).not.toHaveBeenCalled()
     })
   })
 })

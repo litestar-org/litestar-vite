@@ -35,6 +35,7 @@ export interface RouteDefinition {
   method?: string
   pathParams: readonly string[]
   queryParams: readonly string[]
+  wildcardParams?: readonly string[]
   component?: string
   protocol?: "http" | "websocket"
   channelKey?: string
@@ -118,6 +119,26 @@ function compileWildcardPattern(pattern: string): RegExp {
 }
 
 /**
+ * Percent-encode a route path parameter value.
+ * Wildcard (`:path`) parameters are encoded segment by segment, and both single-segment and wildcard parameters reject `.` and `..` segments.
+ */
+function encodePathParam(value: unknown, isWildcard: boolean): string {
+  const raw = String(value)
+  if (!isWildcard) {
+    if (raw === "." || raw === "..") {
+      throw new Error(`Invalid path segment "${raw}" in route parameter`)
+    }
+    return encodeURIComponent(raw)
+  }
+  const segments = raw.split("/")
+  const invalidSegment = segments.find((segment) => segment === "." || segment === "..")
+  if (invalidSegment !== undefined) {
+    throw new Error(`Invalid path segment "${invalidSegment}" in route parameter`)
+  }
+  return segments.map((segment) => encodeURIComponent(segment)).join("/")
+}
+
+/**
  * Format a route path with path and query parameters.
  */
 export function formatRouteUrl<TRoutes extends Record<string, RouteDefinition>, TName extends keyof TRoutes & string>(
@@ -130,16 +151,28 @@ export function formatRouteUrl<TRoutes extends Record<string, RouteDefinition>, 
   if (!def) {
     throw new Error(`Route "${String(name)}" not found`)
   }
+  const wildcardParams = new Set<string>(def.wildcardParams ?? [])
+  for (const match of def.path.matchAll(/\{([^:}]+):path\}/g)) {
+    if (match[1]) {
+      wildcardParams.add(match[1])
+    }
+  }
   let url = def.path.replace(/\{([^:}]+):[^}]+\}/g, "{$1}")
 
   if (params) {
     for (const param of def.pathParams) {
       const value = params[param]
       if (value !== undefined) {
-        url = url.replaceAll(`{${param}}`, String(value))
+        url = url.replaceAll(`{${param}}`, encodePathParam(value, wildcardParams.has(param)))
       }
     }
+  }
 
+  if (url.startsWith("//")) {
+    url = `/${url.replace(/^\/+/, "")}`
+  }
+
+  if (params) {
     const queryParts: string[] = []
     for (const param of def.queryParams) {
       const value = params[param]

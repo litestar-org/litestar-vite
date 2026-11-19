@@ -1,14 +1,16 @@
 """Inertia.js v2 response (`InertiaResponse`) and redirect (`InertiaRedirect`, `InertiaBack`, `InertiaExternalRedirect`) classes."""
 
 import contextlib
+import html
 import itertools
 import logging
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeVar, cast
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlparse, urlsplit
 
+import markupsafe
 from litestar import Litestar, MediaType, Request, Response
 from litestar.datastructures.cookie import Cookie
 from litestar.exceptions import ImproperlyConfiguredException
@@ -20,7 +22,7 @@ from litestar.utils.empty import value_or_default
 from litestar.utils.helpers import get_enum_string_value
 from litestar.utils.scope.state import ScopeState
 
-from litestar_vite.html_transform import inject_inertia_ssr_tags
+from litestar_vite.html_transform import escape_json_for_html, inject_inertia_ssr_tags
 from litestar_vite.inertia._utils import InertiaHeaders, get_headers
 from litestar_vite.inertia.helpers import (
     PropFilter,
@@ -42,7 +44,7 @@ from litestar_vite.inertia.helpers import (
 )
 from litestar_vite.inertia.plugin import InertiaPlugin
 from litestar_vite.inertia.request import InertiaDetails, InertiaRequest
-from litestar_vite.inertia.state import consume_clear_history, persist_transient_state_for_redirect
+from litestar_vite.inertia.state import consume_clear_history, get_prop_eval_cache, persist_transient_state_for_redirect
 from litestar_vite.inertia.types import InertiaHeaderType, PageProps, ScrollPropsConfig
 from litestar_vite.loader import EarlyHintsASGIResponse
 from litestar_vite.plugin import VitePlugin
@@ -165,14 +167,21 @@ class InertiaResponse(Response[T]):
         Returns:
             A dictionary holding the template context
         """
-        csrf_token = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "")
+        csrf_token = value_or_default(ScopeState.from_scope(request.scope).csrf_token, "") or ""
         page_dict = self._cached_page_dict if self._cached_page_dict is not None else page_props.to_dict()
-        inertia_props = self.render(page_dict, MediaType.JSON, get_serializer(type_encoders)).decode()
+        raw_json = self.render(page_dict, MediaType.JSON, get_serializer(type_encoders)).decode("utf-8")
+        escaped_json = escape_json_for_html(raw_json)
+        resolved_nonce = _resolve_template_csp_nonce(request, self.context)
+        nonce_attr = f' nonce="{html.escape(resolved_nonce, quote=True)}"' if resolved_nonce else ""
+        escaped_csrf = html.escape(str(csrf_token), quote=True)
         return {
             **self.context,
-            "inertia": inertia_props,
+            "inertia": escaped_json,
+            "inertia_page": markupsafe.Markup(
+                f'<script type="application/json" id="app_page" data-page="app"{nonce_attr}>{escaped_json}</script>'
+            ),
             "request": request,
-            "csrf_input": f'<input type="hidden" name="_csrf_token" value="{csrf_token}" />',
+            "csrf_input": f'<input type="hidden" name="_csrf_token" value="{escaped_csrf}" />',
         }
 
     def _build_page_props(
@@ -185,6 +194,7 @@ class InertiaResponse(Response[T]):
         reset_keys: "set[str]",
         vite_plugin: "VitePlugin",
         inertia_plugin: "InertiaPlugin",
+        partial_data_ancestors: "frozenset[str] | None" = None,
     ) -> "PageProps[T]":
         """Build the PageProps object for the response.
 
@@ -197,16 +207,23 @@ class InertiaResponse(Response[T]):
             reset_keys: Set of keys to reset.
             vite_plugin: The Vite plugin instance.
             inertia_plugin: The Inertia plugin instance.
+            partial_data_ancestors: Optional precomputed ancestor prefixes for ``partial_data``.
 
         Returns:
             The PageProps object.
         """
+        eval_cache = get_prop_eval_cache(request)
         raw_shared_props = get_raw_shared_props(request)
         deferred_props_map: "dict[str, list[str]]" = {}
         _merge_deferred_props(deferred_props_map, extract_deferred_props(raw_shared_props))
 
         shared_props = get_shared_props(
-            request, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
+            request,
+            partial_data=partial_data,
+            partial_except=partial_except,
+            except_once_props=except_once_props,
+            _partial_data_ancestors=partial_data_ancestors,
+            _eval_cache=eval_cache,
         )
 
         for key in reset_keys:
@@ -228,14 +245,28 @@ class InertiaResponse(Response[T]):
             )
 
         if is_or_contains_special_prop(content):
-            filtered_content: Any = lazy_render(cast("Any", content), partial_data, partial_except, except_once_props)
+            filtered_content: Any = lazy_render(
+                cast("Any", content),
+                partial_data,
+                partial_except,
+                except_once_props,
+                _partial_data_ancestors=partial_data_ancestors,
+                _eval_cache=eval_cache,
+            )
             if filtered_content is not None:
                 route_content = filtered_content
         elif isinstance(content, Mapping) and (partial_data or partial_except):
             route_content = lazy_render(
-                cast("Mapping[str, Any]", content), partial_data, partial_except, except_once_props
+                cast("Mapping[str, Any]", content),
+                partial_data,
+                partial_except,
+                except_once_props,
+                _partial_data_ancestors=partial_data_ancestors,
+                _eval_cache=eval_cache,
             )
-        elif should_render(content, partial_data, partial_except, except_once_props):
+        elif should_render(
+            content, partial_data, partial_except, except_once_props, _partial_data_ancestors=partial_data_ancestors
+        ):
             route_content = cast("Any", content)
 
         if route_content is not None:
@@ -476,17 +507,26 @@ class InertiaResponse(Response[T]):
         info = _get_inertia_request_info(request)
         partial_data = info.partial_keys if info.is_partial_render and info.partial_keys else None
         partial_except = info.partial_except_keys if info.is_partial_render and info.partial_except_keys else None
+        partial_data_ancestors = info.partial_data_ancestors if partial_data else None
         except_once_props = info.except_once_keys or None
+        eval_cache = get_prop_eval_cache(request)
 
         await resolve_async_props(
             get_raw_shared_props(request),
             partial_data=partial_data,
             partial_except=partial_except,
             except_once_props=except_once_props,
+            _partial_data_ancestors=partial_data_ancestors,
+            _eval_cache=eval_cache,
         )
 
         await resolve_async_props(
-            self.content, partial_data=partial_data, partial_except=partial_except, except_once_props=except_once_props
+            self.content,
+            partial_data=partial_data,
+            partial_except=partial_except,
+            except_once_props=except_once_props,
+            _partial_data_ancestors=partial_data_ancestors,
+            _eval_cache=eval_cache,
         )
 
         if self._will_render_ssr(request, info):
@@ -507,6 +547,7 @@ class InertiaResponse(Response[T]):
         ssr_config = inertia_plugin.config.ssr_config
         if ssr_config is None:
             return
+        partial_data_ancestors = info.partial_data_ancestors if partial_data else None
         page_props = self._build_page_props(
             request,
             partial_data,
@@ -516,6 +557,7 @@ class InertiaResponse(Response[T]):
             info.reset_keys,
             vite_plugin,
             inertia_plugin,
+            partial_data_ancestors=partial_data_ancestors,
         )
         self._cached_page_props = page_props
         page_dict = page_props.to_dict()
@@ -584,16 +626,22 @@ class InertiaResponse(Response[T]):
                 if inertia_info.is_partial_render and inertia_info.partial_except_keys
                 else None
             )
+            partial_data_ancestors_for_check = inertia_info.partial_data_ancestors if partial_data_for_check else None
+            eval_cache = get_prop_eval_cache(request)
             needs_props_resolve = has_unresolved_async_props(
                 self.content,
                 partial_data=partial_data_for_check,
                 partial_except=partial_except_for_check,
                 except_once_props=inertia_info.except_once_keys or None,
+                _partial_data_ancestors=partial_data_ancestors_for_check,
+                _eval_cache=eval_cache,
             ) or has_unresolved_async_props(
                 get_raw_shared_props(request),
                 partial_data=partial_data_for_check,
                 partial_except=partial_except_for_check,
                 except_once_props=inertia_info.except_once_keys or None,
+                _partial_data_ancestors=partial_data_ancestors_for_check,
+                _eval_cache=eval_cache,
             )
             needs_ssr = self._will_render_ssr(cast("Request[Any, Any, Any]", request), inertia_info)
             if needs_props_resolve:
@@ -664,6 +712,8 @@ class InertiaResponse(Response[T]):
             else None
         )
 
+        partial_data_ancestors: "frozenset[str] | None" = inertia_info.partial_data_ancestors if partial_data else None
+
         page_props = (
             self._cached_page_props
             if self._cached_page_props is not None
@@ -676,6 +726,7 @@ class InertiaResponse(Response[T]):
                 inertia_info.reset_keys,
                 vite_plugin,
                 inertia_plugin,
+                partial_data_ancestors=partial_data_ancestors,
             )
         )
 
@@ -887,6 +938,7 @@ class _InertiaRequestInfo:
     is_partial_render: bool
     partial_keys: set[str]
     partial_except_keys: set[str]
+    partial_data_ancestors: frozenset[str]
     except_once_keys: set[str]
     reset_keys: set[str]
 
@@ -905,6 +957,7 @@ def _get_inertia_request_info(request: "Request[Any, Any, Any]") -> _InertiaRequ
             is_partial_render=request.is_partial_render,
             partial_keys=request.partial_keys,
             partial_except_keys=request.partial_except_keys,
+            partial_data_ancestors=request.inertia.partial_data_ancestors,
             except_once_keys=request.except_once_props_keys,
             reset_keys=request.reset_keys,
         )
@@ -917,6 +970,7 @@ def _get_inertia_request_info(request: "Request[Any, Any, Any]") -> _InertiaRequ
         is_partial_render=details.is_partial_render,
         partial_keys=set(details.partial_keys),
         partial_except_keys=set(details.partial_except_keys),
+        partial_data_ancestors=details.partial_data_ancestors,
         except_once_keys=set(details.except_once_props_keys),
         reset_keys=set(details.reset_keys),
     )
@@ -1002,6 +1056,32 @@ async def _render_inertia_ssr(
     return _parse_inertia_ssr_payload(result_payload, target_label)
 
 
+def _resolve_template_csp_nonce(request: "Request[Any, Any, Any]", context: "Mapping[str, Any]") -> "str | None":
+    """Resolve a CSP nonce from template context, request state, or VitePlugin configuration.
+
+    Args:
+        request: The request object.
+        context: Template context mapping supplied to the response.
+
+    Returns:
+        A non-empty CSP nonce string if configured, otherwise ``None``.
+    """
+    ctx_nonce = context.get("csp_nonce")
+    if isinstance(ctx_nonce, str) and ctx_nonce:
+        return ctx_nonce
+
+    state_nonce = getattr(getattr(request, "state", None), "csp_nonce", None)
+    if isinstance(state_nonce, str) and state_nonce:
+        return state_nonce
+
+    with contextlib.suppress(AttributeError, KeyError):
+        plugin_nonce = request.app.plugins.get(VitePlugin).config.csp_nonce
+        if isinstance(plugin_nonce, str) and plugin_nonce:
+            return plugin_nonce
+
+    return None
+
+
 def _get_redirect_url(request: "Request[Any, Any, Any]", url: str | None) -> str:
     """Return a safe redirect URL, falling back to base_url when invalid.
 
@@ -1010,26 +1090,32 @@ def _get_redirect_url(request: "Request[Any, Any, Any]", url: str | None) -> str
         url: Candidate redirect URL.
 
     Returns:
-        A safe redirect URL (same-origin absolute, or relative), otherwise the request base URL.
+        A safe redirect URL (same-origin absolute, or single-slash relative), otherwise the request base URL.
     """
     base_url = str(request.base_url)
-
-    if not url:
+    if not url or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in url):
         return base_url
 
-    parsed = urlparse(url)
-    base = urlparse(base_url)
+    candidate = url.strip(" ")
+    if not candidate:
+        return base_url
+
+    try:
+        parsed = urlsplit(candidate)
+    except ValueError:
+        return base_url
+    base = urlsplit(base_url)
 
     if not parsed.scheme and not parsed.netloc:
-        return url
+        is_safe_relative = (
+            candidate.startswith("/") and not candidate.startswith(("//", "/\\")) and "\\" not in parsed.path
+        )
+        return candidate if is_safe_relative else base_url
 
-    if parsed.scheme not in {"http", "https"}:
-        return base_url
+    if parsed.scheme in {"http", "https"} and parsed.netloc == base.netloc and "\\" not in parsed.path:
+        return candidate
 
-    if parsed.netloc != base.netloc:
-        return base_url
-
-    return url
+    return base_url
 
 
 def _get_relative_url(request: "Request[Any, Any, Any]") -> str:

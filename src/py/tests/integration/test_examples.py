@@ -8,8 +8,10 @@ These tests verify that all example apps can be:
 """
 
 import importlib.util
+import logging
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 from litestar import Litestar
@@ -19,6 +21,19 @@ from litestar_vite.plugin import VitePlugin
 
 # Path to examples directory
 EXAMPLES_DIR = Path(__file__).parent.parent.parent.parent.parent / "examples"
+
+INERTIA_EXAMPLES = [
+    "react-inertia",
+    "react-inertia-jinja",
+    "svelte-inertia",
+    "svelte-inertia-jinja",
+    "vue-inertia",
+    "vue-inertia-jinja",
+    "vue-inertia-ssr",
+    "vue-inertia-jinja-ssr",
+]
+
+ALL_EXAMPLE_NAMES = [path.parent.name for path in sorted(EXAMPLES_DIR.glob("*/app.py"))]
 
 # All example directories with their expected characteristics
 EXAMPLES = [
@@ -237,3 +252,98 @@ def test_example_proxy_mode_config(example_name: str, has_spa: bool, has_inertia
     # Angular CLI example uses "proxy" mode with static target
     if example_name == "angular-cli":
         assert config.proxy_mode == "proxy", f"{example_name}: should use proxy_mode='proxy' for Angular CLI"
+
+
+def _load_fresh_example_module(example_name: str, module_name: str) -> ModuleType:
+    """Import an example app module under an isolated module name."""
+    app_file = EXAMPLES_DIR / example_name / "app.py"
+    spec = importlib.util.spec_from_file_location(module_name, app_file)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(module_name, None)
+    return module
+
+
+def test_all_examples_discovered() -> None:
+    """Verify all 21 example apps are discovered."""
+    assert len(ALL_EXAMPLE_NAMES) == 21
+
+
+@pytest.mark.parametrize("example_name", ALL_EXAMPLE_NAMES)
+def test_example_free_of_static_debug_or_secret(example_name: str) -> None:
+    """Verify each example app avoids hardcoded debug=True and static secrets."""
+    source = (EXAMPLES_DIR / example_name / "app.py").read_text(encoding="utf-8")
+    assert "debug=True" not in source, f"{example_name}/app.py still hardcodes debug=True"
+    assert "development-only-secret-32-chars" not in source, f"{example_name}/app.py still contains static secret"
+
+
+@pytest.mark.parametrize("example_name", ALL_EXAMPLE_NAMES)
+def test_example_debug_defaults_to_false_and_honors_env(example_name: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify LITESTAR_DEBUG controls app.debug across all 21 example apps."""
+    monkeypatch.delenv("LITESTAR_DEBUG", raising=False)
+    default_module = _load_fresh_example_module(example_name, f"examples.{example_name}.debug_default")
+    assert default_module.app.debug is False
+
+    monkeypatch.setenv("LITESTAR_DEBUG", "1")
+    enabled_module = _load_fresh_example_module(example_name, f"examples.{example_name}.debug_enabled")
+    assert enabled_module.app.debug is True
+
+
+@pytest.mark.parametrize("example_name", INERTIA_EXAMPLES)
+def test_inertia_example_ephemeral_secret_and_csrf(
+    example_name: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Verify Inertia examples use ephemeral secrets with a startup log and configure CSRF."""
+    monkeypatch.delenv("SESSION_SECRET", raising=False)
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+
+    with caplog.at_level(logging.INFO):
+        first = _load_fresh_example_module(example_name, f"examples.{example_name}.ephemeral_1")
+        second = _load_fresh_example_module(example_name, f"examples.{example_name}.ephemeral_2")
+
+    assert "SESSION_SECRET is not set; using an ephemeral secret for this process." in caplog.text
+    assert first.SESSION_SECRET != second.SESSION_SECRET
+    assert first.SESSION_SECRET != b"development-only-secret-32-chars"
+    assert first.app.csrf_config is not None
+
+
+@pytest.mark.parametrize("example_name", INERTIA_EXAMPLES)
+def test_inertia_example_honors_configured_session_secret(example_name: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify Inertia examples accept arbitrary-length SESSION_SECRET values."""
+    monkeypatch.setenv("SESSION_SECRET", "custom-session-secret")
+    module = _load_fresh_example_module(example_name, f"examples.{example_name}.custom_secret")
+    assert len(module.SESSION_SECRET) == 32
+    assert module.app.csrf_config is not None
+
+
+def test_htmx_stream_csrf_config_and_client_helper(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Verify htmx-stream enforces CSRF on publish and uses csrfFetch on the client."""
+    monkeypatch.delenv("SESSION_SECRET", raising=False)
+    with caplog.at_level(logging.INFO):
+        module = _load_fresh_example_module("htmx-stream", "examples.htmx_stream.csrf_check")
+
+    assert module.app.csrf_config is not None
+    assert "SESSION_SECRET is not set; using an ephemeral CSRF secret for this process." in caplog.text
+
+    with TestClient(module.app) as client:
+        rejected = client.post("/api/channels/publish")
+        assert rejected.status_code == 403
+
+        get_response = client.get("/")
+        assert get_response.status_code == 200
+        csrf_token = client.cookies.get("csrftoken")
+        assert csrf_token
+
+        accepted = client.post("/api/channels/publish", headers={"x-csrftoken": csrf_token})
+        assert accepted.status_code == 201
+        assert accepted.json() == {"published": True}
+
+    main_ts = (EXAMPLES_DIR / "htmx-stream" / "resources" / "main.ts").read_text(encoding="utf-8")
+    assert 'csrfFetch("/api/channels/publish", { method: "POST" })' in main_ts

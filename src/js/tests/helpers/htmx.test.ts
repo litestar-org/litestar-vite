@@ -10,6 +10,7 @@ import {
   registerHtmxExtension,
   swapJson,
 } from "../../src/helpers/htmx"
+import type { HtmxExtensionOptions } from "../../src/helpers/index"
 
 describe("htmx extension", () => {
   let container: HTMLElement
@@ -69,6 +70,26 @@ describe("htmx extension", () => {
         swapJson(container, { user: { name: "Bob" } })
         expect(container.querySelector("p")?.textContent).toBe("Bob")
       })
+
+      it("does not interpolate template syntax inside ls-text values", () => {
+        container.innerHTML = '<p ls-text="msg"></p>'
+        swapJson(container, { msg: "${1+1}" })
+        expect(container.querySelector("p")?.textContent).toBe("${1+1}")
+
+        swapJson(container, { msg: "${2+2}" })
+        expect(container.querySelector("p")?.textContent).toBe("${2+2}")
+      })
+
+      it.each(['<p :class="{ active: isActive }" ls-text="msg"></p>', '<p ls-text="msg" :class="{ active: isActive }"></p>'])(
+        "preserves sibling directives while isolating children for %s",
+        (markup) => {
+          container.innerHTML = markup
+          swapJson(container, { isActive: true, msg: "${1+1}" })
+          const p = container.querySelector("p")
+          expect(p?.classList.contains("active")).toBe(true)
+          expect(p?.textContent).toBe("${1+1}")
+        },
+      )
     })
 
     describe("ls-html directive", () => {
@@ -86,6 +107,84 @@ describe("htmx extension", () => {
         expect(div?.querySelector("p")?.textContent).toBe("Hello")
       })
 
+      it.each([
+        ["template", '<template><img src="x" onerror="alert(1)"></template>'],
+        ["script", "<script>alert(1)</script>"],
+        ["style", "<style>body { color: red; }</style>"],
+        ["iframe", '<iframe src="https://example.com"></iframe>'],
+        ["object", '<object data="https://example.com"></object>'],
+        ["embed", '<embed src="https://example.com">'],
+        ["svg", '<svg onload="alert(1)"><circle cx="5" cy="5" r="5"></circle></svg>'],
+        ["math", "<math><mi>x</mi></math>"],
+        ["base", '<base href="https://other.example/">'],
+        ["meta", '<meta http-equiv="refresh" content="0;url=https://other.example">'],
+        ["link", '<link rel="stylesheet" href="https://other.example/a.css">'],
+        ["form", '<form action="/submit"><p>nested</p></form>'],
+        ["form", '<form><input name="tagName"></form>'],
+        ["form", '<form><input name="parentNode"></form>'],
+        ["form", '<form><input name="tagName"><input name="parentNode"><input name="nodeType"></form>'],
+        ["litestar-stream", "<litestar-stream><p>nested</p></litestar-stream>"],
+        ["litestar-island", "<litestar-island><p>nested</p></litestar-island>"],
+        ["custom-widget", "<custom-widget><span>nested</span></custom-widget>"],
+      ])("removes disallowed %s elements and their descendants from ls-html output", (tagName, markup) => {
+        container.innerHTML = '<div ls-html="content"></div>'
+        swapJson(container, { content: `<p>Safe</p>${markup}` })
+        const div = container.querySelector("div")
+        expect(div?.querySelector(tagName)).toBeNull()
+        expect(div?.innerHTML).toBe("<p>Safe</p>")
+      })
+
+      it("removes form elements even when tagName, parentNode, or nodeType are DOM-clobbered", () => {
+        const origCreateElement = document.createElement.bind(document)
+        vi.spyOn(document, "createElement").mockImplementation(((tagName: string, options?: ElementCreationOptions) => {
+          const el = origCreateElement(tagName, options)
+          if (tagName.toLowerCase() === "template") {
+            const tpl = el as HTMLTemplateElement
+            const origDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML")
+            Object.defineProperty(tpl, "innerHTML", {
+              configurable: true,
+              get() {
+                return origDescriptor?.get?.call(tpl) ?? ""
+              },
+              set(value: string) {
+                origDescriptor?.set?.call(tpl, value)
+                for (const form of Array.from(tpl.content.querySelectorAll("form"))) {
+                  const tagClobber = form.querySelector('input[name="tagName"]')
+                  const parentClobber = form.querySelector('input[name="parentNode"]')
+                  const nodeTypeClobber = form.querySelector('input[name="nodeType"]')
+                  if (tagClobber) {
+                    Object.defineProperty(form, "tagName", { configurable: true, value: tagClobber })
+                  }
+                  if (parentClobber) {
+                    Object.defineProperty(form, "parentNode", { configurable: true, value: parentClobber })
+                  }
+                  if (nodeTypeClobber) {
+                    Object.defineProperty(form, "nodeType", { configurable: true, value: nodeTypeClobber })
+                  }
+                }
+              },
+            })
+          }
+          return el
+        }) as typeof document.createElement)
+
+        container.innerHTML = '<div ls-html="content"></div>'
+        swapJson(container, {
+          content: '<p>Safe</p><form><input name="tagName"><input name="parentNode"></form><form><input name="nodeType"></form>',
+        })
+        const div = container.querySelector("div")
+        expect(div?.querySelector("form")).toBeNull()
+        expect(div?.innerHTML).toBe("<p>Safe</p>")
+      })
+
+      it("removes comment nodes from ls-html output", () => {
+        container.innerHTML = '<div ls-html="content"></div>'
+        swapJson(container, { content: "<p>Keep</p><!-- hidden comment -->" })
+        const div = container.querySelector("div")
+        expect(div?.innerHTML).toBe("<p>Keep</p>")
+        expect(div?.childNodes.length).toBe(1)
+      })
+
       it("strips event handler attributes from ls-html output", () => {
         container.innerHTML = '<div ls-html="content"></div>'
         swapJson(container, { content: '<img src="x" onerror="alert(1)">' })
@@ -93,12 +192,92 @@ describe("htmx extension", () => {
         expect(img?.getAttribute("onerror")).toBeNull()
       })
 
+      it.each(["onclick", "ls-text", "data-ls-text", ":href", "@click", "hx-get", "data-hx-get", "data-hx-on--load", "srcdoc", "formaction", "style"])(
+        "strips disallowed attribute %s in ls-html while preserving safe attributes",
+        (attrName) => {
+          container.innerHTML = '<div ls-html="content"></div>'
+          swapJson(container, {
+            content: `<a class="btn" aria-label="Open" data-item-id="42" ${attrName}="payload">Link</a>`,
+          })
+          const link = container.querySelector("a")
+          expect(link?.hasAttribute(attrName)).toBe(false)
+          expect(link?.getAttribute("class")).toBe("btn")
+          expect(link?.getAttribute("aria-label")).toBe("Open")
+          expect(link?.getAttribute("data-item-id")).toBe("42")
+        },
+      )
+
       it("strips javascript: protocol from href", () => {
         container.innerHTML = '<div ls-html="content"></div>'
         swapJson(container, { content: '<a href="javascript:alert(1)">Click</a>' })
         const a = container.querySelector("a")
         // href should be removed entirely
         expect(a?.hasAttribute("href")).toBe(false)
+      })
+
+      it.each([
+        ["a", "href", "\tjavascript:1"],
+        ["a", "href", "\x01\t j\ta\nv\ra script:alert(1)"],
+        ["a", "href", "\x01data:text/html,x"],
+        ["a", "href", "vbscript:1"],
+        ["a", "href", "//other.example/x"],
+        ["a", "href", "/\\other.example/x"],
+        ["a", "href", "\\\\other.example/x"],
+        ["a", "href", "\\/other.example/x"],
+        ["img", "src", "\x01data:text/html,x"],
+        ["blockquote", "cite", "\tjavascript:1"],
+        ["a", "xlink:href", "javascript:1"],
+        ["a", "action", "javascript:1"],
+        ["a", "poster", "javascript:1"],
+      ])("strips unsafe %s[%s] URL %j in ls-html", (tag, attr, url) => {
+        container.innerHTML = '<div ls-html="content"></div>'
+        swapJson(container, { content: `<${tag} ${attr}="${url}">Item</${tag}>` })
+        const element = container.querySelector(tag)
+        expect(element?.hasAttribute(attr)).toBe(false)
+      })
+
+      it.each([
+        ["a", "href", "/page"],
+        ["a", "href", "/docs/v1:2"],
+        ["a", "href", "#sec:1"],
+        ["a", "href", "?next=https://example.com"],
+        ["a", "href", "https://example.com"],
+        ["a", "href", "http://example.com"],
+        ["a", "href", "mailto:a@b.com"],
+        ["a", "href", "tel:+15551234"],
+        ["img", "src", "https://example.com/logo.png"],
+        ["blockquote", "cite", "https://example.com/source"],
+      ])("preserves safe %s[%s] URL %j in ls-html", (tag, attr, url) => {
+        container.innerHTML = '<div ls-html="content"></div>'
+        swapJson(container, { content: `<${tag} ${attr}="${url}">Item</${tag}>` })
+        const element = container.querySelector(tag)
+        expect(element?.getAttribute(attr)).toBe(url)
+      })
+
+      it("does not execute directives or text interpolation inside ls-html content", () => {
+        container.innerHTML = '<div :class="{ active: isActive }" ls-html="body"></div>'
+        swapJson(container, {
+          isActive: true,
+          secret: "LEAKED",
+          body: '<span ls-text="secret">${1+1}</span><p :id="1+1">${1+1}</p>',
+        })
+        const div = container.querySelector("div")
+        expect(div?.classList.contains("active")).toBe(true)
+        expect(div?.innerHTML).toBe("<span>${1+1}</span><p>${1+1}</p>")
+      })
+
+      it("isolates ls-html children inside ls-for templates", () => {
+        container.innerHTML = `
+          <div>
+            <template ls-for="item in items">
+              <article ls-html="item.body"></article>
+            </template>
+          </div>
+        `
+        swapJson(container, {
+          items: [{ body: '<span ls-text="missing">${1+1}</span>' }],
+        })
+        expect(container.querySelector("article")?.innerHTML).toBe("<span>${1+1}</span>")
       })
 
       it("preserves safe HTML elements and attributes", () => {
@@ -119,6 +298,46 @@ describe("htmx extension", () => {
         swapJson(container, { url: "/path" })
         expect(container.querySelector("a")?.getAttribute("href")).toBe("/path")
       })
+
+      it.each(["onclick", "onerror", "srcdoc", "formaction", "hx-get", "data-hx-get", "ls-html", "data-ls-text"])("blocks dynamic :%s attribute binding", (attrName) => {
+        container.innerHTML = `<a :${attrName}="payload">Link</a>`
+        swapJson(container, { payload: "blocked-value" })
+        expect(container.querySelector("a")?.hasAttribute(attrName)).toBe(false)
+      })
+
+      it.each([
+        ["a", "href"],
+        ["img", "src"],
+        ["form", "action"],
+        ["a", "xlink:href"],
+        ["video", "poster"],
+        ["blockquote", "cite"],
+      ])("removes unsafe URL values from %s :%s bindings", (tag, attr) => {
+        const unsafeUrls = [
+          "\tjavascript:1",
+          "\x01\t j\ta\nv\ra script:alert(1)",
+          "\x01data:text/html,x",
+          "vbscript:1",
+          "//other.example/x",
+          "/\\other.example/x",
+          "\\\\other.example/x",
+          "\\/other.example/x",
+        ]
+        for (const url of unsafeUrls) {
+          container.innerHTML = `<${tag} :${attr}="url"></${tag}>`
+          swapJson(container, { url })
+          expect(container.querySelector(tag)?.hasAttribute(attr)).toBe(false)
+        }
+      })
+
+      it.each(["/page", "/a:b", "#sec:1", "?next=https://example.com", "https://example.com", "http://example.com", "mailto:a@b.com", "tel:+15551234"])(
+        "preserves allowed URL %j in dynamic :href binding",
+        (url) => {
+          container.innerHTML = '<a :href="url">Link</a>'
+          swapJson(container, { url })
+          expect(container.querySelector("a")?.getAttribute("href")).toBe(url)
+        },
+      )
 
       it("removes dangerous URL protocols from href bindings", () => {
         container.innerHTML = '<a :href="url">Link</a>'
@@ -631,6 +850,66 @@ describe("htmx extension", () => {
       expect(__compileExpressionForTest("`x-${a}-${b}`")?.(ctx)).toBe("x-2-fallback")
     })
 
+    it.each([
+      ['"  hi  ".trim().toUpperCase()', "HI"],
+      ['items.join(",")', "b,a"],
+      ["items.slice(0, 1)", ["b"]],
+      ["items.length", 2],
+      ["items.toSorted()", ["a", "b"]],
+      ["items.toReversed()", ["a", "b"]],
+      ["name.length", 6],
+      ['name.replace("a", "b")', "bbnana"],
+      ['name.replaceAll("a", "b")', "bbnbnb"],
+      ["(3.14159).toFixed(2)", "3.14"],
+      ["flag.toString()", "true"],
+      ["Math.max(2, 5)", 5],
+    ])("allows safe allowlisted expression %s", (expression, expected) => {
+      const items = ["b", "a"]
+      const ctx = {
+        $data: {},
+        items,
+        name: "banana",
+        flag: true,
+      } as never
+      expect(__compileExpressionForTest(expression)?.(ctx)).toEqual(expected)
+      expect(items).toEqual(["b", "a"])
+    })
+
+    it.each([
+      'text.match("(a+)+$")',
+      'text.matchAll("a")',
+      'text.search("a")',
+      'text.split(",")',
+      "text.repeat(10)",
+      'text.replace(re, "x")',
+      'text.replaceAll(re, "x")',
+      'items.push("x")',
+      "items.pop()",
+      "items.splice(0, 1)",
+      "items.sort()",
+      "items.reverse()",
+      "user.toString()",
+      'user.hasOwnProperty("name")',
+      "flag.valueOf()",
+      "fn.name",
+      "fn.length",
+    ])("blocks excluded primitive, array, function, and Object.prototype member %s", (expression) => {
+      const items = ["b", "a"]
+      const ctx = {
+        $data: {},
+        text: "a,b,c",
+        re: /a/g,
+        items,
+        user: { name: "Alice" },
+        flag: true,
+        fn: (value: unknown) => value,
+      } as never
+      const compiled = __compileExpressionForTest(expression)
+      expect(compiled).toBeTypeOf("function")
+      expect(compiled?.(ctx)).toBeUndefined()
+      expect(items).toEqual(["b", "a"])
+    })
+
     it("does not false-positive on property names containing blocked words", () => {
       // "documentation" contains "document" but should be allowed
       expect(__compileExpressionForTest("documentation")).toBeTypeOf("function")
@@ -708,6 +987,98 @@ describe("htmx extension", () => {
       ext.onEvent?.("htmx:configRequest", evt)
 
       expect(detail.headers["X-CSRFToken"]).toBe("csrf-token")
+    })
+
+    it.each([
+      { label: "same-origin relative path", detail: { path: "/api/items" } },
+      { label: "same-origin relative url", detail: { url: "/api/items" } },
+      { label: "missing path and url", detail: {} },
+    ])("attaches CSRF header on htmx:configRequest for $label", ({ detail: targetDetail }) => {
+      const defineExtension = vi.fn()
+      ;(window as unknown as Record<string, unknown>).__LITESTAR_CSRF__ = "csrf-token"
+      ;(window as unknown as Record<string, unknown>).htmx = { defineExtension, process: vi.fn() }
+
+      registerHtmxExtension()
+
+      const ext = defineExtension.mock.calls[0]?.[1] as { onEvent?: (name: string, evt: CustomEvent) => void }
+      const headers: Record<string, string> = {}
+      const evt = new CustomEvent("htmx:configRequest", { detail: { headers, ...targetDetail } })
+      ext.onEvent?.("htmx:configRequest", evt)
+
+      expect(headers["X-CSRFToken"]).toBe("csrf-token")
+    })
+
+    it.each([
+      { label: "cross-origin path", detail: { path: "https://other.example/api" } },
+      { label: "leading-space cross-origin path", detail: { path: " https://other.example/api" } },
+      { label: "protocol-relative path", detail: { path: "//other.example/api" } },
+      { label: "slash-backslash path", detail: { path: "/\\other.example/api" } },
+      { label: "double-backslash path", detail: { path: "\\\\other.example/api" } },
+      { label: "invalid URL path", detail: { path: "http://[::1" } },
+      { label: "cross-origin url fallback", detail: { url: "https://other.example/api" } },
+      { label: "empty path with cross-origin url fallback", detail: { path: "", url: "https://other.example/api" } },
+    ])("omits CSRF header on htmx:configRequest for $label", ({ detail: targetDetail }) => {
+      const defineExtension = vi.fn()
+      ;(window as unknown as Record<string, unknown>).__LITESTAR_CSRF__ = "csrf-token"
+      ;(window as unknown as Record<string, unknown>).htmx = { defineExtension, process: vi.fn() }
+
+      registerHtmxExtension()
+
+      const ext = defineExtension.mock.calls[0]?.[1] as { onEvent?: (name: string, evt: CustomEvent) => void }
+      const headers: Record<string, string> = {}
+      const evt = new CustomEvent("htmx:configRequest", { detail: { headers, ...targetDetail } })
+      ext.onEvent?.("htmx:configRequest", evt)
+
+      expect(headers["X-CSRFToken"]).toBeUndefined()
+    })
+
+    it("attaches CSRF header only to configured trustedOrigins on htmx:configRequest", () => {
+      const defineExtension = vi.fn()
+      ;(window as unknown as Record<string, unknown>).__LITESTAR_CSRF__ = "csrf-token"
+      ;(window as unknown as Record<string, unknown>).htmx = { defineExtension, process: vi.fn() }
+
+      const options: HtmxExtensionOptions = {
+        trustedOrigins: ["https://api.example.com"],
+      }
+      registerHtmxExtension(options)
+
+      const ext = defineExtension.mock.calls[0]?.[1] as { onEvent?: (name: string, evt: CustomEvent) => void }
+
+      const trustedHeaders: Record<string, string> = {}
+      ext.onEvent?.(
+        "htmx:configRequest",
+        new CustomEvent("htmx:configRequest", {
+          detail: { headers: trustedHeaders, path: "https://api.example.com/items" },
+        }),
+      )
+      expect(trustedHeaders["X-CSRFToken"]).toBe("csrf-token")
+
+      const trustedHeadersInstance = new Headers()
+      ext.onEvent?.(
+        "htmx:configRequest",
+        new CustomEvent("htmx:configRequest", {
+          detail: { headers: trustedHeadersInstance, url: "https://api.example.com/items" },
+        }),
+      )
+      expect(trustedHeadersInstance.get("X-CSRFToken")).toBe("csrf-token")
+
+      const untrustedHeaders: Record<string, string> = {}
+      ext.onEvent?.(
+        "htmx:configRequest",
+        new CustomEvent("htmx:configRequest", {
+          detail: { headers: untrustedHeaders, path: "https://other.example/items" },
+        }),
+      )
+      expect(untrustedHeaders["X-CSRFToken"]).toBeUndefined()
+
+      const protocolRelativeHeaders: Record<string, string> = {}
+      ext.onEvent?.(
+        "htmx:configRequest",
+        new CustomEvent("htmx:configRequest", {
+          detail: { headers: protocolRelativeHeaders, path: "//api.example.com/items" },
+        }),
+      )
+      expect(protocolRelativeHeaders["X-CSRFToken"]).toBeUndefined()
     })
 
     it("uses the configured header name when injected", () => {

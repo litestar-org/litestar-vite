@@ -8,6 +8,7 @@ In production, it serves the built index.html with async caching.
 """
 
 import logging
+import time
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn
@@ -23,6 +24,7 @@ from litestar.utils.scope.state import ScopeState
 from litestar_vite.config import InertiaConfig
 from litestar_vite.handler._routing import spa_handler_dev, spa_handler_prod
 from litestar_vite.html_transform import (
+    escape_json_for_html,
     inject_head_script,
     inject_page_script,
     inject_vite_dev_scripts,
@@ -30,6 +32,7 @@ from litestar_vite.html_transform import (
     transform_asset_urls,
 )
 from litestar_vite.loader import ViteAssetLoader
+from litestar_vite.plugin._utils import get_bridge_proxy_token
 from litestar_vite.utils import get_static_resource_path, read_hotfile_url
 
 if TYPE_CHECKING:
@@ -87,6 +90,7 @@ class AppHandler:
         "_initialized",
         "_manifest",
         "_preload_headers",
+        "_shell_cache_expires_at",
         "_spa_config",
         "_vite_url",
     )
@@ -109,6 +113,7 @@ class AppHandler:
         self._vite_url: "str | None" = None
         self._manifest: "dict[str, Any]" = {}
         self._preload_headers: "list[str] | None" = None
+        self._shell_cache_expires_at: "float | None" = None
 
     @property
     def is_initialized(self) -> bool:
@@ -201,11 +206,14 @@ class AppHandler:
             return html
 
         if self._spa_config.inject_csrf and csrf_token:
-            script_lines = [f'window.{self._spa_config.csrf_var_name} = "{csrf_token}";']
+            serialized_token = escape_json_for_html(encode_json(csrf_token).decode("utf-8"))
+            script_lines = [f"window.{self._spa_config.csrf_var_name} = {serialized_token};"]
             if self._csrf_header_name:
-                script_lines.append(f'window.__LITESTAR_CSRF_HEADER_NAME__ = "{self._csrf_header_name}";')
+                serialized_header = escape_json_for_html(encode_json(self._csrf_header_name).decode("utf-8"))
+                script_lines.append(f"window.__LITESTAR_CSRF_HEADER_NAME__ = {serialized_header};")
             if self._csrf_cookie_name:
-                script_lines.append(f'window.__LITESTAR_CSRF_COOKIE_NAME__ = "{self._csrf_cookie_name}";')
+                serialized_cookie = escape_json_for_html(encode_json(self._csrf_cookie_name).decode("utf-8"))
+                script_lines.append(f"window.__LITESTAR_CSRF_COOKIE_NAME__ = {serialized_cookie};")
             script = "\n".join(script_lines)
             html = inject_head_script(html, script, escape=False, nonce=self._config.csp_nonce)
 
@@ -222,6 +230,21 @@ class AppHandler:
                 html = set_data_attribute(html, self._spa_config.app_selector, "data-page", json_data)
 
         return html
+
+    def _update_shell_cache_expiry(self) -> None:
+        """Update the monotonic expiration timestamp for the cached pre-CSRF HTML shell."""
+        if self._spa_config is not None and self._spa_config.cache_duration > 0:
+            self._shell_cache_expires_at = time.monotonic() + self._spa_config.cache_duration
+        else:
+            self._shell_cache_expires_at = None
+
+    def _is_shell_cache_expired(self) -> bool:
+        """Return whether the cached pre-CSRF HTML shell TTL has elapsed.
+
+        Returns:
+            True when an expiration timestamp is set and monotonic time has reached it.
+        """
+        return self._shell_cache_expires_at is not None and time.monotonic() >= self._shell_cache_expires_at
 
     async def _load_index_html_async(self) -> None:
         """Load and cache index.html asynchronously."""
@@ -241,6 +264,8 @@ class AppHandler:
 
         self._cached_html = html
         self._cached_bytes = html.encode("utf-8")
+        self._cached_transformed_html = None
+        self._update_shell_cache_expiry()
 
     def _load_index_html_sync(self) -> None:
         """Load and cache index.html synchronously."""
@@ -260,6 +285,8 @@ class AppHandler:
 
         self._cached_html = html
         self._cached_bytes = html.encode("utf-8")
+        self._cached_transformed_html = None
+        self._update_shell_cache_expiry()
 
     def _raise_index_not_found(self) -> NoReturn:
         """Raise an exception when index.html is not found.
@@ -393,8 +420,9 @@ class AppHandler:
     @staticmethod
     def _post_vite_json_sync(endpoint: str, payload: dict[str, Any]) -> str:
         """Transform HTML through the Vite development server."""
+        headers = {"X-Litestar-Proxy-Token": token} if (token := get_bridge_proxy_token()) else None
         with httpx2.Client(timeout=5.0, trust_env=False) as client:
-            response = client.post(endpoint, json=payload)
+            response = client.post(endpoint, json=payload, headers=headers)
             response.raise_for_status()
             return response.text
 
@@ -520,7 +548,7 @@ class AppHandler:
                 html = self._transform_html(html, page_data, csrf_token)
             return html
 
-        if self._cached_html is None:
+        if self._cached_html is None or self._is_shell_cache_expired():
             await self._load_index_html_async()
 
         base_html = self._cached_html or ""
@@ -560,6 +588,8 @@ class AppHandler:
         if not needs_transform:
             if self._config.is_dev_mode and self._config.hot_reload:
                 return self._get_dev_html_sync()
+            if self._cached_html is None or self._is_shell_cache_expired():
+                self._load_index_html_sync()
             return self._cached_html or ""
 
         if self._config.is_dev_mode and self._config.hot_reload:
@@ -571,6 +601,8 @@ class AppHandler:
             html = self._get_dev_html_sync(page_url)
             return self._transform_html(html, page_data, csrf_token)
 
+        if self._cached_html is None or self._is_shell_cache_expired():
+            self._load_index_html_sync()
         base_html = self._cached_html or ""
         return self._transform_html(base_html, page_data, csrf_token)
 
@@ -594,7 +626,7 @@ class AppHandler:
             )
             await self.initialize_async()
 
-        if self._cached_bytes is None:
+        if self._cached_bytes is None or self._is_shell_cache_expired():
             await self._load_index_html_async()
 
         return self._cached_bytes or b""
@@ -701,7 +733,7 @@ class AppHandler:
             return get(path=paths, name="vite_spa", opt=opt, include_in_schema=False, guards=guards)(spa_handler_dev)
 
         cache_duration = self._spa_config.cache_duration if self._spa_config else 0
-        if cache_duration > 0:
+        if cache_duration > 0 and not self.inject_csrf:
             return get(
                 path=paths, name="vite_spa", opt=opt, include_in_schema=False, cache=cache_duration, guards=guards
             )(spa_handler_prod)

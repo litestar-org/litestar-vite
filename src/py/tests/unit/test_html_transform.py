@@ -1,6 +1,11 @@
-"""Unit tests for transform_asset_urls Vite manifest compliance, CSP nonces, and SRI."""
+"""Unit tests for HTML transformation helpers, JSON escaping, and asset URL rewriting."""
 
-from litestar_vite.html_transform import transform_asset_urls
+import json
+
+import pytest
+
+from litestar_vite import html_transform
+from litestar_vite.html_transform import escape_json_for_html, transform_asset_urls
 
 
 def test_transform_asset_urls_injects_recursive_css_and_modulepreload() -> None:
@@ -69,3 +74,49 @@ def test_transform_asset_urls_propagates_csp_nonce_and_sri_integrity() -> None:
     assert 'integrity="sha384-entryhash"' in result
     assert 'integrity="sha384-csshash"' in result
     assert result.count('nonce="req-&quot;nonce&quot;"') == 4
+
+
+def test_escape_json_for_html_empty_and_exported() -> None:
+    """Verify escape_json_for_html is exported in __all__ and preserves empty input."""
+    assert "escape_json_for_html" in html_transform.__all__
+    assert escape_json_for_html("") == ""
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "forbidden", "expected_escape"),
+    [
+        ("</script>", "</script>", r"\u003c/script\u003e"),
+        ("<!--<script>", "<!--<script>", r"\u003c!--\u003cscript\u003e"),
+        ("a & b", "&", r"\u0026"),
+        ("it's", "'", r"\u0027"),
+        ("line1\u2028line2", "\u2028", r"\u2028"),
+        ("para1\u2029para2", "\u2029", r"\u2029"),
+    ],
+)
+def test_escape_json_for_html_special_characters(raw_value: str, forbidden: str, expected_escape: str) -> None:
+    """Verify escape_json_for_html encodes HTML-significant characters and preserves JSON round-trip."""
+    payload = json.dumps({"value": raw_value}, ensure_ascii=False)
+    escaped = escape_json_for_html(payload)
+
+    assert forbidden not in escaped
+    assert expected_escape in escaped
+    assert json.loads(escaped) == json.loads(payload)
+
+
+def test_escape_json_for_html_combined_payload() -> None:
+    """Verify escape_json_for_html removes all six unsafe characters in a combined payload."""
+    payload = json.dumps({"value": "<!--<script></script> & ' \u2028 \u2029"}, ensure_ascii=False)
+    escaped = escape_json_for_html(payload)
+
+    assert "<" not in escaped
+    assert ">" not in escaped
+    assert "&" not in escaped
+    assert "'" not in escaped
+    assert "\u2028" not in escaped
+    assert "\u2029" not in escaped
+    assert r"\u003c!--\u003cscript\u003e\u003c/script\u003e" in escaped
+    assert r"\u0026" in escaped
+    assert r"\u0027" in escaped
+    assert r"\u2028" in escaped
+    assert r"\u2029" in escaped
+    assert json.loads(escaped) == json.loads(payload)

@@ -4,6 +4,81 @@ import path from "node:path"
 import { readBridgeConfig } from "./bridge-schema.js"
 import { writeIfChanged } from "./write-if-changed.js"
 
+const TS_IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/
+
+const TS_RESERVED_WORDS = new Set([
+  "any",
+  "arguments",
+  "as",
+  "await",
+  "boolean",
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "declare",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "eval",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "implements",
+  "import",
+  "in",
+  "instanceof",
+  "interface",
+  "let",
+  "never",
+  "new",
+  "null",
+  "number",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "return",
+  "static",
+  "string",
+  "super",
+  "switch",
+  "symbol",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "type",
+  "typeof",
+  "unknown",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+])
+
+function escapeJsonLineSeparators(jsonText: string): string {
+  return jsonText.replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029")
+}
+
+function stringifyTsLiteral(value: string): string {
+  return escapeJsonLineSeparators(JSON.stringify(value))
+}
+
+function formatPropertyKey(key: string): string {
+  return TS_IDENTIFIER_RE.test(key) ? key : stringifyTsLiteral(key)
+}
+
 /**
  * Infer TypeScript type from a JSON value.
  * Recursively handles objects and arrays.
@@ -56,7 +131,7 @@ function inferType(value: unknown, indent = 0): string {
     }
 
     const entries = keys.map((key) => {
-      const safeKey = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : JSON.stringify(key)
+      const safeKey = formatPropertyKey(key)
       const valueType = inferType(obj[key], indent + 1)
       return `${innerSpaces}${safeKey}: ${valueType}`
     })
@@ -70,7 +145,7 @@ function inferType(value: unknown, indent = 0): string {
 /**
  * Generate a valid TypeScript interface name from a key.
  */
-function toInterfaceName(key: string): string {
+function toInterfaceName(key: string, usedNames: Set<string>): string {
   // Convert to PascalCase
   const pascal = key
     .replace(/[^a-zA-Z0-9_$]/g, "_")
@@ -78,7 +153,22 @@ function toInterfaceName(key: string): string {
     .replace(/^_|_$/g, "")
     .replace(/(^|_)([a-z])/g, (_, __, c) => c.toUpperCase())
 
-  return pascal || "StaticProp"
+  let baseName = pascal
+  if (!baseName || /^[0-9]/.test(baseName) || baseName === "StaticProps" || TS_RESERVED_WORDS.has(baseName)) {
+    baseName = `StaticProp${baseName}`
+  }
+  if (!TS_IDENTIFIER_RE.test(baseName)) {
+    throw new Error(`litestar-vite: Invalid TypeScript interface name ${stringifyTsLiteral(baseName)} for key ${stringifyTsLiteral(key)}`)
+  }
+
+  let interfaceName = baseName
+  let suffix = 2
+  while (usedNames.has(interfaceName)) {
+    interfaceName = `${baseName}${suffix}`
+    suffix += 1
+  }
+  usedNames.add(interfaceName)
+  return interfaceName
 }
 
 /**
@@ -135,22 +225,23 @@ export default staticProps
   const interfaceProps: string[] = []
   const namedExports: string[] = []
   const nestedInterfaces: string[] = []
+  const usedInterfaceNames = new Set<string>(["StaticProps"])
 
   for (const [key, value] of Object.entries(staticProps)) {
-    const safeKey = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : JSON.stringify(key)
+    const safeKey = formatPropertyKey(key)
     const inferredType = inferType(value, 1)
 
     // For complex nested objects, create named interfaces
     if (typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length > 0) {
-      const interfaceName = toInterfaceName(key)
+      const interfaceName = toInterfaceName(key, usedInterfaceNames)
       nestedInterfaces.push(`export interface ${interfaceName} ${inferType(value, 0)}`)
       interfaceProps.push(`  ${safeKey}: ${interfaceName}`)
     } else {
       interfaceProps.push(`  ${safeKey}: ${inferredType}`)
     }
 
-    // Generate named export for valid identifiers
-    if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key)) {
+    // Generate named export for valid non-reserved identifiers
+    if (TS_IDENTIFIER_RE.test(key) && !TS_RESERVED_WORDS.has(key) && key !== "staticProps") {
       namedExports.push(`export const ${key} = staticProps.${key}`)
     }
   }
@@ -167,7 +258,7 @@ ${interfaceProps.join("\n")}
 }
 
 /** All static props with inferred types */
-export const staticProps: StaticProps = ${JSON.stringify(staticProps, null, 2)} as const satisfies StaticProps
+export const staticProps: StaticProps = ${escapeJsonLineSeparators(JSON.stringify(staticProps, null, 2))} as const satisfies StaticProps
 
 ${namedExports.join("\n")}
 

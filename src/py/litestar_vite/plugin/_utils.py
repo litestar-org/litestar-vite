@@ -6,6 +6,7 @@ __all__ = (
     "configure_proxy_logging",
     "console",
     "create_proxy_client",
+    "get_bridge_proxy_token",
     "get_litestar_route_prefixes",
     "infer_host_from_argv",
     "infer_port_from_argv",
@@ -26,10 +27,14 @@ __all__ = (
 )
 
 
+import contextlib
 import importlib.metadata
 import logging
 import os
+import secrets
 import sys
+import tempfile
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast, overload
 
@@ -39,8 +44,8 @@ from litestar.cli._utils import console  # pyright: ignore[reportPrivateImportUs
 from litestar.config.csrf import CSRFConfig
 
 from litestar_vite.codegen import asyncapi_docs_paths
-from litestar_vite.codegen import write_if_changed as _write_if_changed
 from litestar_vite.config import InertiaConfig, TypeGenConfig
+from litestar_vite.utils import read_bridge_config
 
 if TYPE_CHECKING:
     from litestar import Litestar, Response
@@ -377,6 +382,99 @@ def _derive_bridge_litestar_port() -> int | None:
         return None
 
 
+@lru_cache(maxsize=1)
+def _get_or_create_bridge_proxy_token() -> str:
+    """Return the per-process bridge proxy token, generating one on first use.
+
+    Returns:
+        A URL-safe token reused across repeat runtime config writes in this process.
+    """
+    return secrets.token_urlsafe(32)
+
+
+def _write_all_bytes(fd: int, content: bytes, path: Path) -> None:
+    """Write all bytes to an open file descriptor, raising on zero-length writes."""
+    view = memoryview(content)
+    written = 0
+    while written < len(view):
+        chunk = os.write(fd, view[written:])
+        if chunk <= 0:
+            msg = f"Failed to write runtime config file: {path}"
+            raise OSError(msg)
+        written += chunk
+
+
+def _write_runtime_config_atomic(path: Path, content: bytes) -> bool:
+    """Atomically write ``.litestar.json`` with ``0o600`` POSIX permissions.
+
+    Ensures a trailing newline, skips rewriting when content matches while still
+    tightening POSIX permissions to ``0o600``, writes through a same-directory
+    temporary file using ``os.fchmod`` when available, and clears the cached
+    bridge config upon replacement.
+
+    Args:
+        path: Target runtime config file path.
+        content: Serialized JSON bytes to persist.
+
+    Returns:
+        ``True`` if the file was rewritten, ``False`` if unchanged.
+    """
+    content_bytes = content if content.endswith(b"\n") else content + b"\n"
+    if path.exists():
+        try:
+            existing = path.read_bytes()
+        except OSError:
+            existing = None
+        if existing == content_bytes:
+            if os.name == "posix" and (path.stat().st_mode & 0o777) != 0o600:
+                path.chmod(0o600)
+            return False
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    fchmod = getattr(os, "fchmod", None)
+    closed = False
+    try:
+        if callable(fchmod):
+            fchmod(fd, 0o600)
+        _write_all_bytes(fd, content_bytes, path)
+        os.close(fd)
+        closed = True
+        tmp_path.replace(path)
+    except BaseException:
+        if not closed:
+            with contextlib.suppress(OSError):
+                os.close(fd)
+        with contextlib.suppress(OSError):
+            tmp_path.unlink(missing_ok=True)
+        raise
+
+    if os.name == "posix" and not callable(fchmod):
+        path.chmod(0o600)
+
+    cache_clear = getattr(read_bridge_config, "cache_clear", None)
+    if callable(cache_clear):
+        cache_clear()
+    return True
+
+
+def get_bridge_proxy_token(path: Path | None = None) -> str | None:
+    """Return the per-run proxy token from ``.litestar.json``, if present.
+
+    Args:
+        path: Optional explicit path to ``.litestar.json``. When omitted,
+            resolution follows ``read_bridge_config``.
+
+    Returns:
+        The non-empty ``proxyToken`` string when present, otherwise ``None``.
+    """
+    bridge = read_bridge_config(path)
+    if bridge is not None and isinstance(token := bridge.get("proxyToken"), str) and bool(token):
+        return token
+    return None
+
+
 @overload
 def write_runtime_config_file(
     config: "ViteConfig",
@@ -384,6 +482,7 @@ def write_runtime_config_file(
     asset_url_override: str | None = None,
     csrf_cookie_name: str | None = None,
     csrf_header_name: str | None = None,
+    proxy_token: str | None = None,
 ) -> str: ...
 
 
@@ -394,6 +493,7 @@ def write_runtime_config_file(
     asset_url_override: str | None = None,
     csrf_cookie_name: str | None = None,
     csrf_header_name: str | None = None,
+    proxy_token: str | None = None,
     return_status: bool,
 ) -> tuple[str, bool]: ...
 
@@ -404,6 +504,7 @@ def write_runtime_config_file(
     asset_url_override: str | None = None,
     csrf_cookie_name: str | None = None,
     csrf_header_name: str | None = None,
+    proxy_token: str | None = None,
     return_status: bool = False,
 ) -> str | tuple[str, bool]:
     """Write a JSON handoff file for the Vite plugin and return its path.
@@ -412,7 +513,8 @@ def write_runtime_config_file(
     consistency and format output deterministically for easier debugging.
 
     Returns:
-        The path to the written config file.
+        The path to the written config file, or a ``(path, changed)`` tuple when
+        ``return_status`` is ``True``.
     """
     import msgspec
     from litestar.serialization import encode_json
@@ -432,6 +534,8 @@ def write_runtime_config_file(
     if deploy is not None and deploy.asset_url:
         deploy_asset_url = deploy.asset_url
 
+    resolved_token = proxy_token if proxy_token is not None else _get_or_create_bridge_proxy_token()
+
     payload = {
         "assetUrl": config.asset_url,
         "deployAssetUrl": deploy_asset_url,
@@ -446,6 +550,7 @@ def write_runtime_config_file(
         "proxyMode": config.proxy_mode,
         "csrfCookieName": csrf_cookie_name,
         "csrfHeaderName": csrf_header_name,
+        "proxyToken": resolved_token,
         "port": config.port,
         "host": config.host,
         "ssrOutDir": ssr_out_dir_value,
@@ -486,7 +591,7 @@ def write_runtime_config_file(
     }
 
     content = msgspec.json.format(encode_json(payload), indent=2)
-    changed = _write_if_changed(path, content)
+    changed = _write_runtime_config_atomic(path, content)
     if return_status:
         return str(path), changed
     return str(path)
@@ -509,7 +614,6 @@ def set_environment(config: "ViteConfig", asset_url_override: str | None = None,
         os.environ.setdefault("ASSET_URL", asset_url)
     if config.base_url:
         os.environ.setdefault("VITE_BASE_URL", config.base_url)
-    os.environ.setdefault("VITE_ALLOW_REMOTE", str(True))
 
     backend_host, backend_port = _resolve_litestar_bind()
     os.environ["LITESTAR_HOST"] = backend_host

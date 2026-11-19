@@ -8,6 +8,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import ts from "typescript"
 import { describe, expect, it } from "vitest"
 
 // Import the interface type for our test data
@@ -412,6 +413,101 @@ describe("Page Props Type Generation", () => {
       await emitPagePropsTypes(enabled, outputDir)
 
       expect(fs.existsSync(path.join(outputDir, "inertia.d.ts"))).toBe(false)
+    })
+
+    it("escapes component names, shared prop keys, and import paths safely", async () => {
+      const tmpDir = _createTempDir()
+      try {
+        const componentName = 'Admin/"Quotes"\nLine\u2028Sep\u2029'
+        const importPath = '@/types/custom"path\u2028\u2029'
+        const sharedKey = 'bad\u2028"key'
+        const pagesPath = _createTestPagesJson(tmpDir, {
+          pages: {
+            [componentName]: {
+              route: "/admin/quotes",
+              tsType: "CustomPageProps",
+              customTypes: ["CustomPageProps"],
+            },
+          },
+          sharedProps: {
+            [sharedKey]: { type: "string", optional: true },
+          },
+          typeImportPaths: {
+            CustomPageProps: importPath,
+          },
+          typeGenConfig: { includeDefaultAuth: false, includeDefaultFlash: false },
+          generatedAt: new Date().toISOString(),
+        })
+
+        const outputDir = path.join(tmpDir, "generated")
+        const { emitPagePropsTypes } = await import("../src/shared/emit-page-props-types.js")
+
+        await emitPagePropsTypes(pagesPath, outputDir)
+
+        const emitted = fs.readFileSync(path.join(outputDir, "page-props.ts"), "utf-8")
+        expect(emitted).not.toContain("\u2028")
+        expect(emitted).not.toContain("\u2029")
+        expect(emitted).toContain('import type { CustomPageProps } from "@/types/custom\\"path\\u2028\\u2029"')
+        expect(emitted).toContain('"bad\\u2028\\"key"?: string')
+        expect(emitted).toContain('"Admin/\\"Quotes\\"\\nLine\\u2028Sep\\u2029": CustomPageProps & FullSharedProps')
+
+        const transpiled = ts.transpileModule(emitted, {
+          reportDiagnostics: true,
+          compilerOptions: {
+            module: ts.ModuleKind.ESNext,
+            target: ts.ScriptTarget.ES2022,
+          },
+        })
+        expect(transpiled.diagnostics ?? []).toHaveLength(0)
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true })
+      }
+    })
+
+    it("rejects invalid and reserved imported type identifiers", async () => {
+      const tmpDir = _createTempDir()
+      try {
+        const outputDir = path.join(tmpDir, "generated")
+        const { emitPagePropsTypes } = await import("../src/shared/emit-page-props-types.js")
+
+        const invalidPagesPath = _createTestPagesJson(tmpDir, {
+          pages: {
+            Home: {
+              route: "/",
+              tsType: "Record<string, unknown>",
+              customTypes: ["Bad;Ident"],
+            },
+          },
+          sharedProps: {},
+          typeImportPaths: {
+            "Bad;Ident": "@/types/custom",
+          },
+          typeGenConfig: { includeDefaultAuth: false, includeDefaultFlash: false },
+          generatedAt: new Date().toISOString(),
+        })
+
+        await expect(emitPagePropsTypes(invalidPagesPath, outputDir)).rejects.toThrow(/Invalid TypeScript/i)
+
+        const reservedPagesPath = _createTestPagesJson(tmpDir, {
+          pages: {
+            Home: {
+              route: "/",
+              tsType: "Record<string, unknown>",
+              customTypes: ["default"],
+            },
+          },
+          sharedProps: {},
+          typeImportPaths: {
+            default: "@/types/custom",
+          },
+          typeGenConfig: { includeDefaultAuth: false, includeDefaultFlash: false },
+          generatedAt: new Date().toISOString(),
+        })
+
+        await expect(emitPagePropsTypes(reservedPagesPath, outputDir)).rejects.toThrow(/Invalid TypeScript/i)
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true })
+      }
     })
 
     it("generates SharedProps interface", () => {

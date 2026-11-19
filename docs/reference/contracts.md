@@ -106,7 +106,7 @@ When `TypeGenConfig` is enabled (`ViteConfig(types=True)` or `ViteConfig(types=T
 
 ### `routes.json`
 
-Contains all registered HTTP and WebSocket routes (filtered by `exclude_routes`), parameter types, and OpenAPI `operationId` or AsyncAPI `channel_key` links. Used by both Python and the Vite plugin to emit `routes.ts` (`route()`, `toRoute()`, `wsRoute()`, `routeDefinitions`) and `schemas.ts` (`FormInput`, `FormResponse`, `SuccessResponse`).
+Contains registered HTTP and WebSocket routes with `include_in_schema=True` (filtered by `TypeGenConfig.only_routes` and `TypeGenConfig.exclude_routes`; routes with `include_in_schema=False` are omitted), parameter types, and OpenAPI `operationId` or AsyncAPI `channel_key` links. Used by both Python and the Vite plugin to emit `routes.ts` (`route()`, `toRoute()`, `wsRoute()`, `routeDefinitions`) and `schemas.ts` (`FormInput`, `FormResponse`, `SuccessResponse`).
 
 ```json
 {
@@ -140,7 +140,7 @@ Canonical OpenAPI 3.1 schema exported from Litestar with deterministic key order
 
 ### `inertia-pages.json`
 
-Maps Inertia component names (`component="..."` on route handlers) to their return-type TypeScript schemas or OpenAPI `$ref` names, alongside shared props registered on `InertiaConfig`. Consumed by the Vite plugin to generate `page-props.ts`.
+Maps Inertia component names (`component="..."` on schema-visible route handlers, omitting routes with `include_in_schema=False` and applying `TypeGenConfig.only_routes` and `TypeGenConfig.exclude_routes`) to their return-type TypeScript schemas or OpenAPI `$ref` names, alongside shared props registered on `InertiaConfig`. Consumed by the Vite plugin to generate `page-props.ts`.
 
 ### `asyncapi.json`
 
