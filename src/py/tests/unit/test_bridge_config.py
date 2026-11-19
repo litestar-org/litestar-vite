@@ -291,6 +291,29 @@ def test_write_runtime_config_file_cleans_temp_file_on_replace_failure(
     assert list(tmp_path.glob("*.tmp")) == []
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permission bits only")
+def test_write_runtime_config_file_tolerates_permission_update_failure_on_unchanged_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify an unchanged bridge file whose mode cannot be updated is left in place without raising."""
+    config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path), runtime=RuntimeConfig(dev_mode=False))
+    bridge_path = Path(plugin_utils.write_runtime_config_file(config))
+    bridge_path.chmod(0o644)
+    original_bytes = bridge_path.read_bytes()
+
+    def fail_chmod(self: Path, mode: int) -> None:
+        msg = "simulated read-only filesystem"
+        raise PermissionError(msg)
+
+    monkeypatch.setattr(Path, "chmod", fail_chmod)
+
+    _, changed = plugin_utils.write_runtime_config_file(config, return_status=True)
+
+    assert changed is False
+    assert bridge_path.read_bytes() == original_bytes
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
 def test_get_bridge_proxy_token_resolution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify get_bridge_proxy_token follows explicit path, env var, and missing-file semantics."""
     env_config = ViteConfig(mode="spa", paths=PathConfig(root=tmp_path / "env"), runtime=RuntimeConfig(dev_mode=True))

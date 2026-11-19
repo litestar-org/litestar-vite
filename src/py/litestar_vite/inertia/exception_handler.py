@@ -2,9 +2,8 @@
 
 import logging
 import re
-import types
-from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, Annotated, Any, Union, cast, get_args, get_origin
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote, urlparse, urlunparse
 
 from litestar import MediaType
@@ -13,7 +12,6 @@ from litestar.connection.base import AuthT, StateT, UserT
 from litestar.exceptions import (
     HTTPException,
     InternalServerException,
-    LitestarException,
     NotAuthorizedException,
     NotFoundException,
     PermissionDeniedException,
@@ -35,7 +33,7 @@ from litestar.status_codes import (
 
 from litestar_vite.inertia.helpers import error, flash
 from litestar_vite.inertia.request import InertiaDetails, InertiaRequest
-from litestar_vite.inertia.response import InertiaBack, InertiaExternalRedirect, InertiaRedirect, InertiaResponse
+from litestar_vite.inertia.response import InertiaBack, InertiaRedirect, InertiaResponse
 from litestar_vite.inertia.state import has_redirect_state_transport
 
 if TYPE_CHECKING:
@@ -47,77 +45,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger("litestar_vite.inertia")
 FIELD_ERR_RE = re.compile(r"field `(.+)`$")
 ExceptionHandler = Callable[[Request[Any, Any, Any], Exception], Response[Any]]
-_INERTIA_OPT_KEYS: tuple[str, ...] = ("component", "page", "inertia")
-_INERTIA_RETURN_TYPES: tuple[type[Any], ...] = (InertiaResponse, InertiaRedirect, InertiaBack, InertiaExternalRedirect)
-_UNION_ORIGINS: tuple[Any, ...] = (Union, types.UnionType)
-
-
-def _is_inertia_class(candidate: Any) -> bool:
-    if not isinstance(candidate, type):
-        return False
-    try:
-        return issubclass(candidate, _INERTIA_RETURN_TYPES)
-    except TypeError:
-        return False
-
-
-def _is_inertia_return_type(candidate: Any) -> bool:
-    """Return whether a return type annotation or FieldDefinition denotes an Inertia response."""
-    if candidate is None or candidate is Any:
-        return False
-    if not isinstance(candidate, type) and hasattr(candidate, "annotation"):
-        origin: Any = getattr(candidate, "origin", None)
-        if origin in _UNION_ORIGINS or getattr(candidate, "is_union", False):
-            inner_types: tuple[Any, ...] = tuple(getattr(candidate, "inner_types", ()))
-            return any(_is_inertia_return_type(inner) for inner in inner_types)
-        next_candidate: Any = origin if origin is not None else candidate.annotation
-        return next_candidate is not candidate and _is_inertia_return_type(next_candidate)
-    origin = get_origin(candidate)
-    if origin in _UNION_ORIGINS:
-        return any(_is_inertia_return_type(arg) for arg in get_args(candidate))
-    if origin is Annotated:
-        args = get_args(candidate)
-        return bool(args) and _is_inertia_return_type(args[0])
-    return _is_inertia_return_type(origin) if origin is not None else _is_inertia_class(candidate)
-
-
-def _route_handler_uses_inertia(route_handler: Any) -> bool:
-    """Return whether a matched route handler explicitly participates in Inertia.
-
-    Inspects handler ``opt`` markers (``component``, ``page``, ``inertia``) and unwraps
-    the handler's parsed return type signature for Inertia response and redirect classes.
-
-    Args:
-        route_handler: The matched route handler from ASGI scope.
-
-    Returns:
-        ``True`` when the handler declares Inertia options or returns an Inertia response type.
-    """
-    if route_handler is None:
-        return False
-    opt: Any = getattr(route_handler, "opt", None)
-    if isinstance(opt, Mapping):
-        opt_map = cast("Mapping[str, Any]", opt)
-        if any(bool(opt_map.get(key)) for key in _INERTIA_OPT_KEYS):
-            return True
-    try:
-        parsed_signature: Any = getattr(route_handler, "parsed_fn_signature", None)
-    except (AttributeError, LitestarException, NameError, TypeError):
-        return False
-    return_type: Any = getattr(parsed_signature, "return_type", None)
-    return _is_inertia_return_type(return_type)
 
 
 def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "Exception") -> "Response[Any]":
     """Handler for all exceptions subclassed from HTTPException.
 
-    Inertia detection:
+    Inertia detection follows the Inertia protocol, where the ``X-Inertia`` request
+    header marks an Inertia visit regardless of which handler it reaches:
 
-    - When routing matched a handler, uses Inertia handling only when the route declares
-      a component or when the request carries ``X-Inertia: true`` and the handler opts
-      into Inertia via options or an Inertia return type annotation.
-    - When routing did not match a handler (such as unmatched 404 or 405 paths), falls
-      back to checking the ``X-Inertia`` header so ``redirect_404`` keeps working.
+    - For InertiaRequest instances, uses the request's derived flags (route component + headers).
+    - For plain Request instances (such as before routing or when middleware did not run),
+      falls back to checking the ``X-Inertia`` header.
 
     Server errors (status code 500 or above) are logged server-side and masked to
     ``"Internal Server Error"`` whenever ``app.debug`` is ``False``.
@@ -129,22 +67,11 @@ def exception_to_http_response(request: "Request[UserT, AuthT, StateT]", exc: "E
     Returns:
         The response object.
     """
-    scope = cast("Mapping[str, Any]", request.scope)
-    route_handler: Any = scope.get("route_handler")
-    has_route_component = (
-        request.inertia_enabled
-        if isinstance(request, InertiaRequest)
-        else InertiaDetails(request).route_component is not None
-    )
     is_inertia_header = request.headers.get("x-inertia", "").lower() == "true"
-    has_inertia_header = (
-        (request.is_inertia or is_inertia_header) if isinstance(request, InertiaRequest) else is_inertia_header
-    )
-    inertia_enabled = (
-        has_route_component or (has_inertia_header and _route_handler_uses_inertia(route_handler))
-        if route_handler is not None
-        else has_inertia_header
-    )
+    if isinstance(request, InertiaRequest):
+        inertia_enabled = request.inertia_enabled or request.is_inertia or is_inertia_header
+    else:
+        inertia_enabled = is_inertia_header
 
     if not inertia_enabled:
         is_debug = bool(getattr(request.app, "debug", False))

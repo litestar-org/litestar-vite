@@ -157,7 +157,7 @@ async def test_inertia_error_without_route_component_avoids_null_component(
     assert response.status_code == 500
     body = response.json()
     assert "component" not in body
-    assert body == {"status_code": 500, "detail": "Internal Server Error"}
+    assert body == {"status_code": 500, "message": "Internal Server Error"}
     assert "api exploded" not in response.text
     assert len(caplog.records) == 1
     assert "api exploded" in caplog.text
@@ -268,37 +268,104 @@ async def test_field_err_re_still_wins_per_entry(
     assert errors == {"email": "Validation error for field `email`", "name": "Validation error for field `name`"}
 
 
+_REFERER = "http://testserver.local/form"
+
+
+def _validation_error() -> ValidationException:
+    return ValidationException(detail="invalid payload", extra=[{"key": "name", "message": "name is required"}])
+
+
+def _unavailable_error() -> HTTPException:
+    return HTTPException(status_code=503, detail="upstream secret", extra={"host": "db.internal"})
+
+
 @pytest.mark.parametrize(
-    ("exc", "expected_status", "expected_detail", "expect_masked"),
+    ("exc", "expected_location", "expected_flash", "expected_errors"),
     [
-        (
-            ValidationException(detail="invalid payload", extra=[{"key": "name", "message": "name is required"}]),
-            400,
-            "invalid payload",
-            False,
+        pytest.param(
+            _validation_error(), _REFERER, "invalid payload", {"root.name": "name is required"}, id="validation"
         ),
-        (NotAuthorizedException(detail="auth required"), 401, "auth required", False),
-        (PermissionDeniedException(detail="forbidden"), 403, "forbidden", False),
-        (NotFoundException(detail="missing item"), 404, "missing item", False),
-        (
-            HTTPException(status_code=503, detail="upstream secret", extra={"host": "db.internal"}),
-            503,
-            "Internal Server Error",
-            True,
+        pytest.param(
+            NotAuthorizedException(detail="auth required"), "/login", "auth required", None, id="unauthorized"
         ),
+        pytest.param(PermissionDeniedException(detail="forbidden"), _REFERER, "forbidden", None, id="forbidden"),
+        pytest.param(NotFoundException(detail="missing item"), "/", "missing item", None, id="not-found"),
     ],
 )
-async def test_non_component_route_keeps_default_json_response_with_inertia_header(
+async def test_inertia_header_redirects_client_errors_without_route_component(
+    inertia_plugin: InertiaPlugin,
+    vite_plugin: VitePlugin,
+    template_config: TemplateConfig[Any],
+    exc: HTTPException,
+    expected_location: str,
+    expected_flash: str,
+    expected_errors: "dict[str, str] | None",
+) -> None:
+    """An X-Inertia request gets flash-and-redirect error handling on handlers that declare no component."""
+    inertia_plugin.config.redirect_unauthorized_to = "/login"
+    inertia_plugin.config.redirect_404 = "/"
+
+    @get("/api/data")
+    async def api_handler() -> dict[str, str]:
+        raise exc
+
+    @get("/api/session")
+    async def session_handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
+        return dict(request.session)
+
+    with create_test_client(
+        route_handlers=[api_handler, session_handler],
+        debug=False,
+        plugins=[inertia_plugin, vite_plugin],
+        template_config=template_config,
+        middleware=[ServerSideSessionConfig().middleware],
+        stores={"sessions": MemoryStore()},
+        raise_server_exceptions=False,
+    ) as client:
+        response = client.get(
+            "/api/data", headers={InertiaHeaders.ENABLED.value: "true", "Referer": _REFERER}, follow_redirects=False
+        )
+        session_data = client.get("/api/session").json()
+
+    assert response.status_code == 307
+    assert response.headers["location"] == expected_location
+    assert session_data["_messages"] == [{"category": "error", "message": expected_flash}]
+    assert session_data.get("_errors") == expected_errors
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected_body"),
+    [
+        pytest.param(
+            _validation_error(),
+            {
+                "status_code": 400,
+                "detail": "invalid payload",
+                "extra": [{"key": "name", "message": "name is required"}],
+            },
+            id="validation",
+        ),
+        pytest.param(
+            NotAuthorizedException(detail="auth required"),
+            {"status_code": 401, "detail": "auth required"},
+            id="unauthorized",
+        ),
+        pytest.param(
+            PermissionDeniedException(detail="forbidden"), {"status_code": 403, "detail": "forbidden"}, id="forbidden"
+        ),
+        pytest.param(NotFoundException(detail="missing item"), None, id="not-found"),
+        pytest.param(_unavailable_error(), {"status_code": 503, "detail": "Internal Server Error"}, id="unavailable"),
+    ],
+)
+async def test_requests_without_inertia_header_keep_default_error_responses(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
     template_config: TemplateConfig[Any],
     caplog: pytest.LogCaptureFixture,
-    exc: Exception,
-    expected_status: int,
-    expected_detail: str,
-    expect_masked: bool,
+    exc: HTTPException,
+    expected_body: "dict[str, Any] | None",
 ) -> None:
-    """Matched non-component routes return Litestar JSON errors without flashing or redirecting."""
+    """Requests without X-Inertia keep the default error responses with no flash or redirect."""
     inertia_plugin.config.redirect_unauthorized_to = "/login"
     inertia_plugin.config.redirect_404 = "/"
 
@@ -323,69 +390,24 @@ async def test_non_component_route_keeps_default_json_response_with_inertia_head
             raise_server_exceptions=False,
         ) as client,
     ):
-        response = client.get(
-            "/api/data",
-            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "http://testserver.local/form"},
-            follow_redirects=False,
-        )
-        session_response = client.get("/api/session")
+        response = client.get("/api/data", headers={"Referer": _REFERER}, follow_redirects=False)
+        session_data = client.get("/api/session").json()
 
-    assert response.status_code == expected_status
+    assert response.status_code == exc.status_code
     assert "location" not in response.headers
-    body = response.json()
-    assert "component" not in body
-    assert body["status_code"] == expected_status
-    assert body["detail"] == expected_detail
-    session_data = session_response.json()
     assert "_messages" not in session_data
     assert "_errors" not in session_data
-    if expect_masked:
+    if expected_body is None:
+        assert response.content == b""
+    else:
+        assert response.json() == expected_body
+    if exc.status_code >= 500:
         assert "upstream secret" not in response.text
         assert "db.internal" not in response.text
-        assert "extra" not in body
         assert len(caplog.records) == 1
         assert "upstream secret" in caplog.text
     else:
         assert caplog.records == []
-
-
-async def test_non_component_post_validation_error_keeps_json_response_with_inertia_header(
-    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig[Any]
-) -> None:
-    """Matched non-component POST routes return 400 JSON on body validation failure."""
-
-    @post("/api/items")
-    async def create_item(data: Annotated[dict[str, int], Body()]) -> dict[str, int]:
-        return data
-
-    @get("/api/session")
-    async def session_handler(request: Request[Any, Any, Any]) -> dict[str, Any]:
-        return dict(request.session)
-
-    with create_test_client(
-        route_handlers=[create_item, session_handler],
-        debug=False,
-        plugins=[inertia_plugin, vite_plugin],
-        template_config=template_config,
-        middleware=[ServerSideSessionConfig().middleware],
-        stores={"sessions": MemoryStore()},
-        raise_server_exceptions=False,
-    ) as client:
-        response = client.post(
-            "/api/items",
-            json={"count": "invalid"},
-            headers={InertiaHeaders.ENABLED.value: "true", "Referer": "http://testserver.local/form"},
-            follow_redirects=False,
-        )
-        session_response = client.get("/api/session")
-
-    assert response.status_code == 400
-    assert "location" not in response.headers
-    body = response.json()
-    assert "component" not in body
-    assert body["status_code"] == 400
-    assert "_messages" not in session_response.json()
-    assert "_errors" not in session_response.json()
 
 
 @pytest.mark.parametrize(("method", "path"), [("GET", "/missing"), ("POST", "/only-get")])
@@ -478,14 +500,14 @@ async def test_component_route_5xx_http_exception_masking_and_logging(
 
 
 @pytest.mark.parametrize("debug", [False, True])
-async def test_non_component_route_503_debug_toggle(
+async def test_inertia_header_503_without_route_component_debug_toggle(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
     template_config: TemplateConfig[Any],
     caplog: pytest.LogCaptureFixture,
     debug: bool,
 ) -> None:
-    """Non-component 503 HTTPExceptions mask details in production and expose them in debug."""
+    """X-Inertia 503 responses without a component mask details in production and expose them in debug."""
 
     @get("/api/upstream")
     async def upstream_handler() -> dict[str, str]:
@@ -511,49 +533,27 @@ async def test_non_component_route_503_debug_toggle(
     assert "component" not in body
     assert body["status_code"] == 503
     if debug:
-        assert body["detail"] == "upstream secret"
+        assert body["message"] == "upstream secret"
         assert body["extra"] == {"host": "db.internal"}
         assert caplog.records == []
     else:
-        assert body["detail"] == "Internal Server Error"
+        assert body["message"] == "Internal Server Error"
         assert "extra" not in body
         assert "upstream secret" not in response.text
+        assert "db.internal" not in response.text
         assert len(caplog.records) == 1
         assert "upstream secret" in caplog.text
 
 
-async def test_non_component_generic_container_return_type_stays_json(
-    inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig[Any]
-) -> None:
-    """Generic container return annotations containing InertiaResponse do not opt into Inertia."""
-
-    @get("/api/container")
-    async def container_handler() -> dict[str, InertiaResponse[Any]]:
-        raise NotFoundException(detail="missing container")
-
-    inertia_plugin.config.redirect_404 = "/"
-
-    with create_test_client(
-        route_handlers=[container_handler],
-        debug=False,
-        plugins=[inertia_plugin, vite_plugin],
-        template_config=template_config,
-        middleware=[ServerSideSessionConfig().middleware],
-        stores={"sessions": MemoryStore()},
-        raise_server_exceptions=False,
-    ) as client:
-        response = client.get("/api/container", headers={InertiaHeaders.ENABLED.value: "true"}, follow_redirects=False)
-
-    assert response.status_code == 404
-    assert "location" not in response.headers
-    assert response.json() == {"status_code": 404, "detail": "missing container"}
-
-
-@pytest.mark.parametrize("path", ["/users", "/users-opt", "/users-response", "/users-external"])
+@pytest.mark.parametrize("path", ["/users", "/users-opt", "/users-response", "/users-external", "/users-plain"])
 async def test_inertia_mutation_handler_validation_error_retains_inertia_back(
     inertia_plugin: InertiaPlugin, vite_plugin: VitePlugin, template_config: TemplateConfig[Any], path: str
 ) -> None:
-    """Inertia mutation routes without component= still flash errors and redirect back."""
+    """Mutation routes reached by an X-Inertia request flash errors and redirect back."""
+
+    @post("/users-plain")
+    async def create_user_plain(data: Annotated[dict[str, int], Body()]) -> dict[str, int]:
+        return data
 
     @post("/users")
     async def create_user(
@@ -580,7 +580,14 @@ async def test_inertia_mutation_handler_validation_error_retains_inertia_back(
         return {}
 
     with create_test_client(
-        route_handlers=[create_user, create_user_opt, create_user_response, create_user_external, form_handler],
+        route_handlers=[
+            create_user,
+            create_user_opt,
+            create_user_response,
+            create_user_external,
+            create_user_plain,
+            form_handler,
+        ],
         debug=False,
         plugins=[inertia_plugin, vite_plugin],
         template_config=template_config,
@@ -606,14 +613,14 @@ async def test_inertia_mutation_handler_validation_error_retains_inertia_back(
 
 
 @pytest.mark.parametrize(("path", "expected_component"), [("/plain-page", "PlainPage"), ("/plain-api", None)])
-async def test_plain_request_class_respects_route_component_scoping(
+async def test_plain_request_class_detects_inertia_header(
     inertia_plugin: InertiaPlugin,
     vite_plugin: VitePlugin,
     template_config: TemplateConfig[Any],
     path: str,
     expected_component: str | None,
 ) -> None:
-    """Plain Request instances resolve route components via InertiaDetails when scoping errors."""
+    """Plain Request instances get Inertia error handling from the X-Inertia header."""
 
     @get("/plain-page", component="PlainPage")
     async def page_handler() -> dict[str, str]:
@@ -642,4 +649,4 @@ async def test_plain_request_class_respects_route_component_scoping(
         assert body["props"]["message"] == "missing page"
     else:
         assert "component" not in body
-        assert body == {"status_code": 404, "detail": "missing api"}
+        assert body == {"status_code": 404, "message": "missing api"}

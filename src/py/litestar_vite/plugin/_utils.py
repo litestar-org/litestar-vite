@@ -408,9 +408,10 @@ def _write_runtime_config_atomic(path: Path, content: bytes) -> bool:
     """Atomically write ``.litestar.json`` with ``0o600`` POSIX permissions.
 
     Ensures a trailing newline, skips rewriting when content matches while still
-    tightening POSIX permissions to ``0o600``, writes through a same-directory
-    temporary file using ``os.fchmod`` when available, and clears the cached
-    bridge config upon replacement.
+    tightening POSIX permissions to ``0o600`` on a best-effort basis (a file the
+    process does not own or a read-only filesystem leaves the mode as is), writes
+    through a same-directory temporary file using ``os.fchmod`` when available,
+    and clears the cached bridge config upon replacement.
 
     Args:
         path: Target runtime config file path.
@@ -426,8 +427,10 @@ def _write_runtime_config_atomic(path: Path, content: bytes) -> bool:
         except OSError:
             existing = None
         if existing == content_bytes:
-            if os.name == "posix" and (path.stat().st_mode & 0o777) != 0o600:
-                path.chmod(0o600)
+            if os.name == "posix":
+                with contextlib.suppress(OSError):
+                    if (path.stat().st_mode & 0o777) != 0o600:
+                        path.chmod(0o600)
             return False
 
     path.parent.mkdir(parents=True, exist_ok=True)

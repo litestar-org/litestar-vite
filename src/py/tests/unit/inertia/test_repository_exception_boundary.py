@@ -198,10 +198,10 @@ def test_litestar_org_repository_exception_handlers_delegate_to_inertia_response
 
 @pytest.mark.parametrize("package_name", ["advanced_alchemy", "sqlspec"])
 @pytest.mark.parametrize("debug", [False, True])
-def test_repository_500_on_non_component_route_masks_and_logs_once(
+def test_repository_500_without_route_component_masks_and_logs_once(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, package_name: str, debug: bool
 ) -> None:
-    """Non-component routes delegate repository 500 errors to Litestar JSON and log once in production."""
+    """Repository 500 errors on routes without a component are masked and logged once in production."""
 
     from litestar_vite.inertia import InertiaHeaders
     from litestar_vite.plugin import VitePlugin
@@ -232,10 +232,12 @@ def test_repository_500_on_non_component_route_masks_and_logs_once(
     assert response.status_code == HTTP_500_INTERNAL_SERVER_ERROR
     body = response.json()
     assert "component" not in body
-    assert body == {"status_code": HTTP_500_INTERNAL_SERVER_ERROR, "detail": "Internal Server Error"}
+    assert body["status_code"] == HTTP_500_INTERNAL_SERVER_ERROR
     if debug:
+        assert body["message"] == "repository failure"
         assert caplog.records == []
     else:
+        assert body == {"status_code": HTTP_500_INTERNAL_SERVER_ERROR, "message": "Internal Server Error"}
         assert "repository failure" not in response.text
         assert len(caplog.records) == 1
         assert "repository failure" in caplog.text
